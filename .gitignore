@@ -1,20 +1,21 @@
-# Maven
 target/
+.env
+.idea
+*.iml
+*.class
+*.log
 *.jar
 *.war
+*.nar
 *.ear
-
-# IDE
-.idea/
-*.iml
-.vscode/
-.project
-.classpath
-.settings/
-
-# OS
+*.zip
+*.tar.gz
+*.rar
+hs_err_pid*
 .DS_Store
-Thumbs.db
-
-# Logs
-*.log
+*.sw*
+.flattened-pom.xml
+dependency-reduced-pom.xml
+/.env.local
+/.cache/
+.claude/settings.local.json

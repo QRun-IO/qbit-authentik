@@ -1,42 +1,61 @@
-# QBit Template: Extension
+# QBit Authentik
 
-Template repository for creating QQQ Extension QBits - infrastructure extensions, customizers, and action handlers.
+A QQQ QBit for managing [Authentik](https://goauthentik.io) identities (users, groups, memberships, and the QQQ permissions a group grants) from a QQQ app. **Authentik stays the source of truth.** The qbit reads Authentik live and will write through the Authentik API. Changes made in the Authentik admin UI are equally valid.
 
-## What is an Extension QBit?
+Design: [`docs/DESIGN.md`](docs/DESIGN.md) (copy of the approved spec, QRun-IO/qqq#1065). Phase 0 owner steps: [`docs/PHASE0-OWNER-CHECKLIST.md`](docs/PHASE0-OWNER-CHECKLIST.md). Status and linked PRs: [`docs/STATUS.md`](docs/STATUS.md).
 
-Extension QBits extend or enhance how QQQ operates at the infrastructure/framework level. They provide:
-- New backend implementations
-- Authentication mechanisms
-- Audit capabilities
-- Table customizers
-- Action handlers
+## Status
 
-## Quick Start
+`0.1.0-SNAPSHOT`, the **read-only** release line (phases 0 and 1 of DESIGN.md section 11):
 
-Requires **Java 21**, **Maven 3.8+**, and QQQ **4.0.0**. Create your repository, customize its Maven coordinates and Java package/classes, implement the table customizer, then run `mvn clean verify`. See [Getting Started](docs/00-getting-started.md).
+| Available | Not yet (refused by config validation) |
+|---|---|
+| `READ`: Authentik tables over the API | `MEMBERSHIP`, `GROUPS`, `USERS`, `CREDENTIALS`, `SESSIONS` writes (phases 2-3) |
+| `MIRROR` (phase 1) | `RBAC` (phase 4), `WEBHOOK`, `SNAPSHOT_EXPORT` |
 
-## Structure
+Every write is refused by `AuthentikGuard` in this release.
 
+## Usage
+
+```java
+AuthentikQBitConfig config = new AuthentikQBitConfig()
+   .withBaseUrl("https://auth.example.com")         // host root; /api/v3 is appended
+   .withApiToken("${env.AUTHENTIK_API_TOKEN}")      // service-account token, resolved by the qbit
+   .withAppKey("kof22-admin")                       // service account: qqq-kof22-admin-idadmin
+   .withApplicationsInScope(List.of("kof22-website-prod"));
+
+new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance);
 ```
-src/main/java/com/kingsrook/qbits/example/
-├── ExampleExtensionQBitConfig.java    # Configuration
-├── ExampleExtensionQBitProducer.java  # Entry point
-└── customizers/
-    └── ExampleTableCustomizer.java    # Table customization
+
+This produces:
+- an API backend `authentikApi`
+- read-only tables (`authentikUser`, `authentikGroup`, ...)
+- an app `authentikAdmin`, labelled "Identity", that hosts can nest, for example under Admin
+
+Access is controlled by QQQ permissions:
+
+| Permission (held as `<name>.hasAccess`) | Grants |
+|---|---|
+| `identity.users.read` | the Identity app and its tables |
+| `identity.audit.read` | sensitive fields and tables |
+
+The full `identity.*` set is in DESIGN.md section 5.2.
+
+### Authentik side
+
+The qbit's API token belongs to a dedicated Authentik service account whose role holds only the read permissions it needs. The bootstrap blueprint that creates it lives in the host's GitOps repo. The kof22 version is [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml), which the contract tests exercise.
+
+## Build
+
+```bash
+./mvnw test                 # unit tests (recorded 2026.8.3 fixtures, no network)
+CI=true ./mvnw verify       # + contract tests against Authentik 2026.8.3 in Docker (Testcontainers)
+./mvnw verify -Dauthentik.test.image=ghcr.io/goauthentik/server:2026.10.0   # rehearse an upgrade
+./mvnw verify -Dauthentik.fixtures.record=true                              # refresh unit fixtures
 ```
 
-## Key Characteristics
-
-- **No QAppSection** - Pure infrastructure
-- **No user-facing tables** (or minimal operational)
-- **Wraps existing tables/processes** with new behavior
-- **Validates dependencies** on other QQQ components
-
-## Documentation
-
-- [Getting Started](docs/00-getting-started.md)
-- [Extension Patterns](docs/01-extension-patterns.md)
+Contract tests start Authentik (server and worker), Postgres and Mailpit, and take about 10 minutes, mostly first boot and blueprint applies. Without Docker they are skipped locally. With `CI=true` they fail instead.
 
 ## License
 
-See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+Apache 2.0
