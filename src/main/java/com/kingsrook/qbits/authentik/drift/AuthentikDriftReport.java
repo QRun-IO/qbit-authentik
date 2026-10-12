@@ -345,7 +345,7 @@ public class AuthentikDriftReport
 
       if(admins.isEmpty())
       {
-         String bootstrap = config.getResolvedBootstrapOperators().isEmpty() ? "" : " bootstrapOperators is set, which covers sign-in for now.";
+         String bootstrap = config.getResolvedBootstrapSubjects().isEmpty() ? "" : " bootstrapOperatorSubjects is set, which covers sign-in for now.";
          findings.add(DriftFinding.error("identity admins", "-", "Nobody can administer identities from QQQ: no active, unprotected human user holds authentik.memberships.manage and authentik.permissions.manage. Add an administrator to a group carrying authentik.* (e.g. identity-admins) in the Authentik UI." + bootstrap));
       }
       else if(admins.size() == 1)

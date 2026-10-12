@@ -871,10 +871,10 @@ class AuthentikAdminTest
     ** they do not hold elsewhere.
     *******************************************************************************/
    @Test
-   void bootstrapOperatorsHoldIdentityPermissions() throws QException
+   void bootstrapOperatorSubjectsHoldIdentityPermissions() throws QException
    {
       t.authentik.groupByName("identity-admins").put("users", new JSONArray());
-      t.config.withBootstrapOperators(AuthentikTestSupport.OPERATOR);
+      t.config.withBootstrapOperatorSubjects("1");
       t.authentik.groupByName("kof-website-publishers").put("users", new JSONArray());
 
       AuthentikAdmin.AdminResult grantIdentity = run(AdminRequest.of(AdminAction.EDIT_PERMISSIONS, t.authentik.pk("kof-website-analysts"), "b")

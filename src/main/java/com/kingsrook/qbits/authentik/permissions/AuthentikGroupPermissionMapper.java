@@ -27,6 +27,7 @@ import java.util.TreeSet;
 import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
 import com.kingsrook.qbits.authentik.client.AuthentikRedactor;
+import com.kingsrook.qbits.authentik.security.BootstrapOperators;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -49,7 +50,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** 2. Each group is resolved with its ancestors through the cached group
  **    graph; the union of qqq.io/permissions becomes session permissions,
  **    expanded and checked against the instance's permission catalog.
- ** 3. Static fallbacks (withGroupPermissions) and bootstrapOperators are added.
+ ** 3. Static fallbacks (withGroupPermissions) and bootstrapOperatorSubjects are added.
  ** 4. If Authentik cannot be read, only the static fallbacks (and bootstrap
  **    operators) apply: it never grants everything.
  **
@@ -101,9 +102,11 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
          return;
       }
       List<String> groups = groupNames(claims);
-      String       email  = claims.optString("email", "").trim().toLowerCase();
+      String       email  = claims.optString("email", "").trim();
+      String       sub    = claims.optString("sub", "").trim();
+      boolean      verified = claims.optBoolean("email_verified", false);
 
-      Set<String> permissions = new TreeSet<>(resolve(qInstance, groups, email));
+      Set<String> permissions = new TreeSet<>(resolve(qInstance, groups, sub, email, verified));
       if(qSession.getPermissions() != null)
       {
          permissions.addAll(qSession.getPermissions());
@@ -114,9 +117,10 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
 
 
    /*******************************************************************************
-    ** The permissions for a user's group names and email.
+    ** The permissions for a user's group names and token identity (sub, email,
+    ** email_verified). Bootstrap operators are matched on immutable ids only.
     *******************************************************************************/
-   public Set<String> resolve(QInstance qInstance, Collection<String> groupNames, String email)
+   public Set<String> resolve(QInstance qInstance, Collection<String> groupNames, String sub, String email, boolean emailVerified)
    {
       Set<String> rs = new TreeSet<>();
       for(String group : groupNames)
@@ -125,9 +129,9 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       }
 
       AuthentikRuntime runtime = runtime();
-      if(runtime != null && email != null && runtime.getConfig().getResolvedBootstrapOperators().contains(email))
+      if(runtime != null && !runtime.getConfig().getResolvedBootstrapSubjects().isEmpty() && isBootstrap(qInstance, runtime, sub, email, emailVerified))
       {
-         LOG.warn("bootstrapOperators grants all identity permissions; remove it once an identity administrator is set up in Authentik", logPair("email", email));
+         LOG.warn("bootstrapOperatorSubjects grants all identity permissions; empty it once an identity administrator is set up in Authentik", logPair("sub", sub));
          for(IdentityPermission permission : IdentityPermission.values())
          {
             rs.add(permission.getSessionPermission());
@@ -160,6 +164,23 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
          LOG.warn("Authentik groups could not be read at sign-in; granting only the static fallbacks", logPair("error", AuthentikRedactor.redactText(e.getMessage(), runtime == null ? null : runtime.getConfig().getResolvedApiToken())));
       }
       return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private boolean isBootstrap(QInstance qInstance, AuthentikRuntime runtime, String sub, String email, boolean emailVerified)
+   {
+      try
+      {
+         return (BootstrapOperators.matches(runtime.getConfig().getResolvedBootstrapSubjects(), client(qInstance), sub, email, emailVerified));
+      }
+      catch(Exception e)
+      {
+         return (false);
+      }
    }
 
 

@@ -151,7 +151,19 @@ class AuthentikQBitConfigTest
       assertThat(new AuthentikQBitConfig().withTableNamePrefix("").applyTablePrefix("user")).isEqualTo("user");
       assertThat(new AuthentikQBitConfig().withTableNamePrefix("").applyTablePrefix("groupMember")).isEqualTo("group_member");
       assertThat(new AuthentikQBitConfig().withTableNamePrefix("myAuth").applyTablePrefix("groupMember")).isEqualTo("my_auth_group_member");
-      assertThat(config.withBootstrapOperators(" A@x.test, ,b@x.test ").getResolvedBootstrapOperators()).containsExactly("a@x.test", "b@x.test");
+      assertThat(config.withBootstrapOperatorSubjects(" A1, ,b2 ").getResolvedBootstrapSubjects()).containsExactly("A1", "b2");
+   }
+
+
+
+   /*******************************************************************************
+    ** Emails are refused as bootstrap subjects: users can change their own.
+    *******************************************************************************/
+   @Test
+   void bootstrapSubjectsRejectEmails()
+   {
+      assertThat(errors(AuthentikTestSupport.unitConfig().withBootstrapOperatorSubjects("owner@example.test"))).anyMatch(e -> e.contains("never emails"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withBootstrapOperatorSubjects("42"))).noneMatch(e -> e.contains("never emails"));
    }
 
 

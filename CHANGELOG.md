@@ -14,6 +14,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Config: `localBackendName` (replaces `mirrorBackendName`), `twoPersonApproval`, `schedulerName`, `linkPrefix`.
 - Tests: an in-memory Authentik for the rules, process tests through `RunProcessAction`, and write contract tests on Authentik 2026.8.3 (`QbitWriteContractIT`, including the recovery email arriving in Mailpit).
 
+### Security
+- `bootstrapOperators` (emails) is replaced by `bootstrapOperatorSubjects` (env `AUTHENTIK_QBIT_BOOTSTRAP_SUBJECTS`): users can change their own email in Authentik, so an email must never confer identity permissions. A bootstrap operator is now matched on the token `sub` (email-looking subs ignored) or, with a verified email, on the single active Authentik user with that email whose pk or uuid is configured. Spoofed, duplicate or unverified emails are denied; entries containing `@` fail validation. The admin service uses the same rule.
+
 ### Fixed
 - Count reported no distinct count, so a process Review showed no total; group lists now include member pks (member counts were 0).
 - Spec: multi-value filters are repeated plain names (`type=a&type=b`), never `type[]=a` (which Authentik silently ignores); stale role-state, `check_access`, re-parenting-risk, private-repo and backend-name wording corrected (spec revision 4).

@@ -65,7 +65,7 @@ public class AuthentikQBitConfig implements QBitConfig
    private List<String>          userScopeGroupNames      = new ArrayList<>();
    private String                groupScopeNamePrefix;
    private List<String>          protectedUsernames       = new ArrayList<>();
-   private String                bootstrapOperators       = "${env.AUTHENTIK_QBIT_BOOTSTRAP_OPERATORS}";
+   private String                bootstrapOperatorSubjects       = "${env.AUTHENTIK_QBIT_BOOTSTRAP_SUBJECTS}";
    private List<String>          applicationsInScope      = new ArrayList<>();
    private String                localBackendName;
    private Boolean               twoPersonApproval        = true;
@@ -176,6 +176,15 @@ public class AuthentikQBitConfig implements QBitConfig
       if(requested.contains(AuthentikFeature.WEBHOOK) && !StringUtils.hasContent(getResolvedWebhookSecret()))
       {
          errors.add("feature WEBHOOK needs webhookSecret");
+      }
+
+      for(String subject : getResolvedBootstrapSubjects())
+      {
+         if(subject.contains("@"))
+         {
+            errors.add("bootstrapOperatorSubjects must be immutable ids (the token sub, or the Authentik user pk or uuid), never emails: users can change their own email");
+            break;
+         }
       }
 
       for(Integer value : new Integer[] { throttleRequestsPerSecond, throttleBurst, listCacheTtlSeconds, groupCacheTtlSeconds, connectTimeoutMillis, socketTimeoutMillis })
@@ -356,20 +365,22 @@ public class AuthentikQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
-    ** Bootstrap operator emails, resolved and split on commas, lower-cased.
+    ** Bootstrap operator subjects, resolved and split on commas. Each is an
+    ** IMMUTABLE identifier (the token's sub, or the Authentik user pk or uuid);
+    ** never an email, because users can change their own email.
     *******************************************************************************/
    @JsonIgnore
-   public Set<String> getResolvedBootstrapOperators()
+   public Set<String> getResolvedBootstrapSubjects()
    {
       Set<String> rs       = new LinkedHashSet<>();
-      String      resolved = resolve(bootstrapOperators);
+      String      resolved = resolve(bootstrapOperatorSubjects);
       if(StringUtils.hasContent(resolved))
       {
          for(String part : resolved.split(","))
          {
             if(StringUtils.hasContent(part))
             {
-               rs.add(part.trim().toLowerCase());
+               rs.add(part.trim());
             }
          }
       }
@@ -713,21 +724,21 @@ public class AuthentikQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
-    ** Getter for bootstrapOperators (raw value)
+    ** Getter for bootstrapOperatorSubjects (raw value)
     *******************************************************************************/
-   public String getBootstrapOperators()
+   public String getBootstrapOperatorSubjects()
    {
-      return (this.bootstrapOperators);
+      return (this.bootstrapOperatorSubjects);
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for bootstrapOperators (comma-separated emails or ${env.X})
+    ** Fluent setter for bootstrapOperatorSubjects (comma-separated emails or ${env.X})
     *******************************************************************************/
-   public AuthentikQBitConfig withBootstrapOperators(String bootstrapOperators)
+   public AuthentikQBitConfig withBootstrapOperatorSubjects(String bootstrapOperatorSubjects)
    {
-      this.bootstrapOperators = bootstrapOperators;
+      this.bootstrapOperatorSubjects = bootstrapOperatorSubjects;
       return (this);
    }
 

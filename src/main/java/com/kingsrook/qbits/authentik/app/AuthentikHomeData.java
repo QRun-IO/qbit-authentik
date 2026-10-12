@@ -245,9 +245,9 @@ public class AuthentikHomeData
     *******************************************************************************/
    private void loadAttention(AuthentikActionUtil util)
    {
-      if(!config.getResolvedBootstrapOperators().isEmpty())
+      if(!config.getResolvedBootstrapSubjects().isEmpty())
       {
-         attention.add("bootstrapOperators is still set: remove it once an identity administrator is set up in Authentik.");
+         attention.add("bootstrapOperatorSubjects is still set: remove it once an identity administrator is set up in Authentik.");
       }
       if(Boolean.TRUE.equals(config.getReadOnly()))
       {

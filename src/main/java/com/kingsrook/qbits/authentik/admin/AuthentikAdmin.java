@@ -110,7 +110,7 @@ public class AuthentikAdmin
     ** @param pk          the operator's Authentik user pk, or null when not found
     ** @param permissions effective QQQ permissions (session form)
     ** @param appAccess   app keys the operator can sign in to
-    ** @param bootstrap   listed in bootstrapOperators
+    ** @param bootstrap   listed in bootstrapOperatorSubjects
     *******************************************************************************/
    public record Operator(String email, Integer pk, Set<String> permissions, Set<String> appAccess, boolean bootstrap)
    {
@@ -170,7 +170,7 @@ public class AuthentikAdmin
    /*******************************************************************************
     ** The operator, resolved once per instance from live Authentik data. When
     ** the operator is not an Authentik user (static or development sessions),
-    ** the session's own permissions stand in. bootstrapOperators additionally
+    ** the session's own permissions stand in. bootstrapOperatorSubjects additionally
     ** hold every authentik.* permission.
     *******************************************************************************/
    public Operator operator() throws QException
@@ -181,7 +181,7 @@ public class AuthentikAdmin
       }
 
       String      email       = guard.operatorEmail();
-      boolean     bootstrap   = email != null && config.getResolvedBootstrapOperators().contains(email.toLowerCase(Locale.ROOT));
+      boolean     bootstrap   = email != null && com.kingsrook.qbits.authentik.security.BootstrapOperators.matchesUniqueUser(config.getResolvedBootstrapSubjects(), util, email);
       Integer     pk          = null;
       Set<String> permissions = new TreeSet<>();
       Set<String> appAccess   = new TreeSet<>();

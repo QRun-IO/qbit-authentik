@@ -128,7 +128,7 @@ class AuthentikAppTest
    void homeRenders() throws Exception
    {
       AdminTestSupport t = AdminTestSupport.create();
-      t.config.withBootstrapOperators("<b>boot</b>@example.test");
+      t.config.withBootstrapOperatorSubjects("<b>boot</b>");
       com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaDataInterface widget = t.qInstance.getWidget("authentikHome");
       assertThat(widget.getPermissionRules().getPermissionBaseName()).isEqualTo("authentik.users.read");
 
@@ -141,7 +141,7 @@ class AuthentikAppTest
       assertThat(html).contains("Active</dt><dd style=\"margin:0;\">4<");
       assertThat(html).contains("Inactive</dt><dd style=\"margin:0;\">1<");
       assertThat(html).contains("Service accounts</dt><dd style=\"margin:0;\">2<");
-      assertThat(html).contains("bootstrapOperators is still set");
+      assertThat(html).contains("bootstrapOperatorSubjects is still set");
       assertThat(html).contains("No changes have been made from here yet.");
       assertThat(html).contains("href=\"/app/authentik_user\"").contains("href=\"/app/authentik_group\"");
       assertThat(html).doesNotContain("<b>boot</b>");
