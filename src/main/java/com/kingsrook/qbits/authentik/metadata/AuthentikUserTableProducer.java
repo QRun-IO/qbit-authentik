@@ -21,7 +21,7 @@ import com.kingsrook.qbits.authentik.client.AuthentikTables;
 
 
 /*******************************************************************************
- ** authentikUser: /core/users/.
+ ** authentik_user: /core/users/.
  *******************************************************************************/
 public class AuthentikUserTableProducer extends AbstractAuthentikTableProducer
 {

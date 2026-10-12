@@ -218,7 +218,9 @@ public class AuthentikQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
-    ** Prefix a component name with the tableNamePrefix (camel-cased join).
+    ** Prefix a non-table component name (app, widget, backend, process) with the
+    ** tableNamePrefix (camel-cased join), e.g. "authentikAdmin". Table names use
+    ** applyTablePrefix instead.
     *******************************************************************************/
    public String applyPrefix(String name)
    {
@@ -227,6 +229,59 @@ public class AuthentikQBitConfig implements QBitConfig
          return (name);
       }
       return (tableNamePrefix + Character.toUpperCase(name.charAt(0)) + name.substring(1));
+   }
+
+
+
+   /*******************************************************************************
+    ** Prefix a table name: lowercase snake_case, joined with "_", e.g. "user" ->
+    ** "authentik_user", "groupMember" -> "authentik_group_member" (owner naming
+    ** rule, 2026-10-12: table names are lowercase with "_", prefixed with the
+    ** qbit's name).
+    *******************************************************************************/
+   public String applyTablePrefix(String name)
+   {
+      String snakeName = toSnakeCase(name);
+      if(!StringUtils.hasContent(tableNamePrefix))
+      {
+         return (snakeName);
+      }
+      return (toSnakeCase(tableNamePrefix) + "_" + snakeName);
+   }
+
+
+
+   /*******************************************************************************
+    ** camelCase (or PascalCase) to lowercase snake_case: "groupMember" ->
+    ** "group_member", "myAuth" -> "my_auth". Already-snake input is unchanged.
+    *******************************************************************************/
+   public static String toSnakeCase(String name)
+   {
+      if(name == null)
+      {
+         return (null);
+      }
+
+      StringBuilder rs = new StringBuilder(name.length() + 8);
+      for(int i = 0; i < name.length(); i++)
+      {
+         char c = name.charAt(i);
+         if(Character.isUpperCase(c))
+         {
+            boolean afterLowerOrDigit = i > 0 && (Character.isLowerCase(name.charAt(i - 1)) || Character.isDigit(name.charAt(i - 1)));
+            boolean endOfAcronym      = i > 0 && i + 1 < name.length() && Character.isUpperCase(name.charAt(i - 1)) && Character.isLowerCase(name.charAt(i + 1));
+            if((afterLowerOrDigit || endOfAcronym) && rs.length() > 0 && rs.charAt(rs.length() - 1) != '_')
+            {
+               rs.append('_');
+            }
+            rs.append(Character.toLowerCase(c));
+         }
+         else
+         {
+            rs.append(c);
+         }
+      }
+      return (rs.toString());
    }
 
 

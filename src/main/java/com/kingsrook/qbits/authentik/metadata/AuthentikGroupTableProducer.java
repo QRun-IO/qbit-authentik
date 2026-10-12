@@ -21,7 +21,7 @@ import com.kingsrook.qbits.authentik.client.AuthentikTables;
 
 
 /*******************************************************************************
- ** authentikGroup: /core/groups/.
+ ** authentik_group: /core/groups/.
  *******************************************************************************/
 public class AuthentikGroupTableProducer extends AbstractAuthentikTableProducer
 {

@@ -53,22 +53,22 @@ class AuthentikQBitProducerTest
       assertThat(backend.getApiKey()).isNull();
       assertThat(backend.getActionUtil().getName()).isEqualTo(AuthentikActionUtil.class.getName());
 
-      QTableMetaData users = qInstance.getTable("authentikUser");
+      QTableMetaData users = qInstance.getTable("authentik_user");
       assertThat(users.getBackendName()).isEqualTo("authentikApi");
       assertThat(users.getPrimaryKeyField()).isEqualTo("pk");
-      assertThat(users.getPermissionRules().getPermissionBaseName()).isEqualTo("identity.users.read");
+      assertThat(users.getPermissionRules().getPermissionBaseName()).isEqualTo("authentik.users.read");
       assertThat(users.isCapabilityEnabled(qInstance.getBackend("authentikApi"), Capability.TABLE_QUERY)).isTrue();
       assertThat(users.isCapabilityEnabled(qInstance.getBackend("authentikApi"), Capability.TABLE_INSERT)).isFalse();
       assertThat(users.isCapabilityEnabled(qInstance.getBackend("authentikApi"), Capability.TABLE_DELETE)).isFalse();
       assertThat(users.getField("uuid").getIsHidden()).isTrue();
-      assertThat(qInstance.getTable("authentikGroup")).isNotNull();
+      assertThat(qInstance.getTable("authentik_group")).isNotNull();
 
       QAppMetaData app = qInstance.getApp("authentikAdmin");
       assertThat(app.getLabel()).isEqualTo("Identity");
-      assertThat(app.getChildren()).extracting(c -> c.getName()).containsExactly("authentikUser", "authentikGroup", "authentikGroupMember", "authentikSession", "authentikEvent");
+      assertThat(app.getChildren()).extracting(c -> c.getName()).containsExactly("authentik_user", "authentik_group", "authentik_group_member", "authentik_session", "authentik_event");
       assertThat(app.getWidgets()).containsExactly("authentikDriftReport");
-      assertThat(qInstance.getTable("authentikSession").getPermissionRules().getPermissionBaseName()).isEqualTo("identity.audit.read");
-      assertThat(qInstance.getWidget("authentikDriftReport").getPermissionRules().getPermissionBaseName()).isEqualTo("identity.admin");
+      assertThat(qInstance.getTable("authentik_session").getPermissionRules().getPermissionBaseName()).isEqualTo("authentik.audit.read");
+      assertThat(qInstance.getWidget("authentikDriftReport").getPermissionRules().getPermissionBaseName()).isEqualTo("authentik.admin");
 
       assertThat(PermissionsHelper.getAllAvailablePermissionNames(qInstance)).contains(IdentityPermission.USERS_READ.getSessionPermission());
       assertThat(qInstance.getQBits()).containsKey("com.kingsrook.qbits:authentik");
@@ -85,7 +85,7 @@ class AuthentikQBitProducerTest
       AuthentikQBitConfig config    = AuthentikTestSupport.unitConfig().withTableNamePrefix(null);
       QInstance           qInstance = new QInstance();
       new AuthentikQBitProducer().withQBitConfig(config).withNamespace("idp").produce(qInstance);
-      assertThat(qInstance.getTable("idpUser")).isNotNull();
+      assertThat(qInstance.getTable("idp_user")).isNotNull();
       assertThat(qInstance.getBackend("idpApi")).isNotNull();
    }
 
@@ -115,8 +115,8 @@ class AuthentikQBitProducerTest
       producer.setQBitConfig(AuthentikTestSupport.unitConfig());
       assertThat(producer.getQBitMetaData().getArtifactId()).isEqualTo("authentik");
       assertThat(AuthentikQBitProducer.getVersion()).isNotBlank();
-      assertThat(IdentityPermission.fromName("identity.audit.read")).contains(IdentityPermission.AUDIT_READ);
-      assertThat(IdentityPermission.fromName("identity.audit.read.hasAccess")).contains(IdentityPermission.AUDIT_READ);
+      assertThat(IdentityPermission.fromName("authentik.audit.read")).contains(IdentityPermission.AUDIT_READ);
+      assertThat(IdentityPermission.fromName("authentik.audit.read.hasAccess")).contains(IdentityPermission.AUDIT_READ);
       assertThat(IdentityPermission.fromName("nope")).isEmpty();
       assertThat(IdentityPermission.fromName(null)).isEmpty();
    }

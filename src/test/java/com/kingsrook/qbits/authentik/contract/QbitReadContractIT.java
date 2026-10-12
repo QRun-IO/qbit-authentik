@@ -132,8 +132,8 @@ class QbitReadContractIT
          .withListCacheTtlSeconds(0);
       qInstance = AuthentikTestSupport.produce(config);
       AuthentikTestSupport.useActionUtil(qInstance, config, RecordingActionUtil.class);
-      userTable = config.applyPrefix("user");
-      groupTable = config.applyPrefix("group");
+      userTable = config.applyTablePrefix("user");
+      groupTable = config.applyTablePrefix("group");
       AuthentikTestSupport.loginWith(qInstance, IdentityPermission.USERS_READ);
    }
 
@@ -226,7 +226,7 @@ class QbitReadContractIT
 
 
    /*******************************************************************************
-    ** Sensitive fields need identity.audit.read; reading needs users.read.
+    ** Sensitive fields need authentik.audit.read; reading needs users.read.
     *******************************************************************************/
    @Test
    void permissionsAndSensitiveFields() throws QException
@@ -258,7 +258,7 @@ class QbitReadContractIT
 
       input.setFilter(new QQueryFilter(new QFilterCriteria("name", QCriteriaOperator.EQUALS, "identity-admins")));
       QRecord identityAdmins = new QueryAction().execute(input).getRecords().get(0);
-      assertThat(identityAdmins.getValueString("permissions")).isEqualTo("identity.*");
+      assertThat(identityAdmins.getValueString("permissions")).isEqualTo("authentik.*");
       FixtureRecorder.record("groups-list", RecordingActionUtil.LAST_BODIES.get("GET /api/v3/core/groups/"));
    }
 

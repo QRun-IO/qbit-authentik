@@ -87,7 +87,7 @@ class BlueprintReapplyIT
       assertThat(admin.patch("/core/groups/" + kof22Admins + "/", new JSONObject().put("attributes",
          new JSONObject().put("qqq.io/permissions", new JSONArray().put("adminEsb.hasAccess")).put("qqq.io/app-access", new JSONArray().put("kof22-website-prod")))).status()).isEqualTo(200);
       assertThat(admin.patch("/core/groups/" + identityAdmins + "/", new JSONObject().put("attributes",
-         new JSONObject().put("qqq.io/permissions", new JSONArray().put("identity.*").put("cms.publish")).put("qqq.io/app-access", new JSONArray().put("kof22-website-prod")))).status()).isEqualTo(200);
+         new JSONObject().put("qqq.io/permissions", new JSONArray().put("authentik.*").put("cms.publish")).put("qqq.io/app-access", new JSONArray().put("kof22-website-prod")))).status()).isEqualTo(200);
 
       String roleUuid = admin.first("/rbac/roles/?name=" + SERVICE_ACCOUNT).getString("pk");
       try
@@ -104,7 +104,7 @@ class BlueprintReapplyIT
       assertThat(memberNames("identity-admins")).contains("reapply.member");
       assertThat(memberNames("kof22-admins")).contains("reapply.member");
       assertThat(admin.first("/core/groups/?name=kof22-admins").getJSONObject("attributes").getJSONArray("qqq.io/permissions").toList()).containsExactly("adminEsb.hasAccess");
-      assertThat(admin.first("/core/groups/?name=identity-admins").getJSONObject("attributes").getJSONArray("qqq.io/permissions").toList()).containsExactly("identity.*", "cms.publish");
+      assertThat(admin.first("/core/groups/?name=identity-admins").getJSONObject("attributes").getJSONArray("qqq.io/permissions").toList()).containsExactly("authentik.*", "cms.publish");
 
       ////////////////////////////////////////////////////////////////////////
       // role permission re-asserted; role assignment and break-glass kept //
@@ -121,7 +121,7 @@ class BlueprintReapplyIT
       admin.post("/core/groups/" + kof22Admins + "/remove_user/", new JSONObject().put("pk", member));
       admin.patch("/core/groups/" + kof22Admins + "/", new JSONObject().put("attributes", new JSONObject()));
       admin.patch("/core/groups/" + identityAdmins + "/", new JSONObject().put("attributes",
-         new JSONObject().put("qqq.io/permissions", new JSONArray().put("identity.*")).put("qqq.io/app-access", new JSONArray().put("kof22-website-prod"))));
+         new JSONObject().put("qqq.io/permissions", new JSONArray().put("authentik.*")).put("qqq.io/app-access", new JSONArray().put("kof22-website-prod"))));
    }
 
 

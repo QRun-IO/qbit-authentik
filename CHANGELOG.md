@@ -4,12 +4,16 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Changed
+- **Permissions renamed `identity.*` → `authentik.*`** (same suffixes; owner naming rule, 2026-10-12; spec #1065 amended). Legacy names are reported as unknown and never granted. The old names are kept as `@Deprecated` `IdentityPermission.LEGACY_PREFIX`/`LEGACY_WILDCARD`/`getLegacyShortName()`. Update the `qqq.io/permissions` group attributes before deploying; see [UPGRADE.md](UPGRADE.md).
+- **Table names are lowercase snake_case with the `authentik_` prefix** (owner naming rule, 2026-10-12): `authentik_user`, `authentik_group`, `authentik_group_member`, `authentik_session`, `authentik_event` (were `authentikUser`, ...). New `AuthentikQBitConfig.applyTablePrefix` and `toSnakeCase`; apps, widgets, the backend and processes keep camelCase names (`authentikAdmin`, `authentikApi`). The old names are kept as `@Deprecated` `AuthentikTables.LEGACY_*_TABLE_NAME` constants. See [UPGRADE.md](UPGRADE.md).
+
 ### Documentation
 - README: "Adopting in another app" section (coordinates, configuration, secrets, permissions, limitations) linking the QQQ adoption checklist; examples use neutral names instead of one host's (#3).
 
 ### Added (phase 1, read-only MVP)
-- Tables: `authentikGroupMember` (virtual membership table: by group, by user, by key, or a bounded sweep), `authentikSession` and `authentikEvent` (both need `identity.audit.read`).
-- `GroupGraph` and `EffectivePermissionResolver`: groups, including inherited parents, become QQQ permissions. `identity.*` and catalog wildcards are expanded; unknown names are reported, never granted. Groups show inherited superuser status and effective permissions; users show effective permissions.
+- Tables: `authentik_group_member` (virtual membership table: by group, by user, by key, or a bounded sweep), `authentik_session` and `authentik_event` (both need `authentik.audit.read`).
+- `GroupGraph` and `EffectivePermissionResolver`: groups, including inherited parents, become QQQ permissions. `authentik.*` and catalog wildcards are expanded; unknown names are reported, never granted. Groups show inherited superuser status and effective permissions; users show effective permissions.
 - `AuthentikGroupPermissionMapper`: an authentication customizer that turns the token's `groups` claim into QQQ session permissions through the resolver. It supports static fallbacks and `bootstrapOperators`; if Authentik cannot be read it grants only the static fallbacks, never everything.
 - Review hardening:
   - `search` accepts plain text only; Authentik's query language could reach sensitive fields.
@@ -25,7 +29,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
   - https is required (except loopback or `allowInsecureHttp`).
   - `groupScopeNamePrefix` is refused until implemented.
   - Drift checks that cannot run report ERROR ("result unknown"); service-account tokens are filtered server-side; deleted targets are flagged; only human users count as identity admins.
-- Identity drift report widget (`identity.admin`). It checks the server version, blueprint status, the service account (type, groups, superuser, protection, extra self-minted tokens), break-glass presence, the last identity administrator, `qqq.io/*` attribute validity, and service-account changes to protected or superuser objects (lockout detection).
+- Identity drift report widget (`authentik.admin`). It checks the server version, blueprint status, the service account (type, groups, superuser, protection, extra self-minted tokens), break-glass presence, the last identity administrator, `qqq.io/*` attribute validity, and service-account changes to protected or superuser objects (lockout detection).
 
 ### Added (phase 0)
 - Phase 0 foundations: `AuthentikQBitConfig`, `AuthentikQBitProducer`, `AuthentikActionUtil` (bearer auth, page/page_size paging, filter mapping that rejects unsupported filters, 10 rps token-bucket throttle, log redaction), read-only Users and Groups tables, Identity app.

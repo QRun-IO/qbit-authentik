@@ -54,7 +54,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 /*******************************************************************************
  ** Phase 1 read MVP against Authentik 2026.8.3, as the service account with
  ** the phase 0/1 role: memberships (virtual table), sessions and events
- ** (identity.audit.read), effective permissions and inherited superuser on
+ ** (authentik.audit.read), effective permissions and inherited superuser on
  ** groups, and the drift report. Runs after SuperuserFloorIT, whose lockout
  ** probes are exactly what the drift report must flag. Records fixtures.
  *******************************************************************************/
@@ -70,7 +70,7 @@ class Phase1ReadContractIT
 
 
    /*******************************************************************************
-    ** A member of a child of identity-admins (inherited identity.*), and a real
+    ** A member of a child of identity-admins (inherited authentik.*), and a real
     ** session for akadmin.
     *******************************************************************************/
    @BeforeAll
@@ -125,7 +125,7 @@ class Phase1ReadContractIT
     *******************************************************************************/
    private List<QRecord> query(String table, QQueryFilter filter) throws QException
    {
-      QueryInput input = new QueryInput(config.applyPrefix(table));
+      QueryInput input = new QueryInput(config.applyTablePrefix(table));
       input.setFilter(filter);
       return (new QueryAction().execute(input).getRecords());
    }
@@ -154,10 +154,10 @@ class Phase1ReadContractIT
       assertThat(query("groupMember", new QQueryFilter(new QFilterCriteria("username", QCriteriaOperator.EQUALS, AuthentikTestStack.BREAK_GLASS))))
          .extracting(r -> r.getValueString("groupName")).containsExactly(AuthentikTestStack.SUPERUSER_GROUP);
 
-      QRecord byKey = new GetAction().executeForRecord(new GetInput(config.applyPrefix("groupMember")).withPrimaryKey(groupPk + ":" + userPk));
+      QRecord byKey = new GetAction().executeForRecord(new GetInput(config.applyTablePrefix("groupMember")).withPrimaryKey(groupPk + ":" + userPk));
       assertThat(byKey.getValueString("username")).isEqualTo("phase1.member");
 
-      int all = new CountAction().execute(new CountInput(config.applyPrefix("groupMember"))).getCount();
+      int all = new CountAction().execute(new CountInput(config.applyTablePrefix("groupMember"))).getCount();
       assertThat(all).isGreaterThanOrEqualTo(3);
       FixtureRecorder.record("groups-list-with-users", QbitReadContractIT.RecordingActionUtil.LAST_BODIES.get("GET /api/v3/core/groups/"));
    }
@@ -173,14 +173,14 @@ class Phase1ReadContractIT
    {
       QRecord child = query("group", new QQueryFilter(new QFilterCriteria("name", QCriteriaOperator.EQUALS, "phase1-child-of-identity-admins"))).get(0);
       assertThat(child.getValueString("permissions")).isNull();
-      assertThat(child.getValueString("effectivePermissions")).contains("identity.memberships.manage.hasAccess", "identity.users.read.hasAccess");
+      assertThat(child.getValueString("effectivePermissions")).contains("authentik.memberships.manage.hasAccess", "authentik.users.read.hasAccess");
       assertThat(child.getValueBoolean("isSuperuserInherited")).isFalse();
 
       QRecord admins = query("group", new QQueryFilter(new QFilterCriteria("name", QCriteriaOperator.EQUALS, AuthentikTestStack.SUPERUSER_GROUP))).get(0);
       assertThat(admins.getValueBoolean("isSuperuserInherited")).isTrue();
 
       QRecord member = query("user", new QQueryFilter(new QFilterCriteria("username", QCriteriaOperator.EQUALS, "phase1.member"))).get(0);
-      assertThat(member.getValueString("effectivePermissions")).contains("identity.permissions.manage.hasAccess");
+      assertThat(member.getValueString("effectivePermissions")).contains("authentik.permissions.manage.hasAccess");
    }
 
 

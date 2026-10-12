@@ -170,7 +170,7 @@ class AuthentikDriftReportTest
 
 
    /*******************************************************************************
-    ** The widget renders the findings, and needs identity.admin.
+    ** The widget renders the findings, and needs authentik.admin.
     *******************************************************************************/
    @Test
    void widgetRendersAndChecksPermission() throws QException

@@ -196,7 +196,7 @@ class AuthentikFilterMapperTest
 
 
    /*******************************************************************************
-    ** Sensitive fields can't be filtered without identity.audit.read.
+    ** Sensitive fields can't be filtered without authentik.audit.read.
     *******************************************************************************/
    @Test
    void sensitiveFieldFilters() throws QException

@@ -50,7 +50,7 @@ import org.json.JSONObject;
  **    superuser, is protected; exactly one API token (it can mint its own)
  ** 4. break-glass: at least one active, protected superuser exists
  ** 5. identity admins: at least one active, unprotected human holds both
- **    identity.memberships.manage and identity.permissions.manage (last-admin)
+ **    authentik.memberships.manage and authentik.permissions.manage (last-admin)
  ** 6. group attributes: qqq.io/permissions entries that grant nothing known;
  **    qqq.io/app-access entries outside applicationsInScope; superuser groups
  **    (or their descendants) carrying qqq.io/permissions
@@ -346,11 +346,11 @@ public class AuthentikDriftReport
       if(admins.isEmpty())
       {
          String bootstrap = config.getResolvedBootstrapOperators().isEmpty() ? "" : " bootstrapOperators is set, which covers sign-in for now.";
-         findings.add(DriftFinding.error("identity admins", "-", "Nobody can administer identities from QQQ: no active, unprotected human user holds identity.memberships.manage and identity.permissions.manage. Add an administrator to a group carrying identity.* (e.g. identity-admins) in the Authentik UI." + bootstrap));
+         findings.add(DriftFinding.error("identity admins", "-", "Nobody can administer identities from QQQ: no active, unprotected human user holds authentik.memberships.manage and authentik.permissions.manage. Add an administrator to a group carrying authentik.* (e.g. identity-admins) in the Authentik UI." + bootstrap));
       }
       else if(admins.size() == 1)
       {
-         findings.add(DriftFinding.info("identity admins", admins.get(0), "Only one identity administrator. Two-person approval of identity.* grants needs a second one (or the Authentik UI)."));
+         findings.add(DriftFinding.info("identity admins", admins.get(0), "Only one identity administrator. Two-person approval of authentik.* grants needs a second one (or the Authentik UI)."));
       }
       else
       {

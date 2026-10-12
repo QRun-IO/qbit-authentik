@@ -142,12 +142,34 @@ class AuthentikQBitConfigTest
    void derivedNames()
    {
       AuthentikQBitConfig config = AuthentikTestSupport.unitConfig();
-      assertThat(config.applyPrefix("user")).isEqualTo("authentikUser");
+      assertThat(config.applyPrefix("admin")).isEqualTo("authentikAdmin");
+      assertThat(config.applyTablePrefix("user")).isEqualTo("authentik_user");
+      assertThat(config.applyTablePrefix("groupMember")).isEqualTo("authentik_group_member");
       assertThat(config.getApiBackendName()).isEqualTo("authentikApi");
       assertThat(config.getEffectiveServiceAccountUsername()).isEqualTo("qqq-kof22-admin-idadmin");
       assertThat(config.withServiceAccountUsername("custom-sa").getEffectiveServiceAccountUsername()).isEqualTo("custom-sa");
-      assertThat(new AuthentikQBitConfig().withTableNamePrefix("").applyPrefix("user")).isEqualTo("user");
+      assertThat(new AuthentikQBitConfig().withTableNamePrefix("").applyTablePrefix("user")).isEqualTo("user");
+      assertThat(new AuthentikQBitConfig().withTableNamePrefix("").applyTablePrefix("groupMember")).isEqualTo("group_member");
+      assertThat(new AuthentikQBitConfig().withTableNamePrefix("myAuth").applyTablePrefix("groupMember")).isEqualTo("my_auth_group_member");
       assertThat(config.withBootstrapOperators(" A@x.test, ,b@x.test ").getResolvedBootstrapOperators()).containsExactly("a@x.test", "b@x.test");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
+   void toSnakeCase()
+   {
+      assertThat(AuthentikQBitConfig.toSnakeCase(null)).isNull();
+      assertThat(AuthentikQBitConfig.toSnakeCase("")).isEqualTo("");
+      assertThat(AuthentikQBitConfig.toSnakeCase("user")).isEqualTo("user");
+      assertThat(AuthentikQBitConfig.toSnakeCase("groupMember")).isEqualTo("group_member");
+      assertThat(AuthentikQBitConfig.toSnakeCase("GroupMember")).isEqualTo("group_member");
+      assertThat(AuthentikQBitConfig.toSnakeCase("group_member")).isEqualTo("group_member");
+      assertThat(AuthentikQBitConfig.toSnakeCase("mfaTOTPDevice")).isEqualTo("mfa_totp_device");
+      assertThat(AuthentikQBitConfig.toSnakeCase("auth2Factor")).isEqualTo("auth2_factor");
    }
 
 }

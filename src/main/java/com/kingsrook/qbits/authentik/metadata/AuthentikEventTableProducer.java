@@ -21,7 +21,7 @@ import com.kingsrook.qbits.authentik.client.AuthentikTables;
 
 
 /*******************************************************************************
- ** authentikEvent: /events/events/ (needs identity.audit.read).
+ ** authentik_event: /events/events/ (needs authentik.audit.read).
  *******************************************************************************/
 public class AuthentikEventTableProducer extends AbstractAuthentikTableProducer
 {

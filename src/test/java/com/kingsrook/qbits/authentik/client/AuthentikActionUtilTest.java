@@ -79,8 +79,8 @@ class AuthentikActionUtilTest
       config = AuthentikTestSupport.unitConfig();
       qInstance = AuthentikTestSupport.produce(config);
       AuthentikTestSupport.useActionUtil(qInstance, config, FixtureActionUtil.class);
-      userTable = config.applyPrefix("user");
-      groupTable = config.applyPrefix("group");
+      userTable = config.applyTablePrefix("user");
+      groupTable = config.applyTablePrefix("group");
       AuthentikTestSupport.loginWith(qInstance, IdentityPermission.USERS_READ);
    }
 
@@ -336,7 +336,7 @@ class AuthentikActionUtilTest
       QueryInput input = new QueryInput(groupTable);
       List<QRecord> groups = new QueryAction().execute(input).getRecords();
       QRecord identityAdmins = groups.stream().filter(g -> "identity-admins".equals(g.getValueString("name"))).findFirst().orElseThrow();
-      assertThat(identityAdmins.getValueString("permissions")).isEqualTo("identity.*");
+      assertThat(identityAdmins.getValueString("permissions")).isEqualTo("authentik.*");
       assertThat(identityAdmins.getValueString("appAccess")).isEqualTo("kof22-website-prod");
       assertThat(identityAdmins.getValueBoolean("isSuperuser")).isFalse();
       assertThat(param(FixtureActionUtil.REQUESTS.get(0), "include_users", null)).isEqualTo("false");

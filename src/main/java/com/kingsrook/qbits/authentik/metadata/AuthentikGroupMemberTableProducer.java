@@ -21,7 +21,7 @@ import com.kingsrook.qbits.authentik.client.AuthentikTables;
 
 
 /*******************************************************************************
- ** authentikGroupMember: virtual membership table (group x user).
+ ** authentik_group_member: virtual membership table (group x user).
  *******************************************************************************/
 public class AuthentikGroupMemberTableProducer extends AbstractAuthentikTableProducer
 {
