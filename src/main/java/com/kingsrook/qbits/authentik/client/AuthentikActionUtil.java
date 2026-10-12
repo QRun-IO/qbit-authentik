@@ -174,6 +174,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       if(spec.isVirtual())
       {
          output.setCount(memberships(spec, countInput.getFilter()).size());
+         output.setDistinctCount(output.getCount());
          return (output);
       }
 
@@ -181,11 +182,13 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       if(mapped.isKeyLookup())
       {
          output.setCount(fetchByKeys(table, spec, mapped.keyLookup(), null).size());
+         output.setDistinctCount(output.getCount());
          return (output);
       }
 
       JSONObject page = getJson(listUrl(spec, mapped, 1, 1));
       output.setCount(pagination(page).optInt("count", 0));
+      output.setDistinctCount(output.getCount());
       return (output);
    }
 

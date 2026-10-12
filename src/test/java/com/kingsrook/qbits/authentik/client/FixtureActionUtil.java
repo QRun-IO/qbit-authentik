@@ -42,6 +42,9 @@ public class FixtureActionUtil extends AuthentikActionUtil
    /** Body served for the group-graph sweep (GET /core/groups/?include_users=false&include_parents=false...). */
    public static String groupGraphBody = EMPTY_PAGE;
 
+   /** When set, serves group sweeps (include_parents=false) instead of groupGraphBody. */
+   public static Function<HttpRequestBase, QHttpResponse> groupGraphHandler = null;
+
 
 
 
@@ -53,6 +56,7 @@ public class FixtureActionUtil extends AuthentikActionUtil
       REQUESTS.clear();
       handler = r -> response(404, "{\"detail\":\"Not found.\"}");
       groupGraphBody = EMPTY_PAGE;
+      groupGraphHandler = null;
       AuthentikActionUtil.resetVersionCheck();
    }
 
@@ -71,7 +75,7 @@ public class FixtureActionUtil extends AuthentikActionUtil
       }
       if(request.getURI().getPath().endsWith("/core/groups/") && String.valueOf(request.getURI().getRawQuery()).contains("include_parents=false"))
       {
-         return (response(200, groupGraphBody));
+         return (groupGraphHandler != null ? groupGraphHandler.apply(request) : response(200, groupGraphBody));
       }
       return (handler.apply(request));
    }

@@ -50,6 +50,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaD
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QComponentType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendComponentMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QFunctionInputMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QRecordListMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.AbstractExtractStep;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.AbstractLoadStep;
@@ -292,7 +294,8 @@ public final class AuthentikProcesses
          process.withStep(0, details);
          if(def.prefill())
          {
-            process.withStep(0, new QBackendStepMetaData().withName("prepare").withCode(new QCodeReference(PrepareStep.class)));
+            process.withStep(0, new QBackendStepMetaData().withName("prepare").withCode(new QCodeReference(PrepareStep.class))
+               .withInputData(new QFunctionInputMetaData().withRecordListMetaData(new QRecordListMetaData().withTableName(table))));
          }
       }
       return (process);
@@ -438,6 +441,23 @@ public final class AuthentikProcesses
 
 
    /*******************************************************************************
+    ** How many records the run covers: counted from the same filter the extract
+    ** step uses (the preview step's count is not carried into later steps).
+    *******************************************************************************/
+   static Integer countTargets(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+   {
+      if(defFor(input.getProcessName()).kind() == Kind.CREATE)
+      {
+         return (1);
+      }
+      ExtractViaQueryStep extract = new ExtractViaQueryStep();
+      extract.preRun(input, output);
+      return (extract.doCount(input));
+   }
+
+
+
+   /*******************************************************************************
     ** The admin for the current backend.
     *******************************************************************************/
    static AuthentikAdmin admin(RunBackendStepInput input) throws QException
@@ -557,6 +577,18 @@ public final class AuthentikProcesses
       private final List<String>                    details = new ArrayList<>();
       private final List<String>                    notes   = new ArrayList<>();
       private AuthentikAdmin                        admin;
+      private Integer                               totalTargets;
+
+
+
+      /*******************************************************************************
+       ** Remember how many records the run covers (for the more-than-25 rule).
+       *******************************************************************************/
+      @Override
+      public void preRun(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         totalTargets = countTargets(input, output);
+      }
 
 
 
@@ -603,7 +635,7 @@ public final class AuthentikProcesses
        *******************************************************************************/
       private String bulkProblem(Def def, AdminRequest request, int total, RunBackendStepInput input)
       {
-         Integer count = input.getValueInteger(StreamedETLWithFrontendProcess.FIELD_RECORD_COUNT);
+         Integer count = totalTargets;
          int     n     = Math.max(total, count == null ? 0 : count);
          if(n > AuthentikAdmin.TYPED_ABOVE && (def.action() == AdminAction.ADD_MEMBER || def.action() == AdminAction.REMOVE_MEMBER)
             && !String.valueOf(n).equals(request.str("confirmText")))
@@ -700,6 +732,18 @@ public final class AuthentikProcesses
    {
       private final Map<String, ProcessSummaryLine> lines = new LinkedHashMap<>();
       private AuthentikAdmin                        admin;
+      private Integer                               totalTargets;
+
+
+
+      /*******************************************************************************
+       ** Remember how many records the run covers (for the more-than-25 rule).
+       *******************************************************************************/
+      @Override
+      public void preRun(RunBackendStepInput input, RunBackendStepOutput output) throws QException
+      {
+         totalTargets = countTargets(input, output);
+      }
 
 
 
@@ -730,7 +774,7 @@ public final class AuthentikProcesses
             int total = requests.size();
             for(AdminRequest request : requests)
             {
-               Integer count = input.getValueInteger(StreamedETLWithFrontendProcess.FIELD_RECORD_COUNT);
+               Integer count = totalTargets;
                int     n     = Math.max(total, count == null ? 0 : count);
                AuthentikAdmin.AdminResult result;
                if(n > AuthentikAdmin.TYPED_ABOVE && (def.action() == AdminAction.ADD_MEMBER || def.action() == AdminAction.REMOVE_MEMBER)
