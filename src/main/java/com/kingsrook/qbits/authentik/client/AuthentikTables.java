@@ -50,6 +50,22 @@ public final class AuthentikTables
    public static final String SESSION      = "session";
    public static final String EVENT        = "event";
 
+   /*******************************************************************************
+    ** Table names produced before the owner naming rule (2026-10-12), with the
+    ** default prefix. Kept only to find stored references (permissions, saved
+    ** views, audit table names) when upgrading; see UPGRADE.md.
+    *******************************************************************************/
+   @Deprecated
+   public static final String LEGACY_USER_TABLE_NAME         = "authentikUser";
+   @Deprecated
+   public static final String LEGACY_GROUP_TABLE_NAME        = "authentikGroup";
+   @Deprecated
+   public static final String LEGACY_GROUP_MEMBER_TABLE_NAME = "authentikGroupMember";
+   @Deprecated
+   public static final String LEGACY_SESSION_TABLE_NAME      = "authentikSession";
+   @Deprecated
+   public static final String LEGACY_EVENT_TABLE_NAME        = "authentikEvent";
+
    /** User types the qbit shows by default: everything but outposts' internal service accounts. */
    public static final String[] DEFAULT_USER_TYPES = { "internal", "external", "service_account" };
 

@@ -61,7 +61,7 @@ public class AuthentikAppMetaDataProducer extends QBitComponentMetaDataProducer<
       {
          for(String specName : AuthentikTables.all().keySet())
          {
-            QTableMetaData table = produced.get(QTableMetaData.class, config.applyPrefix(specName));
+            QTableMetaData table = produced.get(QTableMetaData.class, config.applyTablePrefix(specName));
             if(table != null)
             {
                app.withChild(table);

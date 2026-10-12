@@ -90,7 +90,7 @@ class Phase1TablesTest
     *******************************************************************************/
    private List<QRecord> query(String table, QQueryFilter filter) throws QException
    {
-      QueryInput input = new QueryInput(config.applyPrefix(table));
+      QueryInput input = new QueryInput(config.applyTablePrefix(table));
       input.setFilter(filter);
       return (new QueryAction().execute(input).getRecords());
    }
@@ -134,12 +134,12 @@ class Phase1TablesTest
       assertThat(query("groupMember", new QQueryFilter(new QFilterCriteria("username", QCriteriaOperator.EQUALS, "nobody")))).isEmpty();
       assertThat(query("groupMember", new QQueryFilter(new QFilterCriteria("userPk", QCriteriaOperator.EQUALS, 999999)))).isEmpty();
 
-      QRecord byKey = new GetAction().executeForRecord(new GetInput(config.applyPrefix("groupMember")).withPrimaryKey(groupPk + ":" + userPk));
+      QRecord byKey = new GetAction().executeForRecord(new GetInput(config.applyTablePrefix("groupMember")).withPrimaryKey(groupPk + ":" + userPk));
       assertThat(byKey.getValueString("username")).isEqualTo("phase1.member");
-      assertThat(new GetAction().executeForRecord(new GetInput(config.applyPrefix("groupMember")).withPrimaryKey("no-colon"))).isNull();
+      assertThat(new GetAction().executeForRecord(new GetInput(config.applyTablePrefix("groupMember")).withPrimaryKey("no-colon"))).isNull();
 
       List<QRecord> all = query("groupMember", new QQueryFilter());
-      int           count = new CountAction().execute(new CountInput(config.applyPrefix("groupMember"))).getCount();
+      int           count = new CountAction().execute(new CountInput(config.applyTablePrefix("groupMember"))).getCount();
       assertThat(all).hasSize(count).isNotEmpty();
       assertThat(all).extracting(r -> r.getValueString("groupName")).isSortedAccordingTo(String.CASE_INSENSITIVE_ORDER);
 
@@ -183,7 +183,7 @@ class Phase1TablesTest
 
       JSONObject member = router.users.stream().filter(u -> u.getString("username").equals("read.probe1")).findFirst().orElseThrow();
       FixtureActionUtil.handler = router;
-      QRecord user = new GetAction().executeForRecord(new GetInput(config.applyPrefix("user")).withPrimaryKey(member.getInt("pk")));
+      QRecord user = new GetAction().executeForRecord(new GetInput(config.applyTablePrefix("user")).withPrimaryKey(member.getInt("pk")));
       assertThat(user.getValue("effectivePermissions")).isNotNull();
    }
 

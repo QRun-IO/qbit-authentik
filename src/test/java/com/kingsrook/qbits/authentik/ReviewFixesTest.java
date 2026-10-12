@@ -156,17 +156,17 @@ class ReviewFixesTest
       AuthentikTestSupport.loginWith(qInstance, IdentityPermission.values());
       FixtureRouter router = new FixtureRouter().install();
 
-      QueryInput zero = new QueryInput(config.applyPrefix("user"));
+      QueryInput zero = new QueryInput(config.applyTablePrefix("user"));
       zero.setFilter(new QQueryFilter().withLimit(0));
       assertThat(new QueryAction().execute(zero).getRecords()).isEmpty();
 
-      assertThat(new GetAction().executeForRecord(new GetInput(config.applyPrefix("group")).withPrimaryKey(".."))).isNull();
+      assertThat(new GetAction().executeForRecord(new GetInput(config.applyTablePrefix("group")).withPrimaryKey(".."))).isNull();
       assertThat(FixtureActionUtil.REQUESTS.stream().noneMatch(r -> r.getURI().getPath().contains(".."))).isTrue();
 
-      QueryInput widen = new QueryInput(config.applyPrefix("user"));
+      QueryInput widen = new QueryInput(config.applyTablePrefix("user"));
       widen.setFilter(new QQueryFilter(new QFilterCriteria("type", QCriteriaOperator.EQUALS, "internal_service_account")));
       assertThatThrownBy(() -> new QueryAction().execute(widen)).hasMessageContaining("outside the users");
-      QueryInput otherPath = new QueryInput(config.applyPrefix("user"));
+      QueryInput otherPath = new QueryInput(config.applyTablePrefix("user"));
       otherPath.setFilter(new QQueryFilter(new QFilterCriteria("path", QCriteriaOperator.STARTS_WITH, "service-accounts")));
       assertThatThrownBy(() -> new QueryAction().execute(otherPath)).hasMessageContaining("outside the users");
 

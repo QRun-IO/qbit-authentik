@@ -79,8 +79,8 @@ class AuthentikActionUtilTest
       config = AuthentikTestSupport.unitConfig();
       qInstance = AuthentikTestSupport.produce(config);
       AuthentikTestSupport.useActionUtil(qInstance, config, FixtureActionUtil.class);
-      userTable = config.applyPrefix("user");
-      groupTable = config.applyPrefix("group");
+      userTable = config.applyTablePrefix("user");
+      groupTable = config.applyTablePrefix("group");
       AuthentikTestSupport.loginWith(qInstance, IdentityPermission.USERS_READ);
    }
 

@@ -74,7 +74,7 @@ public abstract class AbstractAuthentikTableProducer extends QBitComponentMetaDa
     *******************************************************************************/
    public static QTableMetaData buildTable(AuthentikQBitConfig config, AuthentikTableSpec spec)
    {
-      String tableName = config.applyPrefix(spec.getName());
+      String tableName = config.applyTablePrefix(spec.getName());
 
       QTableMetaData table = new QTableMetaData()
          .withName(tableName)

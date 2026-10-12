@@ -132,8 +132,8 @@ class QbitReadContractIT
          .withListCacheTtlSeconds(0);
       qInstance = AuthentikTestSupport.produce(config);
       AuthentikTestSupport.useActionUtil(qInstance, config, RecordingActionUtil.class);
-      userTable = config.applyPrefix("user");
-      groupTable = config.applyPrefix("group");
+      userTable = config.applyTablePrefix("user");
+      groupTable = config.applyTablePrefix("group");
       AuthentikTestSupport.loginWith(qInstance, IdentityPermission.USERS_READ);
    }
 

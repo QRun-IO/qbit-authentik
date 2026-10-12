@@ -125,7 +125,7 @@ class Phase1ReadContractIT
     *******************************************************************************/
    private List<QRecord> query(String table, QQueryFilter filter) throws QException
    {
-      QueryInput input = new QueryInput(config.applyPrefix(table));
+      QueryInput input = new QueryInput(config.applyTablePrefix(table));
       input.setFilter(filter);
       return (new QueryAction().execute(input).getRecords());
    }
@@ -154,10 +154,10 @@ class Phase1ReadContractIT
       assertThat(query("groupMember", new QQueryFilter(new QFilterCriteria("username", QCriteriaOperator.EQUALS, AuthentikTestStack.BREAK_GLASS))))
          .extracting(r -> r.getValueString("groupName")).containsExactly(AuthentikTestStack.SUPERUSER_GROUP);
 
-      QRecord byKey = new GetAction().executeForRecord(new GetInput(config.applyPrefix("groupMember")).withPrimaryKey(groupPk + ":" + userPk));
+      QRecord byKey = new GetAction().executeForRecord(new GetInput(config.applyTablePrefix("groupMember")).withPrimaryKey(groupPk + ":" + userPk));
       assertThat(byKey.getValueString("username")).isEqualTo("phase1.member");
 
-      int all = new CountAction().execute(new CountInput(config.applyPrefix("groupMember"))).getCount();
+      int all = new CountAction().execute(new CountInput(config.applyTablePrefix("groupMember"))).getCount();
       assertThat(all).isGreaterThanOrEqualTo(3);
       FixtureRecorder.record("groups-list-with-users", QbitReadContractIT.RecordingActionUtil.LAST_BODIES.get("GET /api/v3/core/groups/"));
    }
