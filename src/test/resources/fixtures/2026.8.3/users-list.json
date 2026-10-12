@@ -1,0 +1,380 @@
+{
+  "pagination": {
+    "next": 0,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 12,
+    "end_index": 12,
+    "total_pages": 1
+  },
+  "autocomplete": {
+    "models": {
+      "authentik_core.user_attributes": {},
+      "authentik_core.user": {
+        "path": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "is_active": {
+          "nullable": true,
+          "options": null,
+          "type": "bool"
+        },
+        "name": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "attributes": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_core.user_attributes"
+        },
+        "type": {
+          "nullable": false,
+          "options": [
+            "internal",
+            "external",
+            "service_account",
+            "internal_service_account"
+          ],
+          "type": "str"
+        },
+        "email": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "username": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        }
+      }
+    },
+    "current_model": "authentik_core.user"
+  },
+  "results": [
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:38.179289Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:38.131278Z",
+      "roles": [],
+      "groups": ["c7bb0c43-3b6d-47e1-8812-c3fbf41fe6bd"],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [{
+        "is_superuser": false,
+        "name": "kof-website-publishers",
+        "attributes": {},
+        "pk": "c7bb0c43-3b6d-47e1-8812-c3fbf41fe6bd",
+        "num_pk": 26548
+      }],
+      "uuid": "6656101d-7d44-4b7f-aeb5-257b13a4447f",
+      "uid": "41758f45cd5b97f58994f51764097ce15a3b6daaad23a2aaadc3a47325370edb",
+      "path": "users",
+      "name": "Access Publisher",
+      "attributes": {},
+      "pk": 14,
+      "date_joined": "2026-10-12T00:42:38.130713Z",
+      "email": "",
+      "username": "access.publisher"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:41:39.098819Z",
+      "is_active": true,
+      "is_superuser": true,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:41:38.964003Z",
+      "roles": [],
+      "groups": [
+        "99da4fa1-41b7-41ed-9a09-536682c4589b",
+        "6b62508d-14e8-4cf6-9783-682d7c94af12"
+      ],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [
+        {
+          "is_superuser": true,
+          "name": "authentik Admins",
+          "attributes": {},
+          "pk": "99da4fa1-41b7-41ed-9a09-536682c4589b",
+          "num_pk": 20450
+        },
+        {
+          "is_superuser": false,
+          "name": "lint-demo-group",
+          "attributes": {"note": "declared in git"},
+          "pk": "6b62508d-14e8-4cf6-9783-682d7c94af12",
+          "num_pk": 14273
+        }
+      ],
+      "uuid": "96235ac9-286c-4a6a-ae21-4df0dab33315",
+      "uid": "dee4b27045f6d9ad52b880c654fbdafc4c3ce86c45d3f045e5a638ea3c4b0065",
+      "path": "users",
+      "name": "authentik Default Admin",
+      "attributes": {},
+      "pk": 4,
+      "date_joined": "2026-10-12T00:41:38.934836Z",
+      "email": "akadmin@example.test",
+      "username": "akadmin"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:40.507175Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:40.455393Z",
+      "roles": [],
+      "groups": [],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [],
+      "uuid": "e933b7a1-db0d-4d7f-af92-ebca960e04ce",
+      "uid": "5f82699a0cd33c6c02a73fcd8cc3a995302a22e28881733fa3dca7ef2dfff0ac",
+      "path": "users",
+      "name": "Floor Probe",
+      "attributes": {},
+      "pk": 15,
+      "date_joined": "2026-10-12T00:42:40.454755Z",
+      "email": "",
+      "username": "floor.probe"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:41.985973Z",
+      "is_active": true,
+      "is_superuser": true,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:41:47.932445Z",
+      "roles": [],
+      "groups": ["99da4fa1-41b7-41ed-9a09-536682c4589b"],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [{
+        "is_superuser": true,
+        "name": "authentik Admins",
+        "attributes": {},
+        "pk": "99da4fa1-41b7-41ed-9a09-536682c4589b",
+        "num_pk": 20450
+      }],
+      "uuid": "f72814ed-7574-4d20-bbcb-56545e39adab",
+      "uid": "67d171fe0aa7735f081344377ef53325b135026db1544efcb8e1a3c7d236cdf2",
+      "path": "users/breakglass",
+      "name": "Break-glass admin",
+      "attributes": {"qqq.io/protected": true},
+      "pk": 8,
+      "date_joined": "2026-10-12T00:41:47.930197Z",
+      "email": "",
+      "username": "kof22-breakglass"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:19.183065Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:19.139382Z",
+      "roles": [],
+      "groups": [],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [],
+      "uuid": "1cca8899-bf67-4acb-8231-b82f48b61549",
+      "uid": "84030aa88ef5db17880ead3e60f4830246bdf0a7e40c71599a047ddf3cbac5ea",
+      "path": "users",
+      "name": "Added Via API",
+      "attributes": {},
+      "pk": 12,
+      "date_joined": "2026-10-12T00:42:19.138961Z",
+      "email": "",
+      "username": "lint.added"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:20.680396Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:18.514303Z",
+      "roles": [],
+      "groups": ["6b62508d-14e8-4cf6-9783-682d7c94af12"],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [{
+        "is_superuser": false,
+        "name": "lint-demo-group",
+        "attributes": {"note": "declared in git"},
+        "pk": "6b62508d-14e8-4cf6-9783-682d7c94af12",
+        "num_pk": 14273
+      }],
+      "uuid": "db22814d-9610-429b-ab01-9ca7fdd6a3dd",
+      "uid": "bb030a055fdd722735c72012ae24e9142e3626875be2ed6e82994079674b009f",
+      "path": "users",
+      "name": "Lint Demo User",
+      "attributes": {},
+      "pk": 11,
+      "date_joined": "2026-10-12T00:42:18.512951Z",
+      "email": "",
+      "username": "lint.demo.user"
+    },
+    {
+      "roles_obj": [
+        {
+          "name": "qqq-kof22-admin-idadmin",
+          "pk": "2de63138-3566-48e7-9cf2-913a70b2c06f"
+        },
+        {
+          "name": "ak-managed-role--user-7",
+          "pk": "ea22584a-d801-4ebc-aa2f-6cbb1f0ba9f7"
+        }
+      ],
+      "last_updated": "2026-10-12T00:41:47.841974Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:41:47.831570Z",
+      "roles": [
+        "2de63138-3566-48e7-9cf2-913a70b2c06f",
+        "ea22584a-d801-4ebc-aa2f-6cbb1f0ba9f7"
+      ],
+      "groups": [],
+      "avatar": "",
+      "type": "service_account",
+      "groups_obj": [],
+      "uuid": "63ac79e2-ce5c-46d1-9209-8210ad2b4b9e",
+      "uid": "f15497ad81cf34b68a067048a07bf0ca199d9d1b8a4afa24c26b8d7211bac66d",
+      "path": "service-accounts/qqq",
+      "name": "QQQ kof22 Admin identity service",
+      "attributes": {"qqq.io/protected": true},
+      "pk": 7,
+      "date_joined": "2026-10-12T00:41:47.829884Z",
+      "email": "",
+      "username": "qqq-kof22-admin-idadmin"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:44.388384Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:44.335235Z",
+      "roles": [],
+      "groups": ["c7bb0c43-3b6d-47e1-8812-c3fbf41fe6bd"],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [{
+        "is_superuser": false,
+        "name": "kof-website-publishers",
+        "attributes": {},
+        "pk": "c7bb0c43-3b6d-47e1-8812-c3fbf41fe6bd",
+        "num_pk": 26548
+      }],
+      "uuid": "7f8691f0-1ec0-42da-a24f-cb71bcb64c17",
+      "uid": "07df95d4db5f9cd781eac774b3b8129b7bf9ee3106a4c9a2f830d5fbdb85c583",
+      "path": "users",
+      "name": "Read Probe 1",
+      "attributes": {},
+      "pk": 16,
+      "date_joined": "2026-10-12T00:42:44.334765Z",
+      "email": "read.probe1@example.test",
+      "username": "read.probe1"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:44.589851Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:44.548432Z",
+      "roles": [],
+      "groups": [],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [],
+      "uuid": "b99e966f-61bb-4f9f-b136-b747d5fb68f7",
+      "uid": "77947ea5357373462f042427a96e83bb14ea799dfae76daf6a014d01fc4580ce",
+      "path": "users",
+      "name": "Read Probe 2",
+      "attributes": {},
+      "pk": 17,
+      "date_joined": "2026-10-12T00:42:44.548001Z",
+      "email": "read.probe2@example.test",
+      "username": "read.probe2"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:44.790626Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:44.740536Z",
+      "roles": [],
+      "groups": [],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [],
+      "uuid": "9cb596e1-ac25-4c9c-aa49-e9a66e07a5fd",
+      "uid": "961c6ec5f4e73114ab10c834f18cf279fb6a61b53144302674144c73f7194932",
+      "path": "users",
+      "name": "Read Probe 3",
+      "attributes": {},
+      "pk": 18,
+      "date_joined": "2026-10-12T00:42:44.740046Z",
+      "email": "read.probe3@example.test",
+      "username": "read.probe3"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:45.576270Z",
+      "is_active": false,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:44.997114Z",
+      "roles": [],
+      "groups": [],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [],
+      "uuid": "9c523de5-9a37-4510-85d3-4cb23a8ba6df",
+      "uid": "41ae72db125e854553e33f6ca481dc2dc2194fe5b0154a44a2f3cd0482e281b9",
+      "path": "users",
+      "name": "Read Probe 4",
+      "attributes": {},
+      "pk": 19,
+      "date_joined": "2026-10-12T00:42:44.996692Z",
+      "email": "read.probe4@example.test",
+      "username": "read.probe4"
+    },
+    {
+      "roles_obj": [],
+      "last_updated": "2026-10-12T00:42:22.763043Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T00:42:22.714165Z",
+      "roles": [],
+      "groups": [],
+      "avatar": "",
+      "type": "internal",
+      "groups_obj": [],
+      "uuid": "b6ec0c40-5bff-4cb3-8434-7fe74c55c879",
+      "uid": "e3bf082dd81daa0f56be03530c403e048dce22e7a522e02594897674fdf3b51f",
+      "path": "users",
+      "name": "Reapply Member",
+      "attributes": {},
+      "pk": 13,
+      "date_joined": "2026-10-12T00:42:22.713832Z",
+      "email": "",
+      "username": "reapply.member"
+    }
+  ]
+}

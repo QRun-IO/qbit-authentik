@@ -1,0 +1,107 @@
+# Test fixture: the kof22 identity bootstrap blueprint (DESIGN.md section 4.3),
+# in the shape proposed for cluster-gitops. Identity objects are
+# `state: created`: created when missing, never updated, never given members.
+version: 1
+metadata:
+  name: kof22-identity-bootstrap
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  # Apply the infrastructure blueprint first (it owns the recovery email stage
+  # referenced below). On an empty instance this is what makes the bootstrap
+  # apply cleanly (contract test h).
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: kof22-oauth2-apps
+      required: true
+
+  # The role the qbit service account runs as. It is the qbit's own
+  # infrastructure, not identity data, so it is `present`: attrs carry ONLY
+  # `permissions` (global permissions; a blueprint-only RoleSerializer field),
+  # which are assigned additively on every apply, so a permission removed in
+  # the UI comes back within the hour and nothing granted elsewhere is taken
+  # away. No users, no groups. Phase 0/1 = read-only; later phases append here.
+  # Note: matching is by codename, so view_group also grants Django's unused
+  # auth.view_group (harmless).
+  - model: authentik_rbac.role
+    state: present
+    id: qqq-role
+    identifiers:
+      name: qqq-kof22-admin-idadmin
+    attrs:
+      permissions:
+        - authentik_core.view_user
+        - authentik_core.view_group
+        - authentik_core.view_application
+        - authentik_core.view_authenticatedsession
+        - authentik_rbac.view_role
+        - authentik_policies.view_policybinding
+        - authentik_events.view_event
+        - authentik_events.add_event
+        - authentik_blueprints.view_blueprintinstance
+
+  # The qbit service account. Its API token is minted once by hand (never here).
+  - model: authentik_core.user
+    state: created
+    id: qqq-sa
+    identifiers:
+      username: qqq-kof22-admin-idadmin
+    attrs:
+      name: QQQ kof22 Admin identity service
+      type: service_account
+      path: service-accounts/qqq
+      roles:
+        - !KeyOf qqq-role
+      attributes:
+        qqq.io/protected: true
+
+  # Object permission on a stage the infrastructure blueprint owns: the bare
+  # `created` entry is skipped (the stage exists), but its permissions are
+  # still applied, additively, on every run.
+  - model: authentik_stages_email.emailstage
+    state: created
+    identifiers:
+      name: kof22-recovery-email
+    permissions:
+      - role: !KeyOf qqq-role
+        permission: authentik_stages_email.view_emailstage
+
+  # Seed groups: created once, then plain data. No users, no member lists.
+  - model: authentik_core.group
+    state: created
+    identifiers:
+      name: identity-admins
+    attrs:
+      attributes:
+        qqq.io/permissions: ["identity.*"]
+        qqq.io/app-access: ["kof22-website-prod"]
+  - model: authentik_core.group
+    state: created
+    identifiers:
+      name: kof22-admins
+  - model: authentik_core.group
+    state: created
+    identifiers:
+      name: kof-website-publishers
+  # No qqq.io/app-access yet: drafters sign in to the admin only once the owner
+  # decides to set that one attribute (DESIGN.md section 11.2 item 6).
+  - model: authentik_core.group
+    state: created
+    identifiers:
+      name: kof-website-drafters
+
+  # Break-glass admin: a superuser the qbit cannot touch. Password set once by
+  # hand (1Password); recovery through `ak create_recovery_key`.
+  - model: authentik_core.user
+    state: created
+    identifiers:
+      username: kof22-breakglass
+    attrs:
+      name: Break-glass admin
+      type: internal
+      path: users/breakglass
+      groups:
+        - !Find [authentik_core.group, [name, "authentik Admins"]]
+      attributes:
+        qqq.io/protected: true
