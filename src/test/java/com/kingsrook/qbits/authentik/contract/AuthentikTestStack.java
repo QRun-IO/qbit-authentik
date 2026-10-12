@@ -201,6 +201,30 @@ public final class AuthentikTestStack
 
 
    /*******************************************************************************
+    ** Run a command in the Authentik server container (for example `ak shell
+    ** -c ...`), for setup the API cannot do (creating MFA devices). Returns stdout;
+    ** throws when the command fails.
+    *******************************************************************************/
+   public String execInServer(String... command)
+   {
+      try
+      {
+         org.testcontainers.containers.Container.ExecResult result = server.execInContainer(command);
+         if(result.getExitCode() != 0)
+         {
+            throw (new IllegalStateException("Command failed (" + result.getExitCode() + "): " + result.getStderr()));
+         }
+         return (result.getStdout());
+      }
+      catch(java.io.IOException | InterruptedException e)
+      {
+         throw (new IllegalStateException(e));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Host root, e.g. http://localhost:32768 (the qbit's baseUrl).
     *******************************************************************************/
    public String baseUrl()

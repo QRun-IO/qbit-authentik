@@ -1,6 +1,6 @@
 # Authentik qbit: Design Spec
 
-Status: Approved, revision 3 (phase 0 findings applied) · 2026-10-11 · Author: James Maes (drafted with Claude)
+Status: Approved, revision 4 (phase 0 findings applied; review fixes; owner decisions of 2026-10-12) · 2026-10-12 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x, QQQ Next UI 1.0.x, Authentik 2026.8.x (researched against the live `auth.kof22.com` schema, `info.version: 2026.8.3`), new repo `QRun-IO/qbit-authentik`
 
 ## 0. Summary
@@ -37,6 +37,8 @@ Seven design rules shape everything below:
 7. **Every change is audited on both sides.** QQQ writes a local append-only `authentik_admin_action` row. Authentik receives a `custom_qqq_admin_action` event naming the human operator.
 
 ### 0.1 Owner decisions (2026-10-11)
+
+**Owner decisions (2026-10-12): all recommendations accepted.** Every open question in this spec (§11.2, and the options marked *recommended* anywhere) is decided as the spec recommends, and the design is approved to build in phase order; adjustments follow once it can be seen working. The earlier decisions are below.
 
 | # | Decision |
 |---|---|
@@ -138,7 +140,7 @@ These starting objects use `state: created`. Authentik's blueprint importer skip
   - later: Authentik RBAC roles
 - **See** who has access and why:
   - groups (hierarchy), effective QQQ permissions per user, roles
-  - application access (`check_access`) and policy bindings
+  - application access (computed by the qbit from `qqq.io/app-access` and the app's bindings, §0.2 iii) and policy bindings
   - sessions, MFA devices (metadata only), tokens (metadata only), invitations, events
 - **Work alongside the Authentik admin UI**, with no lost updates and no "wrong" place to make a change.
 - **Integrate with the host app.**
@@ -170,7 +172,7 @@ These starting objects use `state: created`. Authentik's blueprint importer skip
 
 **A. "Add Sam as a publisher."**
 - James opens Users → *Create user* and enters name, email and group `kof-website-publishers`.
-- The preview shows the effective QQQ permissions Sam will get (`cms.publish`, …) and the `check_access` result for `kof22-website-prod` ("will be able to sign in: yes").
+- The preview shows the effective QQQ permissions Sam will get (`cms.publish`, …) and the computed access result for `kof22-website-prod` ("will be able to sign in: yes", from `qqq.io/app-access` and the app's bindings; not Authentik's `check_access`, §0.2 iii).
 - James confirms. QQQ calls `POST /core/users/` and `add_user`, then `recovery_email`, so Sam sets his own password.
 - The local audit row and the Authentik event are written, and the webhook refreshes the mirror.
 
@@ -202,10 +204,10 @@ Facts come from the live OpenAPI schema at `https://auth.kof22.com/api/v3/schema
 | Sessions | `GET /core/authenticated_sessions/` (filter `user__username`), `DELETE …/{uuid}/`, `DELETE …/bulk_delete/?user_pks=` | Fields: `last_ip`, `last_user_agent`, `last_used`, `expires`, `geo_ip`, `asn`. Deactivating a user deletes their sessions (2026.8). |
 | MFA devices | `GET /authenticators/admin/all/?user=<pk>`. Per type, CRUD on `/authenticators/admin/{totp,webauthn,static,duo,sms,email}/{id}/` | Device metadata only: name, type, confirmed, created, last_used. |
 | Tokens | `GET/POST /core/tokens/`, `GET/PUT/PATCH/DELETE /core/tokens/{identifier}/`, `GET …/view_key/`, `POST …/set_key/` | Intents: `api`, `app_password`, `recovery`, `verification`. Keyed by identifier. `view_token_key` is a separate permission, and the qbit must never hold it. **Any user may create tokens for itself and read their keys** without `add_token` (§0.2 v). |
-| Groups | `GET/POST /core/groups/`, `GET/PUT/PATCH/DELETE /core/groups/{uuid}/`, `POST …/add_user/` and `…/remove_user/` (`{pk}`) | **`parents` is many-to-many since 2025.12.** Groups inherit roles **and superuser status** from every ancestor. Names are unique (2025.12). Filters: `members_by_username[]`, `include_users`, `include_children`, `include_parents`, `include_inherited_roles`, `is_superuser`, `attributes`. Custom permissions: `add_user_to_group`, `remove_user_from_group`, `enable_group_superuser`, `disable_group_superuser`. |
+| Groups | `GET/POST /core/groups/`, `GET/PUT/PATCH/DELETE /core/groups/{uuid}/`, `POST …/add_user/` and `…/remove_user/` (`{pk}`) | **`parents` is many-to-many since 2025.12.** Groups inherit roles **and superuser status** from every ancestor. Names are unique (2025.12). Filters: `members_by_username` (repeat the plain name for several values), `include_users`, `include_children`, `include_parents`, `include_inherited_roles`, `is_superuser`, `attributes`. Custom permissions: `add_user_to_group`, `remove_user_from_group`, `enable_group_superuser`, `disable_group_superuser`. |
 | RBAC | `GET/POST /rbac/roles/`, `…/{uuid}/add_user/` and `…/remove_user/`, `GET /rbac/permissions/` (catalogue), `GET /rbac/permissions/assigned_by_roles/?model=&object_pk=`, `POST …/assigned_by_roles/{uuid}/assign/`, `PATCH …/unassign/`, `GET /rbac/permissions/roles/?uuid=`, `/rbac/initial_permissions/` | **RBAC has been fully role-based since 2025.12.** Roles are assigned to users directly or through groups; there are no direct user permissions. `assign` with `object_pk` grants an object permission; without it, a global one. Initial permissions automatically grant a role permissions on objects that its members create. |
 | Apps and policies | `GET /core/applications/{slug}/`, `GET /core/applications/{slug}/check_access/?for_user=`, `GET/POST /policies/bindings/` (target = `pbm_uuid`, plus exactly one of policy/group/user), `/policies/all/`, `POST /policies/all/{uuid}/test/` | **`for_user` is honoured only for superusers** (silently ignored otherwise), the policy test endpoint returns 500 for non-superusers, and the app list shows a non-superuser only its own apps (§0.2 iii). Bindings can expire (2026.8). |
-| Events | `GET /events/events/` (filters `action`, `actions[]`, `username`, `client_ip`, `context_model_app`, `context_model_name`, `context_model_pk`, `context_authorized_app`), `POST /events/events/` (custom `custom_*` actions), `/actions/`, `/volume/`, `/top_per_user/` | Relevant actions: `login`, `login_failed`, `logout`, `password_set`, `model_created/updated/deleted`, `impersonation_*`, `secret_view`, `invitation_used`, `user_write`, `suspicious_request`, `custom_`. |
+| Events | `GET /events/events/` (filters `action`, `actions` (repeated plain name), `username`, `client_ip`, `context_model_app`, `context_model_name`, `context_model_pk`, `context_authorized_app`), `POST /events/events/` (custom `custom_*` actions), `/actions/`, `/volume/`, `/top_per_user/` | Relevant actions: `login`, `login_failed`, `logout`, `password_set`, `model_created/updated/deleted`, `impersonation_*`, `secret_view`, `invitation_used`, `user_write`, `suspicious_request`, `custom_`. |
 | Notifications | `/events/transports/` (mode `webhook` with `webhook_mapping_body`/`_headers`), `/events/rules/` (needs `destination_group` or `destination_event_user`), `/policies/event_matcher/` (action, app, model, client_ip) | Delivery runs as Dramatiq tasks with 5 retries, at least once, with no idempotency key and no ordering guarantee. The default body has no event id or model, so a custom body mapping is required. |
 | Invitations | `GET/POST /stages/invitation/invitations/` (`fixed_data`, `expires`, `single_use`, `flow`), `POST …/{uuid}/send_email/` | Needs an enrollment flow with an invitation stage, plus working email. |
 | Blueprints | `GET /managed/blueprints/`, `POST …/{uuid}/apply/`, `GET …/available/` | Each instance has `status`, `last_applied`, `managed_models`. |
@@ -299,7 +301,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
                │ /qqq/v1/... (normal QQQ routes)   /qqq/v1/authentik/* (widgets)
 ┌──────────────▼──────────────── qbit-authentik (Java) ────────────────────┐
 │ AuthentikQBitProducer / AuthentikQBitConfig                              │
-│  ├─ API backend "authentik"  ── AuthentikActionUtil (BaseAPIActionUtil)   │
+│  ├─ API backend "authentikApi" ── AuthentikActionUtil (BaseAPIActionUtil) │
 │  │     ├─ AuthentikGuard   (QQQ permission, escalation, protection)       │
 │  │     ├─ FilterMapper     (QQueryFilter → Authentik query params)        │
 │  │     └─ Throttle         (token bucket, bulk pacing)                    │
@@ -314,7 +316,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
                │ Bearer token of service account "qqq-<appKey>-idadmin"
 ┌──────────────▼──────────────── Authentik (source of truth) ──────────────┐
 │ DB: users, groups, memberships, attributes, roles   ◄── Authentik admin UI│
-│ role qqq-<appKey>-idadmin (bootstrap blueprint, state: created + perms)   │
+│ role qqq-<appKey>-idadmin (bootstrap blueprint, present, perms only)      │
 │ notification rule + event_matcher policy + webhook transport → QQQ        │
 │ blueprints: flows/stages/providers/apps/policies/branding (present)       │
 └───────────────────────────────────────────────────────────────────────────┘
@@ -328,14 +330,14 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 |---|---|---|
 | `baseUrl` | required | Authentik host root, e.g. `https://auth.kof22.com`. `/api/v3` is appended. This is separate from the OAuth2 issuer URL, as MHP learned. |
 | `apiToken` | required | Usually `${env.AUTHENTIK_API_TOKEN}`. Interpolated by the qbit (because `APIBackendMetaData.enrich()` is disabled) and redacted in `toString()` |
-| `tableNamePrefix` / namespace | `authentik` | Prefix for tables (joined with `_`, snake_case: `authentik_user`), processes and widgets (camelCase: `authentikAdmin`) |
+| `tableNamePrefix` / namespace | `authentik` | Prefix for tables (joined with `_`: `authentik_user`), processes and widgets (camel-cased: `authentikResyncMirror`) |
 | `features` | `{READ}` | A subset of `READ`, `USERS` (create, invite, edit, deactivate), `GROUPS` (create, edit, permissions and app-access attributes), `MEMBERSHIP`, `CREDENTIALS` (recovery email, MFA reset, app-password revoke), `SESSIONS`, `RBAC` (phase 4), `ACCESS_MATRIX`, `MIRROR`, `WEBHOOK`, `SNAPSHOT_EXPORT`. A feature that is off produces no metadata. |
 | `readOnly` | `false` | Hard kill switch. Every write is refused. |
 | `appKey` | required | Identifies this QQQ app in attributes, audit and the app-access attribute, e.g. `kof22-admin` |
 | `userScope` | `internal` + `external` users | Optional `path_startswith` and/or `groups_by_name` filter, to partition a shared Authentik between apps. Out-of-scope users are invisible and cannot be written. |
 | `groupScope` | all non-superuser groups | Optional name prefix or attribute filter (`qqq.io/app: <appKey>`) for multi-app Authentiks |
 | `protectedUsernames` | `[]` | Added to the built-in protected set: the service account, users with `qqq.io/protected: true`, and superusers (§5.4) |
-| `bootstrapOperators` | `${env.AUTHENTIK_QBIT_BOOTSTRAP_OPERATORS}` (empty) | Emails that receive all `authentik.*` permissions even if the group attributes are wrong. A lockout escape hatch that logs a warning while in use; intended to be emptied after go-live. |
+| `bootstrapOperatorSubjects` | `${env.AUTHENTIK_QBIT_BOOTSTRAP_SUBJECTS}` (empty) | **Immutable ids, never emails** (users can change their own email in Authentik, and emails are not unique). A person is a bootstrap operator when the token `sub` equals an entry (a `sub` that looks like an email is ignored; kof22's provider uses `sub_mode: user_email`), or when the token email is verified, exactly ONE active Authentik user has it, and that user's pk or uuid equals an entry. Find the value in Authentik admin: Directory, Users, the user's numeric id (pk) or uuid. Grants all `authentik.*` permissions even if the group attributes are wrong: a lockout escape hatch that logs a warning while in use. **Empty it once real group grants exist** (after `identity-admins` membership is verified). Entries containing `@` fail validation. |
 | `permissionCatalog` | derived | The QQQ permission names that can be granted through `qqq.io/permissions`, taken from `PermissionsHelper.getAllAvailablePermissions` plus the `authentik.*` names. Unknown names are rejected. |
 | `recoveryEmailStage` | required if `CREDENTIALS` or `USERS` | Email stage slug or uuid for `recovery_email`, e.g. `kof22-recovery-email` |
 | `invitationFlow` | required for invites | Enrollment flow slug, e.g. `kof22-enrollment` |
@@ -343,7 +345,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 | `applicationsInScope` | all visible | Application slugs shown in the access matrix and the app-access editor |
 | `confirmations` | see §6.3 | Per-action confirmation level: `CONFIRM`, `TYPED`, `TWO_PERSON` |
 | `throttle` | 10 req/s, burst 20; bulk pacing 100 ms | Self-imposed; authenticated calls are not throttled server-side |
-| `cacheTtl` | 30 s lists, 60 s group attributes, 5 min `check_access` | Memoization TTLs |
+| `cacheTtl` | 30 s lists, 60 s group attributes, 5 min computed app access | Memoization TTLs |
 | `mirror` | backend name, 15-minute reconcile, 30-day inbox retention | Used if `MIRROR` is on |
 | `webhookSecret` | `${env.AUTHENTIK_WEBHOOK_SECRET}` | Shared secret in a header set by the transport's header mapping |
 | `esbDestinationName` | optional | If set, webhook events go through the ESB; otherwise they are processed inline |
@@ -364,7 +366,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 | Concern | Lives in | Edited from | Blueprint state |
 |---|---|---|---|
 | Users, groups, memberships, group parents, group attributes (`qqq.io/permissions`, `qqq.io/app-access`), user attributes | **Authentik DB** | QQQ qbit **and** Authentik admin UI | none (data); bootstrap seeds only, as `created` |
-| Authentik RBAC roles and their assignments | Authentik DB | Authentik UI (v1); QQQ (phase 4) | the qbit's own role: `created`, with `permissions:` |
+| Authentik RBAC roles and their assignments | Authentik DB | Authentik UI (v1); QQQ (phase 4) | the qbit's own role: `present`, `permissions` only (§4.3) |
 | Flows, stages, prompts, email templates | Git | cluster-gitops PR | `present` |
 | OAuth2/other providers, applications, scope mappings | Git | cluster-gitops PR | `present` |
 | Policies and policy bindings (incl. the app sign-in policy) | Git | cluster-gitops PR | `present` |
@@ -515,7 +517,7 @@ Notes (resolved in phase 0, §0.2):
 - **Global permissions** are the role's `attrs.permissions` (finding i). The role is `present` with nothing but `permissions`, so it is re-asserted additively on every apply and carries no users or groups. `roles:` on the `created` service account applies on first create only; the role's later permission changes still reach it.
 - **Ordering on a fresh install** (finding iv): the leading `metaapplyblueprint` entry applies `kof22-oauth2-apps` first, inside the bootstrap's transaction. Verified on an empty 2026.8.3. If the infra instance did not exist yet, only the bootstrap fails, and it retries on the next discovery.
 - **Object permission** on `kof22-recovery-email` (needed by `recovery_email`, phase 3) is applied through the bare `created` stage entry's `permissions:` on every run.
-- **Seeding James's membership.** `groups:` on a `created` user only applies when the user is first created. James's account already exists, so his `identity-admins` membership is a one-time manual step in the Authentik UI (owner checklist item 10). `bootstrapOperators` covers the window before it's done.
+- **Seeding James's membership.** `groups:` on a `created` user only applies when the user is first created. James's account already exists, so his `identity-admins` membership is a one-time manual step in the Authentik UI (owner checklist item 10). `bootstrapOperatorSubjects` covers the window before it's done.
 - **Break-glass password.** The break-glass admin has no usable password from the blueprint. Its password is set once by hand and stored in 1Password. Its recovery path is `ak create_recovery_key` on the worker pod.
 
 ### 4.4 Migration from today's blueprint
@@ -682,7 +684,7 @@ The mapper is a `QAuthenticationModuleCustomizerInterface` component. It replace
 
 1. It takes the user's group names from the `groups` claim. The current kof22 `profile` mapping emits **direct** groups only.
 2. It resolves each group through `EffectivePermissionResolver`: group attributes plus all ancestors via `include_parents`, from the mirror or the API, cached 60 s. The result is the union of `qqq.io/permissions`, with `authentik.*` and other wildcard prefixes expanded against `permissionCatalog`.
-3. It adds static fallbacks if configured, through `withGroupPermissions(...)` (useful in tests and dev), plus `bootstrapOperators`.
+3. It adds static fallbacks if configured, through `withGroupPermissions(...)` (useful in tests and dev), plus `bootstrapOperatorSubjects`.
 4. It sets QQQ session permissions, user, email and full name.
 
 **Freshness.** Permissions are computed at session creation. The QQQ session is re-validated on each access-token refresh (1 hour in kof22), and the mapper runs again then. A webhook on a group or membership change also marks affected sessions in `qqq_user_session` for re-evaluation on their next request (phase 2). Phase 0 checks this is possible through the OAuth2 module's session store. If it isn't, the staleness is up to 1 hour, which is documented.
@@ -692,7 +694,9 @@ The mapper is a `QAuthenticationModuleCustomizerInterface` component. It replace
 ---
 ## 6. Data model
 
-### 6.1 API-backed tables (backend `authentik`, `AuthentikActionUtil`)
+**Naming (owner rule, 2026-10-12):** "table names should always be lowercase and use _, and qbits should always be prefixed with their name, ie, cdn_ etc". Every table, API-backed or local, is lowercase snake_case with the `authentik_` prefix (`authentik_user`, `authentik_admin_action`). Where QQQ separates the table name from the backend name, both are identical; possible-value sources use the table name. Permissions follow the same rule (owner, 2026-10-12): the former `identity.*` permissions are now `authentik.*` (`authentik.users.read`, `authentik.memberships.manage`, ...); the shorthand `users.read` etc. in the action tables means the `authentik.` name. Java classes stay CamelCase; field, process and widget names are unchanged. The one name that is not a table is the API backend, a connection rather than a table: it is `authentikApi` everywhere (diagram, README, code), camel-cased like the process and widget names. No version of qbit-authentik has been released yet, so this is a rename in the design and in the unreleased branch code (whose `applyPrefix` camel-joins `authentik` + name today), not a migration.
+
+### 6.1 API-backed tables (backend `authentikApi`, `AuthentikActionUtil`)
 
 | Table | Source | Key | Capabilities | Notes |
 |---|---|---|---|---|
@@ -713,7 +717,7 @@ The mapper is a `QAuthenticationModuleCustomizerInterface` component. It replace
 
 **`FilterMapper`** maps QQQ criteria to Authentik query params:
 - `EQUALS` → `field=`
-- `IN` → repeated `field[]=` where supported (`groups_by_name`, `type`, `actions`)
+- `IN` → the plain name repeated once per value, e.g. `type=a&type=b` (`groups_by_name`, `type`, `actions`). **Never the bracketed `field[]=a` form: Authentik silently ignores it and returns unfiltered results (§0.2 vi).**
 - `GREATER_THAN` / `LESS_THAN` on date fields → `__gt` / `__lt`
 - `IS_BLANK` → `__isnull=true`
 - `CONTAINS` / `STARTS_WITH` on text fields → `search=` (or `path_startswith`)
@@ -745,7 +749,7 @@ Unsupported criteria (OR across fields, `NOT_EQUALS`, nested filters) are **reje
 
 Each process:
 - is bound with `withTableName(...)` and placed in `QMenu` slots (`isHidden(true)` for navigation)
-- uses `StreamedETLWithFrontendProcess` with steps: **input** (targets and values; **reason** is required for writes), **preview** (server-computed per-target before → after, effective-permission deltas, `check_access` deltas, guard results, and skipped targets with reasons), **confirm** (per `confirmations`), **execute** (audit row → stale check → API call → Authentik custom event → cache and mirror invalidation), and **result** (per-record outcome with links to audit rows)
+- uses `StreamedETLWithFrontendProcess` with steps: **input** (targets and values; **reason** is required for writes), **preview** (server-computed per-target before → after, effective-permission deltas, computed-access deltas, guard results, and skipped targets with reasons), **confirm** (per `confirmations`), **execute** (audit row → stale check → API call → Authentik custom event → cache and mirror invalidation), and **result** (per-record outcome with links to audit rows)
 
 | Process | Table / slot | Records | Permission | Default confirmation | Authentik calls |
 |---|---|---|---|---|---|
@@ -759,7 +763,7 @@ Each process:
 | Create group | `authentik_group` query action | 0 | `authentik.groups.manage` (+ `permissions.manage` if permissions given) | CONFIRM | `POST /core/groups/` (name, parents, attributes) |
 | Edit group | `authentik_group` view | 1 | `authentik.groups.manage` | CONFIRM | `PATCH` name, parents and non-reserved attributes (merge-patch) |
 | Edit permissions and app access | `authentik_group` view | 1 | `authentik.permissions.manage` | CONFIRM; **TWO_PERSON** when adding any `authentik.*` permission | `PATCH attributes` (`qqq.io/permissions`, `qqq.io/app-access`), re-read first |
-| Check access / Effective permissions | `authentik_user` view | 1 | `authentik.users.read` | none | `check_access` per in-scope app; the resolver |
+| Check access / Effective permissions | `authentik_user` view | 1 | `authentik.users.read` | none | computed access per in-scope app (§5.1, not `check_access`); the resolver |
 | Send password reset email | `authentik_user` | 1–25 | `authentik.credentials.reset` | CONFIRM | `recovery_email` |
 | Reset MFA | `authentik_user` | 1 | `authentik.credentials.reset` | TYPED | per-device `DELETE` |
 | Revoke app passwords | `authentik_user`, `authentik_token` | 1–25 | `authentik.credentials.reset` | TYPED | `DELETE /core/tokens/{identifier}/` |
@@ -844,14 +848,14 @@ The qbit produces an app `authentikAdmin` (label **"Identity"**, icon `badge`). 
 | Groups | `AUTHENTIK_GROUP_TREE` widget + generic list | Tree over `parents` (many-to-many; shared children marked). Badges: superuser (red, locked), has-permissions, app-access. Member counts. |
 | Group detail | generic view + child widgets | Members (Add/Remove); **Permissions** (own + inherited, with an editor that offers only permissions the operator holds); **App access**; parents and children; roles (read); other attributes (`authentik.audit.read`) |
 | Access matrix | `AUTHENTIK_ACCESS_MATRIX` widget | Users in scope × `applicationsInScope`, cells computed by the qbit (not `check_access`, §0.2 iii; cached 5 min, 25 rows per page) |
-| Health | `AUTHENTIK_HEALTH` widget | API reachability and version, token expiry, blueprint instance status, webhook lag, last reconcile, possible blueprint reversions, `bootstrapOperators` in use |
+| Health | `AUTHENTIK_HEALTH` widget | API reachability and version, token expiry, blueprint instance status, webhook lag, last reconcile, possible blueprint reversions, `bootstrapOperatorSubjects` in use |
 | Audit | generic query on `authentik_admin_action` + `authentik_event` | Filter by operator, target, action, status, and source (QQQ vs Authentik UI) |
 
 ### 8.3 Admin-home widgets (standard widget types, from the mirror)
 
 - Statistics: active users, inactive users, service accounts, users without MFA, failed logins in 24 h.
 - Table: recent auth events.
-- Table: "attention" items: admins without MFA, tokens expiring within 14 days (including the qbit's own token), blueprint status not `successful`, `bootstrapOperators` still set.
+- Table: "attention" items: admins without MFA, tokens expiring within 14 days (including the qbit's own token), blueprint status not `successful`, `bootstrapOperatorSubjects` still set.
 
 ### 8.4 Frontend delivery
 
@@ -911,7 +915,7 @@ Authenticated API calls are not throttled by Authentik, and kof22's Authentik sh
 |---|---|
 | A compromised QQQ backend escalates in Authentik | The service account can't create superusers, touch superuser groups, read or mint tokens, impersonate, delete users, or change flows and policies (§5.1) |
 | A QQQ operator escalates themselves or a friend | Subset rule, no self-edits, two-person approval for `authentik.*` grants, protected accounts |
-| Lockout (last admin removed or deactivated) | Last-admin guard; break-glass superuser outside QQQ; `bootstrapOperators` |
+| Lockout (last admin removed or deactivated) | Last-admin guard; break-glass superuser outside QQQ; `bootstrapOperatorSubjects` |
 | A blueprint re-apply reverts QQQ edits | No `present` identity entries, no member lists (CI lint); bootstrap as `created` (verified, §4.2); reversion detector |
 | Lost update between QQQ and the Authentik UI | Stale check at execute; attribute merge-patch after a fresh read |
 | Account takeover through a recovery link | Links are never shown; email only |
@@ -958,7 +962,7 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 | **0. Foundations and migration** | See the task list below | Contract tests (b), (c), (d), (h) green; the kof22 migration done in staging; read-only token wired | 2 wk |
 | **1. Read-only + permissions model** | Tables (users, groups, members, roles, applications, bindings, blueprints; sensitive tables behind `audit.read`). `EffectivePermissionResolver` + `AuthentikGroupPermissionMapper` (kof22 cut over, sign-in policy fallback removed). Group tree, Effective permissions and Access tabs. Health widget. Mirror with scheduled reconcile. Admin-home widgets. | kof22 Web Users shows groups, last login and MFA; kof22 permissions come from `qqq.io/permissions`; guard matrix green for reads | 2.5 wk |
 | **2. Memberships and permission editing** | Add/remove (both sides, bulk), the subset rule, the last-admin guard, the group permissions and app-access editor with two-person approval for `authentik.*`, `authentik_admin_action` + Authentik custom events, webhook route + ESB trigger + inbox, session re-evaluation marking | Scenarios B and D end to end; safety matrix 100%; webhook latency < 10 s | 2.5 wk |
-| **3. Full user lifecycle** | Create user, invite (+ enrollment flow in Git), edit, deactivate/reactivate, recovery email, revoke sessions, reset MFA, revoke app passwords, create and edit groups, cancel invitations; optional snapshot export | Scenarios A and C end to end; contract tests (a), (e), (f), (g) green | 3 wk |
+| **3. Full user lifecycle** | Create user, invite (+ enrollment flow in Git), edit, deactivate/reactivate, recovery email, revoke sessions, reset MFA, revoke app passwords, create and edit groups, cancel invitations; optional snapshot export | Scenarios A and C end to end; contract tests (a), (e), (f) green; access computation pinned by `AccessCheckIT` and `SignInPolicyIT` (§10 g) | 3 wk |
 | **4. RBAC (post-v1)** | Authentik role assignment with two-person approval, access-matrix polish, MHP migration off `AuthentikAdminApiClient` | MHP running on the qbit | 3 wk |
 
 **v1 (phases 0–3) is about 10 weeks**, and phase 4 adds about 3 more.
@@ -969,7 +973,7 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 
 | # | Task | Who |
 |---|---|---|
-| 1 | Create repo `QRun-IO/qbit-authentik` from `qbit-template-extension`; copy this spec to `docs/DESIGN.md`; add `AGENTS.md`/`CLAUDE.md` | agent: **done** (repo private for now, see the owner checklist) |
+| 1 | Create repo `QRun-IO/qbit-authentik` from `qbit-template-extension`; copy this spec to `docs/DESIGN.md`; add `AGENTS.md`/`CLAUDE.md` | agent: **done** (the repo is public) |
 | 2 | `AuthentikQBitConfig` + producer skeleton; `AuthentikActionUtil` (bearer auth, page/page_size paging, FilterMapper, throttle, redaction); pinned `schema.yml` + drift test | agent |
 | 3 | Testcontainers harness (Authentik 2026.8.3 + Postgres + Mailpit), fixture recorder; contract tests (b), (c), (d), (h) | agent |
 | 4 | Verify on the container: (i) how to grant *global* role permissions declaratively in 2026.8.3; (ii) whether a `parents` change under a superuser group is refused without `enable_group_superuser`; (iii) the permission `check_access` needs; (iv) the `metaapplyblueprint` ordering. Then fix §4.3 and §5.1. | agent: **done**, §0.2 |
@@ -988,9 +992,9 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 | The service account holds global user/group change rights (decision 1), so its blast radius is wider than revision 1's | Hard Authentik floor (no superuser, tokens, impersonation or delete); `userScope`/`groupScope`; guard; audit on both sides; 90-day token |
 | Someone reintroduces a `present` identity entry, and members get wiped | CI lint; contract test (d); reversion detector |
 | A bootstrap entry error rolls back the infrastructure blueprint | Separate bootstrap file; `metaapplyblueprint` ordering; minimal attrs; health widget |
-| A lockout through bad permission edits | Last-admin guard, break-glass, `bootstrapOperators`, two-person approval for `authentik.*` |
+| A lockout through bad permission edits | Last-admin guard, break-glass, `bootstrapOperatorSubjects`, two-person approval for `authentik.*` |
 | Session permissions go stale after a demotion | Token-refresh re-evaluation, webhook marking, live checks in the guard |
-| `parents` re-parenting under a superuser group isn't refused by Authentik | Guard refusal; phase 0 check (ii) |
+| The service account can lock administrators out (remove members from `authentik Admins`, deactivate break-glass, strip `qqq.io/protected`, §0.2 ii-b). Re-parenting under a superuser group **is** refused by Authentik (§0.2 ii) | Guard refusal of every write that targets a protected account or a superuser group; drift report; recovery through cluster access |
 | Load on the shared Postgres | Throttle, caps, mirror |
 | Webhook loss | Inbox, 15-minute reconcile, nightly sweep |
 | QQQ core gaps (#1061, #1062) | Guard in the backend util, ArchUnit, field stripping |

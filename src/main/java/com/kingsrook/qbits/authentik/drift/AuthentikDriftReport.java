@@ -345,7 +345,7 @@ public class AuthentikDriftReport
 
       if(admins.isEmpty())
       {
-         String bootstrap = config.getResolvedBootstrapOperators().isEmpty() ? "" : " bootstrapOperators is set, which covers sign-in for now.";
+         String bootstrap = config.getResolvedBootstrapSubjects().isEmpty() ? "" : " bootstrapOperatorSubjects is set, which covers sign-in for now.";
          findings.add(DriftFinding.error("identity admins", "-", "Nobody can administer identities from QQQ: no active, unprotected human user holds authentik.memberships.manage and authentik.permissions.manage. Add an administrator to a group carrying authentik.* (e.g. identity-admins) in the Authentik UI." + bootstrap));
       }
       else if(admins.size() == 1)
@@ -426,7 +426,7 @@ public class AuthentikDriftReport
             continue;
          }
          String modelName = model.optString("model_name");
-         String pk        = model.optString("pk");
+         String pk        = dashed(model.optString("pk"));
          boolean sensitive = false;
          if(!"user".equals(modelName) && !"group".equals(modelName))
          {
@@ -456,6 +456,21 @@ public class AuthentikDriftReport
       {
          findings.add(DriftFinding.ok("service-account activity", username, "No changes to protected or superuser objects in the last " + events.size() + " service-account events."));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Authentik events carry group pks as 32 hex characters without dashes;
+    ** the graph is keyed by the dashed uuid.
+    *******************************************************************************/
+   static String dashed(String pk)
+   {
+      if(pk != null && pk.matches("[0-9a-fA-F]{32}"))
+      {
+         return (pk.substring(0, 8) + "-" + pk.substring(8, 12) + "-" + pk.substring(12, 16) + "-" + pk.substring(16, 20) + "-" + pk.substring(20));
+      }
+      return (pk);
    }
 
 }

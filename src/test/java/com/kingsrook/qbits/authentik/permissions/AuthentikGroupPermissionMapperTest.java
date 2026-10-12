@@ -55,7 +55,7 @@ class AuthentikGroupPermissionMapperTest
    void beforeEach() throws QException
    {
       FixtureActionUtil.reset();
-      config = AuthentikTestSupport.unitConfig().withGroupCacheTtlSeconds(0).withBootstrapOperators("Boot@Example.Test");
+      config = AuthentikTestSupport.unitConfig().withGroupCacheTtlSeconds(0).withBootstrapOperatorSubjects("opaque-sub-123, 42");
       qInstance = AuthentikTestSupport.produce(config);
       AuthentikTestSupport.useActionUtil(qInstance, config, FixtureActionUtil.class);
       QContext.init(qInstance, new QSession());
@@ -84,6 +84,96 @@ class AuthentikGroupPermissionMapperTest
       Map<String, Object> context = new HashMap<>();
       context.put(AuthentikGroupPermissionMapper.CLAIMS_CONTEXT_KEY, new JSONObject().put("email", email).put("groups", groups));
       return (context);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static Map<String, Object> subjectContext(String sub, String email, boolean verified)
+   {
+      Map<String, Object> context = new HashMap<>();
+      context.put(AuthentikGroupPermissionMapper.CLAIMS_CONTEXT_KEY,
+         new JSONObject().put("sub", sub).put("email", email).put("email_verified", verified).put("groups", new JSONArray()));
+      return (context);
+   }
+
+
+
+   /*******************************************************************************
+    ** Serve /core/users/?email= with these users (everything else as before).
+    *******************************************************************************/
+   private static void usersWithEmail(JSONObject... users)
+   {
+      java.util.function.Function<org.apache.http.client.methods.HttpRequestBase, com.kingsrook.qqq.backend.module.api.actions.QHttpResponse> previous = FixtureActionUtil.handler;
+      FixtureActionUtil.handler = request ->
+      {
+         if(request.getURI().getPath().endsWith("/core/users/") && String.valueOf(request.getURI().getRawQuery()).contains("email="))
+         {
+            return (FixtureActionUtil.response(200, new JSONObject().put("pagination", new JSONObject().put("count", users.length).put("current", 1).put("total_pages", 1))
+               .put("results", new JSONArray(users)).toString()));
+         }
+         return (previous.apply(request));
+      };
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static JSONObject user(int pk, String email)
+   {
+      return (new JSONObject().put("pk", pk).put("uuid", "uuid-" + pk).put("email", email).put("is_active", true).put("username", "u" + pk));
+   }
+
+
+
+   /*******************************************************************************
+    ** Bootstrap operators are keyed on immutable ids, never on an email: a
+    ** spoofed email (duplicate, or a different user) is denied, an unverified
+    ** email is denied, a matching sub or a verified unique user is granted.
+    *******************************************************************************/
+   @Test
+   void bootstrapIsNotEmailBased()
+   {
+      AuthentikGroupPermissionMapper mapper = new AuthentikGroupPermissionMapper();
+      String                         grant  = IdentityPermission.MEMBERSHIPS_MANAGE.getSessionPermission();
+
+      // the attacker set their email to the owner's: two users share it, sub differs
+      usersWithEmail(user(42, "owner@example.test"), user(99, "owner@example.test"));
+      QSession duplicate = new QSession();
+      mapper.customizeSession(qInstance, duplicate, subjectContext("attacker-sub", "owner@example.test", true));
+      assertThat(duplicate.getPermissions()).doesNotContain(grant);
+
+      // only the attacker has that email, but their pk is not a configured subject
+      usersWithEmail(user(99, "owner@example.test"));
+      QSession other = new QSession();
+      mapper.customizeSession(qInstance, other, subjectContext("attacker-sub", "owner@example.test", true));
+      assertThat(other.getPermissions()).doesNotContain(grant);
+
+      // the right user, but the token's email is not verified
+      usersWithEmail(user(42, "owner@example.test"));
+      QSession unverified = new QSession();
+      mapper.customizeSession(qInstance, unverified, subjectContext("some-sub", "owner@example.test", false));
+      assertThat(unverified.getPermissions()).doesNotContain(grant);
+
+      // an email-looking sub never counts, even if it equals a configured value
+      QSession emailSub = new QSession();
+      mapper.customizeSession(qInstance, emailSub, subjectContext("owner@example.test", "x@example.test", false));
+      assertThat(emailSub.getPermissions()).doesNotContain(grant);
+
+      // verified email, exactly one active user, pk is a configured subject
+      QSession good = new QSession();
+      mapper.customizeSession(qInstance, good, subjectContext("some-sub", "owner@example.test", true));
+      assertThat(good.getPermissions()).contains(grant);
+
+      // the Authentik lookup failing denies
+      FixtureActionUtil.handler = request -> FixtureActionUtil.response(500, "boom");
+      QSession down = new QSession();
+      mapper.customizeSession(qInstance, down, subjectContext("some-sub", "owner@example.test", true));
+      assertThat(down.getPermissions()).doesNotContain(grant);
    }
 
 
@@ -120,7 +210,7 @@ class AuthentikGroupPermissionMapperTest
       assertThat(admin.getPermissions()).contains("adminEsb.hasAccess").doesNotContain(IdentityPermission.USERS_READ.getSessionPermission());
 
       QSession boot = new QSession();
-      mapper.customizeSession(qInstance, boot, context("boot@example.test", new JSONArray()));
+      mapper.customizeSession(qInstance, boot, subjectContext("opaque-sub-123", "boot@example.test", false));
       assertThat(boot.getPermissions()).contains(IdentityPermission.MEMBERSHIPS_MANAGE.getSessionPermission());
 
       QSession none = new QSession();
@@ -151,7 +241,7 @@ class AuthentikGroupPermissionMapperTest
             return ("nope");
          }
       };
-      assertThat(wrongBackend.resolve(qInstance, List.of("phase1-child-of-identity-admins"), "x@example.test")).isEmpty();
+      assertThat(wrongBackend.resolve(qInstance, List.of("phase1-child-of-identity-admins"), "s", "x@example.test", false)).isEmpty();
    }
 
 }

@@ -89,11 +89,11 @@ class AuthentikQBitConfigTest
    @Test
    void unavailableFeaturesAndDependencies()
    {
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MEMBERSHIP))))
-         .anyMatch(e -> e.contains("MEMBERSHIP is not available"));
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.MIRROR)))).anyMatch(e -> e.contains("READ is required"));
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MIRROR)))).anyMatch(e -> e.contains("mirrorBackendName"));
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MIRROR)).withMirrorBackendName("nope")))
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.RBAC))))
+         .anyMatch(e -> e.contains("RBAC is not available"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.RBAC)))).anyMatch(e -> e.contains("READ is required"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MEMBERSHIP)))).anyMatch(e -> e.contains("localBackendName"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MEMBERSHIP)).withLocalBackendName("nope")))
          .anyMatch(e -> e.contains("backend not found"));
       assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS)))).anyMatch(e -> e.contains("recoveryEmailStage"));
       assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.WEBHOOK)).withWebhookSecret(null))).anyMatch(e -> e.contains("webhookSecret"));
@@ -151,7 +151,19 @@ class AuthentikQBitConfigTest
       assertThat(new AuthentikQBitConfig().withTableNamePrefix("").applyTablePrefix("user")).isEqualTo("user");
       assertThat(new AuthentikQBitConfig().withTableNamePrefix("").applyTablePrefix("groupMember")).isEqualTo("group_member");
       assertThat(new AuthentikQBitConfig().withTableNamePrefix("myAuth").applyTablePrefix("groupMember")).isEqualTo("my_auth_group_member");
-      assertThat(config.withBootstrapOperators(" A@x.test, ,b@x.test ").getResolvedBootstrapOperators()).containsExactly("a@x.test", "b@x.test");
+      assertThat(config.withBootstrapOperatorSubjects(" A1, ,b2 ").getResolvedBootstrapSubjects()).containsExactly("A1", "b2");
+   }
+
+
+
+   /*******************************************************************************
+    ** Emails are refused as bootstrap subjects: users can change their own.
+    *******************************************************************************/
+   @Test
+   void bootstrapSubjectsRejectEmails()
+   {
+      assertThat(errors(AuthentikTestSupport.unitConfig().withBootstrapOperatorSubjects("owner@example.test"))).anyMatch(e -> e.contains("never emails"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withBootstrapOperatorSubjects("42"))).noneMatch(e -> e.contains("never emails"));
    }
 
 
