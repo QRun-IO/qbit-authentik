@@ -20,6 +20,7 @@ package com.kingsrook.qbits.authentik.security;
 import java.util.List;
 import java.util.Locale;
 import com.kingsrook.qbits.authentik.AuthentikFeature;
+import com.kingsrook.qbits.authentik.admin.AdminAction;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.client.AuthentikJson;
 import com.kingsrook.qbits.authentik.client.AuthentikTableSpec;
@@ -103,6 +104,49 @@ public class AuthentikGuard
          throw (new QPermissionDeniedException("The Identity screens are in read-only mode."));
       }
       throw (new QPermissionDeniedException(spec.getLabel() + " cannot be changed from QQQ in this release (" + operation + " is not available; use the Authentik admin UI)."));
+   }
+
+
+
+   /*******************************************************************************
+    ** Authorize one change to Authentik for the current session: a signed-in
+    ** user (never a system session), the action's feature on, not read-only,
+    ** and the action's authentik.* permission. The returned authorization is
+    ** what AuthentikActionUtil.write requires (DESIGN.md section 5.3).
+    *******************************************************************************/
+   public WriteAuthorization authorize(AdminAction action) throws QPermissionDeniedException
+   {
+      QSession session = QContext.getQSession();
+      if(session instanceof QSystemUserSession)
+      {
+         throw (new QPermissionDeniedException("System sessions may not change Authentik data."));
+      }
+      requireUser(session);
+      if(Boolean.TRUE.equals(config.getReadOnly()))
+      {
+         throw (new QPermissionDeniedException("The Identity screens are in read-only mode."));
+      }
+      if(!config.hasFeature(action.getFeature()))
+      {
+         throw (new QPermissionDeniedException(action.getLabel() + " is not enabled (feature " + action.getFeature() + ")."));
+      }
+      if(!has(session, action.getPermission()))
+      {
+         throw (new QPermissionDeniedException("You do not have permission to do this (" + action.getPermission().getShortName() + ")."));
+      }
+      return (new WriteAuthorization(action.name(), operatorEmail()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The current operator: the session user's id reference (an email in apps
+    ** that sign in through Authentik), or null.
+    *******************************************************************************/
+   public String operatorEmail()
+   {
+      QSession session = QContext.getQSession();
+      return (session == null || session.getUser() == null ? null : session.getUser().getIdReference());
    }
 
 

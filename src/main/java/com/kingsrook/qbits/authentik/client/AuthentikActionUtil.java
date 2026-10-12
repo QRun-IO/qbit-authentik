@@ -30,6 +30,7 @@ import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.permissions.EffectivePermissionResolver;
 import com.kingsrook.qbits.authentik.permissions.GroupGraph;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
+import com.kingsrook.qbits.authentik.security.WriteAuthorization;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -62,9 +63,14 @@ import org.apache.http.Header;
 import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.NameValuePair;
 import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPatch;
+import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
 import org.apache.http.client.utils.URIBuilder;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.client.config.RequestConfig;
@@ -358,6 +364,61 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
 
    /*******************************************************************************
+    ** Send a request that changes Authentik data. Needs the guard's
+    ** authorization; every successful write drops the response and group caches.
+    ** The path is relative to /api/v3. Returns the response body as JSON (an
+    ** empty object for 204 / empty bodies); a missing target is an error.
+    **
+    ** @param method POST, PATCH or DELETE
+    ** @param body   request body (null for none)
+    *******************************************************************************/
+   public JSONObject write(WriteAuthorization authorization, String method, String pathAndQuery, JSONObject body) throws QException
+   {
+      if(authorization == null)
+      {
+         throw (new QPermissionDeniedException("Authentik data can only be changed through the guard."));
+      }
+      if(pathAndQuery == null || pathAndQuery.contains("..") || !pathAndQuery.startsWith("/"))
+      {
+         throw (new QException("Bad Authentik path"));
+      }
+
+      String url = runtime().getConfig().getApiRoot() + pathAndQuery;
+      HttpRequestBase request = switch(method)
+      {
+         case "POST" -> new HttpPost(url);
+         case "PATCH" -> new HttpPatch(url);
+         case "DELETE" -> new HttpDelete(url);
+         default -> throw (new QException("Unsupported write method " + method));
+      };
+      if(body != null && request instanceof HttpEntityEnclosingRequest entityRequest)
+      {
+         entityRequest.setEntity(new StringEntity(body.toString(), ContentType.APPLICATION_JSON));
+      }
+
+      try
+      {
+         QHttpResponse response = execute(request);
+         if(response.getStatusCode() != null && response.getStatusCode() == 404)
+         {
+            throw (new QUserFacingException("Authentik no longer has that record (it may have been removed in the Authentik admin UI)."));
+         }
+         String content = response.getContent();
+         return (content == null || content.isBlank() ? new JSONObject() : new JSONObject(content));
+      }
+      catch(JSONException e)
+      {
+         return (new JSONObject());
+      }
+      finally
+      {
+         runtime().invalidateCache();
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Fetch a single Authentik object by key (null when it doesn't exist).
     ** No permission check: callers check first.
     *******************************************************************************/
@@ -393,6 +454,26 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    public JSONObject getApiJson(String pathAndQuery) throws QException
    {
       return (getJson(runtime().getConfig().getApiRoot() + pathAndQuery));
+   }
+
+
+
+   /*******************************************************************************
+    ** GET an API path whose response is a bare JSON array (not paged), such as
+    ** the MFA device list.
+    *******************************************************************************/
+   public JSONArray getApiArray(String pathAndQuery) throws QException
+   {
+      String url  = runtime().getConfig().getApiRoot() + pathAndQuery;
+      String body = getBody(url, false);
+      try
+      {
+         return (new JSONArray(body));
+      }
+      catch(JSONException e)
+      {
+         throw (new QException("Authentik returned an unexpected response for " + pathOf(url)));
+      }
    }
 
 
@@ -686,6 +767,75 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          runtime.getGroupGraphCache().storeResult("all", graph);
       }
       return (graph);
+   }
+
+
+
+   /*******************************************************************************
+    ** The runtime of the backend this util serves (config, guard, caches).
+    *******************************************************************************/
+   public AuthentikRuntime getRuntime()
+   {
+      return (runtime());
+   }
+
+
+
+   /*******************************************************************************
+    ** The group graph WITH member pks (one sweep; cached like the plain graph
+    ** under a separate key). Used by safety checks that need to know who is in
+    ** which group (last-admin protection).
+    *******************************************************************************/
+   public GroupGraph groupGraphWithMembers() throws QException
+   {
+      AuthentikRuntime runtime = runtime();
+      boolean          cache   = runtime.getConfig().getGroupCacheTtlSeconds() != null && runtime.getConfig().getGroupCacheTtlSeconds() > 0;
+      if(cache)
+      {
+         Optional<GroupGraph> cached = runtime.getGroupGraphCache().getMemoizedResult("members").map(m -> m.getResult());
+         if(cached.isPresent())
+         {
+            return (cached.get());
+         }
+      }
+      List<JSONObject> groups = getAllPages("/core/groups/?include_users=true&include_parents=false&include_children=false&ordering=name", MAX_SWEEP_OBJECTS);
+      GroupGraph       graph  = GroupGraph.fromGroups(groups);
+      if(cache)
+      {
+         runtime.getGroupGraphCache().storeResult("members", graph);
+      }
+      return (graph);
+   }
+
+
+
+   /*******************************************************************************
+    ** Every user the qbit may see (default types, user scope applied), without
+    ** group objects. Bounded sweep.
+    *******************************************************************************/
+   public List<JSONObject> allUsers() throws QException
+   {
+      try
+      {
+         URIBuilder builder = new URIBuilder("/core/users/");
+         boolean groupScope = runtime().getConfig().getUserScopeGroupNames() != null && !runtime().getConfig().getUserScopeGroupNames().isEmpty();
+         builder.addParameter("include_groups", String.valueOf(groupScope));
+         builder.addParameter("include_roles", "false");
+         addUserScope(builder, List.of());
+         List<JSONObject> rs = new ArrayList<>();
+         for(JSONObject user : getAllPages(builder.build().toString(), MAX_SWEEP_OBJECTS))
+         {
+            if(runtime().getGuard().isUserInScope(user))
+            {
+               rs.add(user);
+            }
+         }
+         return (rs);
+      }
+      catch(java.net.URISyntaxException e)
+      {
+         throw (new QException("Bad Authentik URL", e));
+      }
    }
 
 
@@ -1276,7 +1426,11 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
 
          String requestBody = null;
-         if(request instanceof HttpEntityEnclosingRequest entityRequest && entityRequest.getEntity() != null)
+         if("POST".equals(request.getMethod()) && path.endsWith("/core/users/"))
+         {
+            path = path + " [body omitted: user create]";
+         }
+         else if(request instanceof HttpEntityEnclosingRequest entityRequest && entityRequest.getEntity() != null)
          {
             requestBody = EntityUtils.toString(entityRequest.getEntity(), StandardCharsets.UTF_8);
          }

@@ -339,7 +339,7 @@ class AuthentikActionUtilTest
       assertThat(identityAdmins.getValueString("permissions")).isEqualTo("authentik.*");
       assertThat(identityAdmins.getValueString("appAccess")).isEqualTo("kof22-website-prod");
       assertThat(identityAdmins.getValueBoolean("isSuperuser")).isFalse();
-      assertThat(param(FixtureActionUtil.REQUESTS.get(0), "include_users", null)).isEqualTo("false");
+      assertThat(param(FixtureActionUtil.REQUESTS.get(0), "include_users", null)).isEqualTo("true");
    }
 
 

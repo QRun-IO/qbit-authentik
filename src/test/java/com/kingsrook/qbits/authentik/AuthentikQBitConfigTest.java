@@ -89,11 +89,11 @@ class AuthentikQBitConfigTest
    @Test
    void unavailableFeaturesAndDependencies()
    {
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MEMBERSHIP))))
-         .anyMatch(e -> e.contains("MEMBERSHIP is not available"));
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.MIRROR)))).anyMatch(e -> e.contains("READ is required"));
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MIRROR)))).anyMatch(e -> e.contains("mirrorBackendName"));
-      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MIRROR)).withMirrorBackendName("nope")))
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.RBAC))))
+         .anyMatch(e -> e.contains("RBAC is not available"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.RBAC)))).anyMatch(e -> e.contains("READ is required"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MEMBERSHIP)))).anyMatch(e -> e.contains("localBackendName"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MEMBERSHIP)).withLocalBackendName("nope")))
          .anyMatch(e -> e.contains("backend not found"));
       assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS)))).anyMatch(e -> e.contains("recoveryEmailStage"));
       assertThat(errors(AuthentikTestSupport.unitConfig().withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.WEBHOOK)).withWebhookSecret(null))).anyMatch(e -> e.contains("webhookSecret"));

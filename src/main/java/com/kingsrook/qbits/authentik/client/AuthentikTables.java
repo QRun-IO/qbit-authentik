@@ -49,6 +49,12 @@ public final class AuthentikTables
    public static final String GROUP_MEMBER = "groupMember";
    public static final String SESSION      = "session";
    public static final String EVENT        = "event";
+   public static final String APPLICATION  = "application";
+   public static final String POLICY_BINDING = "policyBinding";
+   public static final String BLUEPRINT    = "blueprint";
+   public static final String ROLE         = "role";
+   public static final String TOKEN        = "token";
+   public static final String INVITATION   = "invitation";
 
    /*******************************************************************************
     ** Table names produced before the owner naming rule (2026-10-12), with the
@@ -78,6 +84,12 @@ public final class AuthentikTables
       register(groupMembers());
       register(sessions());
       register(events());
+      register(applications());
+      register(policyBindings());
+      register(blueprints());
+      register(roles());
+      register(tokens());
+      register(invitations());
    }
 
 
@@ -181,10 +193,10 @@ public final class AuthentikTables
    static AuthentikTableSpec groups()
    {
       AuthentikTableSpec spec = new AuthentikTableSpec(GROUP, "Groups", "groups", "/core/groups/", "pk")
-         .withDefaultListParam("include_users", "false")
+         .withDefaultListParam("include_users", "true")
          .withDefaultListParam("include_parents", "true")
          .withDefaultListParam("include_children", "true")
-         .withDefaultGetParam("include_users", "false")
+         .withDefaultGetParam("include_users", "true")
          .withDefaultGetParam("include_parents", "true")
          .withDefaultGetParam("include_children", "true")
          .withDefaultOrdering("name")
@@ -300,6 +312,129 @@ public final class AuthentikTables
          .withFilter(QCriteriaOperator.EQUALS, "context_authorized_app"));
       spec.withField(new AuthentikFieldSpec("context", "Context", QFieldType.TEXT, json("context")));
       spec.withField(new AuthentikFieldSpec("expires", "Expires", QFieldType.DATE_TIME, instant("expires")));
+      return (spec);
+   }
+
+   /*******************************************************************************
+    ** /core/applications/ (slug). Read only. A non-superuser caller (the service
+    ** account) sees only applications it can itself access, so the qbit never
+    ** relies on this list for access decisions (DESIGN.md 0.2 iii).
+    *******************************************************************************/
+   static AuthentikTableSpec applications()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(APPLICATION, "Applications", "apps", "/core/applications/", "slug")
+         .withDefaultOrdering("name")
+         .withRecordLabelFields("name");
+      spec.withField(new AuthentikFieldSpec("slug", "Slug", QFieldType.STRING, string("slug")).withFilter(QCriteriaOperator.EQUALS, "slug"));
+      spec.withField(new AuthentikFieldSpec("name", "Name", QFieldType.STRING, string("name")).withSearchable().withOrdering("name"));
+      spec.withField(new AuthentikFieldSpec("group", "Group", QFieldType.STRING, string("group")).withFilter(QCriteriaOperator.EQUALS, "group"));
+      spec.withField(new AuthentikFieldSpec("providerName", "Provider", QFieldType.STRING, at("provider_obj", "name")));
+      spec.withField(new AuthentikFieldSpec("policyEngineMode", "Policy Engine Mode", QFieldType.STRING, string("policy_engine_mode")));
+      spec.withField(new AuthentikFieldSpec("launchUrl", "Launch URL", QFieldType.STRING, string("launch_url")));
+      spec.withField(new AuthentikFieldSpec("publisher", "Publisher", QFieldType.STRING, string("meta_publisher")).withFilter(QCriteriaOperator.EQUALS, "meta_publisher"));
+      spec.withField(new AuthentikFieldSpec("hiddenFromLibrary", "Hidden", QFieldType.BOOLEAN, bool("meta_hide")));
+      spec.withField(new AuthentikFieldSpec("bindingTarget", "Binding Target", QFieldType.STRING, string("pbm_uuid")).withHidden());
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** /policies/bindings/ (uuid): who or what an application's access policy
+    ** binds. Read only.
+    *******************************************************************************/
+   static AuthentikTableSpec policyBindings()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(POLICY_BINDING, "Policy Bindings", "rule", "/policies/bindings/", "pk")
+         .withDefaultOrdering("order")
+         .withRecordLabelFields("pk");
+      spec.withField(new AuthentikFieldSpec("pk", "Id", QFieldType.STRING, string("pk")));
+      spec.withField(new AuthentikFieldSpec("target", "Target Id", QFieldType.STRING, string("target")).withFilter(QCriteriaOperator.EQUALS, "target").withHidden());
+      spec.withField(new AuthentikFieldSpec("policyName", "Policy", QFieldType.STRING, at("policy_obj", "name")));
+      spec.withField(new AuthentikFieldSpec("groupName", "Group", QFieldType.STRING, at("group_obj", "name")));
+      spec.withField(new AuthentikFieldSpec("username", "User", QFieldType.STRING, at("user_obj", "username")));
+      spec.withField(new AuthentikFieldSpec("negate", "Negate", QFieldType.BOOLEAN, bool("negate")));
+      spec.withField(new AuthentikFieldSpec("enabled", "Enabled", QFieldType.BOOLEAN, bool("enabled")).withFilter(QCriteriaOperator.EQUALS, "enabled"));
+      spec.withField(new AuthentikFieldSpec("order", "Order", QFieldType.INTEGER, integer("order")).withFilter(QCriteriaOperator.EQUALS, "order").withOrdering("order"));
+      spec.withField(new AuthentikFieldSpec("expires", "Expires", QFieldType.DATE_TIME, instant("expires")));
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** /managed/blueprints/ (uuid). Read only; the drift report uses it too.
+    *******************************************************************************/
+   static AuthentikTableSpec blueprints()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(BLUEPRINT, "Blueprints", "description", "/managed/blueprints/", "pk")
+         .withDefaultOrdering("name")
+         .withRecordLabelFields("name");
+      spec.withField(new AuthentikFieldSpec("pk", "Id", QFieldType.STRING, string("pk")));
+      spec.withField(new AuthentikFieldSpec("name", "Name", QFieldType.STRING, string("name")).withSearchable().withOrdering("name"));
+      spec.withField(new AuthentikFieldSpec("path", "Path", QFieldType.STRING, string("path")).withFilter(QCriteriaOperator.EQUALS, "path"));
+      spec.withField(new AuthentikFieldSpec("status", "Status", QFieldType.STRING, string("status")));
+      spec.withField(new AuthentikFieldSpec("enabled", "Enabled", QFieldType.BOOLEAN, bool("enabled")));
+      spec.withField(new AuthentikFieldSpec("lastApplied", "Last Applied", QFieldType.DATE_TIME, instant("last_applied")));
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** /rbac/roles/ (uuid). Read only in v1 (role management is phase 4);
+    ** system-managed roles are hidden.
+    *******************************************************************************/
+   static AuthentikTableSpec roles()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(ROLE, "Roles", "admin_panel_settings", "/rbac/roles/", "pk")
+         .withDefaultListParam("managed__isnull", "true")
+         .withDefaultOrdering("name")
+         .withRecordLabelFields("name");
+      spec.withField(new AuthentikFieldSpec("pk", "Id", QFieldType.STRING, string("pk")));
+      spec.withField(new AuthentikFieldSpec("name", "Name", QFieldType.STRING, string("name")).withSearchable().withOrdering("name"));
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** /core/tokens/ (identifier). Metadata only: there is NO key field, and the
+    ** service account is never given token-key permissions. Needs audit.read.
+    *******************************************************************************/
+   static AuthentikTableSpec tokens()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(TOKEN, "Tokens", "key", "/core/tokens/", "identifier")
+         .withReadPermission(IdentityPermission.AUDIT_READ)
+         .withDefaultOrdering("identifier")
+         .withRecordLabelFields("identifier");
+      spec.withField(new AuthentikFieldSpec("identifier", "Identifier", QFieldType.STRING, string("identifier")).withSearchable().withOrdering("identifier"));
+      spec.withField(new AuthentikFieldSpec("intent", "Intent", QFieldType.STRING, string("intent")).withFilter(QCriteriaOperator.EQUALS, "intent"));
+      spec.withField(new AuthentikFieldSpec("username", "User", QFieldType.STRING, at("user_obj", "username")).withFilter(QCriteriaOperator.EQUALS, "user__username"));
+      spec.withField(new AuthentikFieldSpec("description", "Description", QFieldType.STRING, string("description")));
+      spec.withField(new AuthentikFieldSpec("expires", "Expires", QFieldType.DATE_TIME, instant("expires")));
+      spec.withField(new AuthentikFieldSpec("expiring", "Expiring", QFieldType.BOOLEAN, bool("expiring")).withFilter(QCriteriaOperator.EQUALS, "expiring"));
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** /stages/invitation/invitations/ (uuid). Created by the Invite User action;
+    ** cancelled by Cancel Invitation.
+    *******************************************************************************/
+   static AuthentikTableSpec invitations()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(INVITATION, "Invitations", "mail", "/stages/invitation/invitations/", "pk")
+         .withDefaultOrdering("name")
+         .withRecordLabelFields("name");
+      spec.withField(new AuthentikFieldSpec("pk", "Id", QFieldType.STRING, string("pk")));
+      spec.withField(new AuthentikFieldSpec("name", "Name", QFieldType.STRING, string("name")).withSearchable().withOrdering("name"));
+      spec.withField(new AuthentikFieldSpec("email", "Email", QFieldType.STRING, at("fixed_data", "email")));
+      spec.withField(new AuthentikFieldSpec("singleUse", "Single Use", QFieldType.BOOLEAN, bool("single_use")));
+      spec.withField(new AuthentikFieldSpec("expires", "Expires", QFieldType.DATE_TIME, instant("expires")));
+      spec.withField(new AuthentikFieldSpec("flowSlug", "Flow", QFieldType.STRING, at("flow_obj", "slug")));
+      spec.withField(new AuthentikFieldSpec("createdBy", "Created By", QFieldType.STRING, at("created_by", "username")));
       return (spec);
    }
 

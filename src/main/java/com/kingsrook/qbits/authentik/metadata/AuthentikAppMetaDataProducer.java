@@ -18,12 +18,17 @@ package com.kingsrook.qbits.authentik.metadata;
 
 
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
+import java.util.ArrayList;
+import java.util.List;
+import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppSection;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitComponentMetaDataProducer;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitProductionContext;
@@ -59,22 +64,50 @@ public class AuthentikAppMetaDataProducer extends QBitComponentMetaDataProducer<
       MetaDataProducerMultiOutput produced = QBitProductionContext.peekMetaDataProducerMultiOutput();
       if(produced != null)
       {
-         for(String specName : AuthentikTables.all().keySet())
+         ///////////////////////////////////////////////////////////////////////////
+         // the nav lists only the main tables; memberships, sessions, tokens,   //
+         // events, bindings, roles and blueprints are reached from their parent //
+         // records as child lists                                               //
+         ///////////////////////////////////////////////////////////////////////////
+         addSection(app, produced, config, "people", "People", "person", AuthentikTables.USER, AuthentikTables.INVITATION);
+         addSection(app, produced, config, "access", "Access", "admin_panel_settings", AuthentikTables.GROUP, AuthentikTables.APPLICATION);
+         addSection(app, produced, config, "activity", "Activity", "history", AuthentikLocalTables.APPROVAL_REQUEST, AuthentikLocalTables.ADMIN_ACTION);
+
+         List<String> widgets = new ArrayList<>();
+         for(String widgetName : List.of(config.applyPrefix(AuthentikHomeWidgetProducer.NAME), config.applyPrefix(AuthentikDriftReportWidgetProducer.NAME)))
          {
-            QTableMetaData table = produced.get(QTableMetaData.class, config.applyTablePrefix(specName));
-            if(table != null)
+            if(produced.get(QWidgetMetaData.class, widgetName) != null)
             {
-               app.withChild(table);
+               widgets.add(widgetName);
             }
          }
-
-         String driftReport = config.applyPrefix(AuthentikDriftReportWidgetProducer.NAME);
-         if(produced.get(com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData.class, driftReport) != null)
-         {
-            app.withWidgets(java.util.List.of(driftReport));
-         }
+         app.withWidgets(widgets);
       }
       return (app);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add a nav section with the main tables that were produced.
+    *******************************************************************************/
+   private static void addSection(QAppMetaData app, MetaDataProducerMultiOutput produced, AuthentikQBitConfig config, String name, String label, String icon, String... specNames)
+   {
+      List<String> names = new ArrayList<>();
+      for(String specName : specNames)
+      {
+         String       tableName = config.applyTablePrefix(specName);
+         QTableMetaData table   = produced.get(QTableMetaData.class, tableName);
+         if(table != null)
+         {
+            app.withChild(table);
+            names.add(tableName);
+         }
+      }
+      if(!names.isEmpty())
+      {
+         app.withSection(new QAppSection().withName(name).withLabel(label).withIcon(new QIcon(icon)).withTables(names));
+      }
    }
 
 

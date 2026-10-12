@@ -21,11 +21,17 @@ import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Properties;
+import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
+import com.kingsrook.qbits.authentik.app.AuthentikRelations;
+import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qbits.authentik.metadata.AuthentikAppMetaDataProducer;
+import com.kingsrook.qbits.authentik.processes.AuthentikProcesses;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaDataProducer;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
@@ -178,9 +184,41 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
       MetaDataProducerMultiOutput output = QBitMetaDataProducer.super.produce(qInstance);
       output.addSelfToInstance(qInstance);
 
+      addPossibleValueSources(qInstance);
+      AuthentikRelations.apply(qInstance, qBitConfig);
+      for(QProcessMetaData process : AuthentikProcesses.processes(qBitConfig))
+      {
+         qInstance.addProcess(process);
+      }
+
       LOG.info("Authentik QBit produced", logPair("version", VERSION), logPair("appKey", qBitConfig.getAppKey()),
          logPair("features", qBitConfig.getFeatures()), logPair("readOnly", qBitConfig.getReadOnly()));
       return (new MetaDataProducerMultiOutput());
+   }
+
+
+
+   /*******************************************************************************
+    ** Possible-value sources: the user and group tables (for the group pickers
+    ** on the actions) and the local tables' status enums.
+    *******************************************************************************/
+   private void addPossibleValueSources(QInstance qInstance)
+   {
+      for(String spec : List.of(AuthentikTables.USER, AuthentikTables.GROUP))
+      {
+         String name = qBitConfig.applyTablePrefix(spec);
+         if(qInstance.getPossibleValueSource(name) == null)
+         {
+            qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(name));
+         }
+      }
+      if(qBitConfig.getLocalBackendName() != null)
+      {
+         for(QPossibleValueSource source : AuthentikLocalTables.possibleValueSources())
+         {
+            qInstance.addPossibleValueSource(source);
+         }
+      }
    }
 
 

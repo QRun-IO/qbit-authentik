@@ -44,7 +44,12 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 public class AuthentikQBitConfig implements QBitConfig
 {
    /** Features implemented in this release. Others are refused by validate(). */
-   public static final Set<AuthentikFeature> AVAILABLE_FEATURES = EnumSet.of(AuthentikFeature.READ, AuthentikFeature.MIRROR);
+   public static final Set<AuthentikFeature> AVAILABLE_FEATURES = EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS);
+
+   /** Features that change Authentik data; they need a local backend for the audit trail. */
+   public static final Set<AuthentikFeature> WRITE_FEATURES = EnumSet.of(AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS);
 
    private static final Pattern APP_KEY_PATTERN = Pattern.compile("[a-z0-9][a-z0-9-]{0,48}[a-z0-9]");
    private static final Pattern PREFIX_PATTERN  = Pattern.compile("[a-zA-Z][a-zA-Z0-9]{0,30}");
@@ -62,7 +67,10 @@ public class AuthentikQBitConfig implements QBitConfig
    private List<String>          protectedUsernames       = new ArrayList<>();
    private String                bootstrapOperators       = "${env.AUTHENTIK_QBIT_BOOTSTRAP_OPERATORS}";
    private List<String>          applicationsInScope      = new ArrayList<>();
-   private String                mirrorBackendName;
+   private String                localBackendName;
+   private Boolean               twoPersonApproval        = true;
+   private String                schedulerName;
+   private String                linkPrefix               = "/app";
    private String                recoveryEmailStage;
    private String                invitationFlow;
    private String                newUserPath              = "users";
@@ -147,15 +155,16 @@ public class AuthentikQBitConfig implements QBitConfig
          }
       }
 
-      if(requested.contains(AuthentikFeature.MIRROR))
+      boolean writes = requested.stream().anyMatch(WRITE_FEATURES::contains);
+      if(writes || StringUtils.hasContent(localBackendName))
       {
-         if(!StringUtils.hasContent(mirrorBackendName))
+         if(!StringUtils.hasContent(localBackendName))
          {
-            errors.add("feature MIRROR needs mirrorBackendName (an RDBMS backend of the instance)");
+            errors.add("features that change Authentik data need localBackendName (an RDBMS backend of the instance, for the audit trail)");
          }
-         else if(qInstance != null && qInstance.getBackends() != null && qInstance.getBackend(mirrorBackendName) == null)
+         else if(qInstance != null && qInstance.getBackends() != null && qInstance.getBackend(localBackendName) == null)
          {
-            errors.add("mirrorBackendName: backend not found: " + mirrorBackendName);
+            errors.add("localBackendName: backend not found: " + localBackendName);
          }
       }
 
@@ -748,21 +757,87 @@ public class AuthentikQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
-    ** Getter for mirrorBackendName
+    ** Getter for localBackendName: the RDBMS backend holding the qbit's own
+    ** tables (admin actions, approval requests).
     *******************************************************************************/
-   public String getMirrorBackendName()
+   public String getLocalBackendName()
    {
-      return (this.mirrorBackendName);
+      return (this.localBackendName);
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for mirrorBackendName
+    ** Fluent setter for localBackendName
     *******************************************************************************/
-   public AuthentikQBitConfig withMirrorBackendName(String mirrorBackendName)
+   public AuthentikQBitConfig withLocalBackendName(String localBackendName)
    {
-      this.mirrorBackendName = mirrorBackendName;
+      this.localBackendName = localBackendName;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for twoPersonApproval: whether adding authentik.* permissions to a
+    ** group needs a second person (authentik.approve) to approve it.
+    *******************************************************************************/
+   public Boolean getTwoPersonApproval()
+   {
+      return (this.twoPersonApproval);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for twoPersonApproval
+    *******************************************************************************/
+   public AuthentikQBitConfig withTwoPersonApproval(Boolean twoPersonApproval)
+   {
+      this.twoPersonApproval = twoPersonApproval;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for linkPrefix: the path prefix of table and record links the home
+    ** page renders (the Next UI serves tables at /app/{table}).
+    *******************************************************************************/
+   public String getLinkPrefix()
+   {
+      return (this.linkPrefix);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for linkPrefix
+    *******************************************************************************/
+   public AuthentikQBitConfig withLinkPrefix(String linkPrefix)
+   {
+      this.linkPrefix = linkPrefix;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for schedulerName (optional; runs the reconcile/attention checks)
+    *******************************************************************************/
+   public String getSchedulerName()
+   {
+      return (this.schedulerName);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for schedulerName
+    *******************************************************************************/
+   public AuthentikQBitConfig withSchedulerName(String schedulerName)
+   {
+      this.schedulerName = schedulerName;
       return (this);
    }
 
