@@ -120,7 +120,7 @@ class BootstrapBlueprintIT
       }
 
       JSONObject identityAdmins = admin.first("/core/groups/?name=identity-admins").getJSONObject("attributes");
-      assertThat(identityAdmins.getJSONArray("qqq.io/permissions").toList()).containsExactly("identity.*");
+      assertThat(identityAdmins.getJSONArray("qqq.io/permissions").toList()).containsExactly("authentik.*");
       assertThat(identityAdmins.getJSONArray("qqq.io/app-access").toList()).containsExactly(AuthentikTestStack.APP_SLUG);
 
       JSONObject drafters = admin.first("/core/groups/?name=kof-website-drafters").getJSONObject("attributes");

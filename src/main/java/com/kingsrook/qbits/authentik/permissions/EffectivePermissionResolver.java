@@ -34,9 +34,9 @@ import com.kingsrook.qbits.authentik.security.IdentityPermission;
  ** Rules:
  ** - A group confers the union of qqq.io/permissions on itself and every
  **   ancestor ("inherited parents").
- ** - "identity.*" expands to every identity permission; an identity short
- **   name ("identity.users.read") becomes its session form
- **   ("identity.users.read.hasAccess").
+ ** - "authentik.*" expands to every identity permission; an identity short
+ **   name ("authentik.users.read") becomes its session form
+ **   ("authentik.users.read.hasAccess").
  ** - Any other name ending in ".*" expands against the catalog (prefix match);
  **   with no catalog it is dropped, never granted as a literal wildcard.
  ** - Names not in the catalog are reported as unknown and NOT granted (when a

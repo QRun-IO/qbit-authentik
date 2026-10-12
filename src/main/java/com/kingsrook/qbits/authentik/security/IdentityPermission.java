@@ -25,31 +25,39 @@ import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRule
 /*******************************************************************************
  ** The qbit's own QQQ permissions (DESIGN.md section 5.2).
  **
- ** Operators write the short name (e.g. "identity.users.read") into a group's
- ** qqq.io/permissions attribute; "identity.*" means all of them. In a QQQ
+ ** Operators write the short name (e.g. "authentik.users.read") into a group's
+ ** qqq.io/permissions attribute; "authentik.*" means all of them. In a QQQ
  ** session each one is held as its HAS_ACCESS form, the short name plus
  ** ".hasAccess", which is what QQQ's PermissionsHelper checks for metadata
  ** guarded by {@link #rules()}.
  *******************************************************************************/
 public enum IdentityPermission
 {
-   USERS_READ("identity.users.read"),
-   USERS_MANAGE("identity.users.manage"),
-   GROUPS_MANAGE("identity.groups.manage"),
-   MEMBERSHIPS_MANAGE("identity.memberships.manage"),
-   PERMISSIONS_MANAGE("identity.permissions.manage"),
-   ROLES_MANAGE("identity.roles.manage"),
-   CREDENTIALS_RESET("identity.credentials.reset"),
-   SESSIONS_REVOKE("identity.sessions.revoke"),
-   AUDIT_READ("identity.audit.read"),
-   APPROVE("identity.approve"),
-   ADMIN("identity.admin");
+   USERS_READ("authentik.users.read"),
+   USERS_MANAGE("authentik.users.manage"),
+   GROUPS_MANAGE("authentik.groups.manage"),
+   MEMBERSHIPS_MANAGE("authentik.memberships.manage"),
+   PERMISSIONS_MANAGE("authentik.permissions.manage"),
+   ROLES_MANAGE("authentik.roles.manage"),
+   CREDENTIALS_RESET("authentik.credentials.reset"),
+   SESSIONS_REVOKE("authentik.sessions.revoke"),
+   AUDIT_READ("authentik.audit.read"),
+   APPROVE("authentik.approve"),
+   ADMIN("authentik.admin");
 
    /** The wildcard operators write for "all identity permissions". */
-   public static final String WILDCARD = "identity.*";
+   public static final String WILDCARD = "authentik.*";
 
    /** Suffix QQQ uses for HAS_ACCESS permissions. */
    public static final String HAS_ACCESS_SUFFIX = ".hasAccess";
+
+   /** Prefix of the permission names before the owner naming rule (2026-10-12); see UPGRADE.md. */
+   @Deprecated
+   public static final String LEGACY_PREFIX = "identity.";
+
+   /** Wildcard before the owner naming rule (2026-10-12); no longer granted. */
+   @Deprecated
+   public static final String LEGACY_WILDCARD = "identity.*";
 
    private final String shortName;
 
@@ -66,7 +74,7 @@ public enum IdentityPermission
 
 
    /*******************************************************************************
-    ** The name written in qqq.io/permissions, e.g. "identity.users.read".
+    ** The name written in qqq.io/permissions, e.g. "authentik.users.read".
     *******************************************************************************/
    public String getShortName()
    {
@@ -76,7 +84,20 @@ public enum IdentityPermission
 
 
    /*******************************************************************************
-    ** The QQQ session permission, e.g. "identity.users.read.hasAccess".
+    ** The name this permission had before the owner naming rule (2026-10-12),
+    ** e.g. "identity.users.read". Only for finding stored grants when upgrading;
+    ** legacy names are never granted.
+    *******************************************************************************/
+   @Deprecated
+   public String getLegacyShortName()
+   {
+      return (LEGACY_PREFIX + shortName.substring(shortName.indexOf('.') + 1));
+   }
+
+
+
+   /*******************************************************************************
+    ** The QQQ session permission, e.g. "authentik.users.read.hasAccess".
     *******************************************************************************/
    public String getSessionPermission()
    {

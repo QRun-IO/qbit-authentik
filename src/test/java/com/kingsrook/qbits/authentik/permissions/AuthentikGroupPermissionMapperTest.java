@@ -89,7 +89,7 @@ class AuthentikGroupPermissionMapperTest
 
 
    /*******************************************************************************
-    ** Inherited identity.* through a child group; existing permissions kept.
+    ** Inherited authentik.* through a child group; existing permissions kept.
     *******************************************************************************/
    @Test
    void groupsBecomePermissions()

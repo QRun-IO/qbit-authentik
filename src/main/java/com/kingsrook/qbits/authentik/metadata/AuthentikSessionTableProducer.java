@@ -21,7 +21,7 @@ import com.kingsrook.qbits.authentik.client.AuthentikTables;
 
 
 /*******************************************************************************
- ** authentik_session: /core/authenticated_sessions/ (needs identity.audit.read).
+ ** authentik_session: /core/authenticated_sessions/ (needs authentik.audit.read).
  *******************************************************************************/
 public class AuthentikSessionTableProducer extends AbstractAuthentikTableProducer
 {

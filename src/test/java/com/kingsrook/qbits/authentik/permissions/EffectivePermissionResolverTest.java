@@ -41,9 +41,9 @@ class EffectivePermissionResolverTest
       return (GroupGraph.fromGroups(List.of(
          group("admins", "authentik Admins", true, List.of(), null, null, List.of(1)),
          group("under", "under-admins", false, List.of("admins"), List.of("cms.publish"), null, List.of(2)),
-         group("ida", "identity-admins", false, List.of(), List.of("identity.*"), List.of("kof22-website-prod"), List.of(3)),
+         group("ida", "identity-admins", false, List.of(), List.of("authentik.*"), List.of("kof22-website-prod"), List.of(3)),
          group("editors", "editors", false, List.of("ida"), List.of("cms.edit", "cms.*"), null, List.of(4)),
-         group("interns", "interns", false, List.of("editors"), List.of("identity.users.read", "nope.unknown"), null, List.of(5)),
+         group("interns", "interns", false, List.of("editors"), List.of("authentik.users.read", "nope.unknown"), null, List.of(5)),
          new JSONObject().put("pk", "pub").put("name", "publishers").put("is_superuser", false).put("parents", new JSONArray())
             .put("attributes", new JSONObject().put("qqq.io/permissions", "cms.publish").put("qqq.io/app-access", "kof22-website-prod")).put("users", new JSONArray().put(6)),
          group("a", "cycle-a", false, List.of("b"), List.of("cms.edit"), null, List.of()),
@@ -124,6 +124,25 @@ class EffectivePermissionResolverTest
 
 
    /*******************************************************************************
+    ** Pre-rename identity.* grants (owner naming rule, 2026-10-12) are reported
+    ** as unknown and grant nothing until the group attribute is updated.
+    *******************************************************************************/
+   @Test
+   @SuppressWarnings("deprecation")
+   void legacyIdentityNamesAreUnknown()
+   {
+      GroupGraph graph = GroupGraph.fromGroups(List.of(
+         group("old", "identity-admins", false, List.of(), List.of(IdentityPermission.LEGACY_WILDCARD, IdentityPermission.USERS_READ.getLegacyShortName()), null, List.of(9))));
+
+      EffectivePermissionResolver.Resolution old = new EffectivePermissionResolver(graph, CATALOG).resolveUser(9);
+      assertThat(old.sessionPermissions()).isEmpty();
+      assertThat(old.unknown()).containsExactlyInAnyOrder("identity.*", "identity.users.read");
+      assertThat(EffectivePermissionResolver.holdsAll(old, List.of(IdentityPermission.USERS_READ))).isFalse();
+   }
+
+
+
+   /*******************************************************************************
     ** A single string attribute is a list of one; cycles terminate.
     *******************************************************************************/
    @Test
@@ -148,8 +167,8 @@ class EffectivePermissionResolverTest
       EffectivePermissionResolver resolver = new EffectivePermissionResolver(graph(), null);
       assertThat(resolver.expand("anything.goes")).containsExactly("anything.goes");
       assertThat(resolver.expand("cms.*")).isEmpty();
-      assertThat(resolver.expand(" identity.audit.read ")).containsExactly(IdentityPermission.AUDIT_READ.getSessionPermission());
-      assertThat(resolver.expand("identity.audit.read.hasAccess")).containsExactly(IdentityPermission.AUDIT_READ.getSessionPermission());
+      assertThat(resolver.expand(" authentik.audit.read ")).containsExactly(IdentityPermission.AUDIT_READ.getSessionPermission());
+      assertThat(resolver.expand("authentik.audit.read.hasAccess")).containsExactly(IdentityPermission.AUDIT_READ.getSessionPermission());
       assertThat(resolver.expand("")).isEmpty();
       assertThat(resolver.expand(null)).isEmpty();
    }

@@ -38,9 +38,9 @@ import org.json.JSONObject;
  ** The qbit's own enforcement point (DESIGN.md section 5.3). QQQ core actions
  ** do not enforce permissions for non-HTTP callers (QRun-IO/qqq#1061), so every
  ** call into AuthentikActionUtil is checked here first:
- ** - reads need the table's identity.* permission (system sessions may read,
+ ** - reads need the table's authentik.* permission (system sessions may read,
  **   for the mirror sync);
- ** - sensitive fields need identity.audit.read;
+ ** - sensitive fields need authentik.audit.read;
  ** - writes are refused in this release (read-only MVP), and always refused
  **   for system sessions, in readOnly mode, or without the feature;
  ** - records outside userScope are invisible.

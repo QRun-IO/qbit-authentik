@@ -1,5 +1,67 @@
 # Upgrading qbit-authentik
 
+## Permissions renamed `identity.*` → `authentik.*` (unreleased → first release)
+
+The qbit's permissions follow the same owner naming rule (2026-10-12) and now
+carry the qbit's name. The suffixes are unchanged:
+
+| Before | After |
+|---|---|
+| `identity.*` | `authentik.*` |
+| `identity.users.read` | `authentik.users.read` |
+| `identity.users.manage` | `authentik.users.manage` |
+| `identity.groups.manage` | `authentik.groups.manage` |
+| `identity.memberships.manage` | `authentik.memberships.manage` |
+| `identity.permissions.manage` | `authentik.permissions.manage` |
+| `identity.roles.manage` | `authentik.roles.manage` |
+| `identity.credentials.reset` | `authentik.credentials.reset` |
+| `identity.sessions.revoke` | `authentik.sessions.revoke` |
+| `identity.audit.read` | `authentik.audit.read` |
+| `identity.approve` | `authentik.approve` |
+| `identity.admin` | `authentik.admin` |
+
+The QQQ session form is the new name plus `.hasAccess`
+(`authentik.users.read.hasAccess`).
+
+**Legacy names are not granted.** The resolver lists an old `identity.*` name
+among a group's *unknown* permissions, so it grants nothing and fails closed.
+Update every stored grant **before** you deploy, or the admins lose the
+Identity app until you do:
+
+- **Authentik group attributes:** edit `qqq.io/permissions` on each group, for
+  example `identity-admins`, in the Authentik UI (Directory → Groups →
+  Attributes) or in its blueprint. Replace `identity.` with `authentik.`:
+
+  ```yaml
+  attributes:
+    qqq.io/permissions:
+      - authentik.*            # was identity.*
+  ```
+
+  To find the groups that still carry old names, run the drift report. Its
+  "group attributes" check warns about each `identity.*` entry ("grants
+  nothing in this app").
+- **QQQ-side grants:** these are static fallbacks in
+  `AuthentikGroupPermissionMapper`, host permission lists and role tables. If
+  a host stores permission names in a table:
+
+  ```sql
+  -- example only: use your host's table and column names
+  UPDATE role_permission
+     SET permission_name = REPLACE(permission_name, 'identity.', 'authentik.')
+   WHERE permission_name LIKE 'identity.%';
+  ```
+
+  The qbit itself stores no grants in a database. `qqq_user_session` rows hold
+  resolved permissions, so sign users out (or let their sessions expire)
+  after the change.
+- **Code** that names `identity.*` strings. Use `IdentityPermission`
+  instead. `IdentityPermission.LEGACY_PREFIX`, `LEGACY_WILDCARD` and
+  `getLegacyShortName()` (all deprecated) give the old names for upgrade
+  scripts.
+
+The `identity-admins` group name and the "Identity" app label are unchanged.
+
 ## Snake_case table names (unreleased → first release)
 
 Table names now follow the owner naming rule (2026-10-12): lowercase snake_case,
@@ -15,8 +77,7 @@ prefixed with the qbit's name and `_`.
 
 With a custom `tableNamePrefix` the prefix is snake-cased too: `myAuth` gives
 `my_auth_user`. App, widget, backend and process names keep camelCase
-(`authentikAdmin`, `authentikDriftReport`, `authentikApi`). Permission names
-(`identity.*`) are unchanged.
+(`authentikAdmin`, `authentikDriftReport`, `authentikApi`).
 
 The tables are API-backed, so there is no database DDL. Hosts that ran a
 pre-release snapshot should update anything that stores a table name:

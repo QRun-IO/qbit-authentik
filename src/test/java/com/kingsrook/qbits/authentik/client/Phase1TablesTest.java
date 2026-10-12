@@ -176,7 +176,7 @@ class Phase1TablesTest
 
       List<QRecord> groups = query("group", new QQueryFilter());
       QRecord       child  = groups.stream().filter(g -> "phase1-child-of-identity-admins".equals(g.getValueString("name"))).findFirst().orElseThrow();
-      assertThat(child.getValueString("effectivePermissions")).contains("identity.memberships.manage.hasAccess");
+      assertThat(child.getValueString("effectivePermissions")).contains("authentik.memberships.manage.hasAccess");
       assertThat(child.getValueBoolean("isSuperuserInherited")).isFalse();
       QRecord admins = groups.stream().filter(g -> "authentik Admins".equals(g.getValueString("name"))).findFirst().orElseThrow();
       assertThat(admins.getValueBoolean("isSuperuserInherited")).isTrue();
@@ -190,7 +190,7 @@ class Phase1TablesTest
 
 
    /*******************************************************************************
-    ** Sessions and events need identity.audit.read and map recorded rows.
+    ** Sessions and events need authentik.audit.read and map recorded rows.
     *******************************************************************************/
    @Test
    void sessionsAndEvents() throws QException

@@ -29,7 +29,7 @@ import org.json.JSONObject;
 /*******************************************************************************
  ** One field of an Authentik-backed table: how to read it from the Authentik
  ** JSON, which QQQ criteria map to which Authentik query parameters, and
- ** whether it is sensitive (stripped without identity.audit.read).
+ ** whether it is sensitive (stripped without authentik.audit.read).
  *******************************************************************************/
 public class AuthentikFieldSpec
 {
@@ -70,7 +70,7 @@ public class AuthentikFieldSpec
 
 
    /*******************************************************************************
-    ** Mark as sensitive (needs identity.audit.read to see or filter on).
+    ** Mark as sensitive (needs authentik.audit.read to see or filter on).
     *******************************************************************************/
    public AuthentikFieldSpec withSensitive()
    {

@@ -37,10 +37,10 @@ Access is controlled by QQQ permissions:
 
 | Permission (held as `<name>.hasAccess`) | Grants |
 |---|---|
-| `identity.users.read` | the Identity app and its tables |
-| `identity.audit.read` | sensitive fields and tables |
+| `authentik.users.read` | the Identity app and its tables |
+| `authentik.audit.read` | sensitive fields and tables |
 
-The full `identity.*` set is in DESIGN.md section 5.2.
+The full `authentik.*` set is in DESIGN.md section 5.2.
 
 ### Authentik side
 
@@ -59,7 +59,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. Produces the `authentikApi` API backend, read-only tables (`authentik_user`, `authentik_group`, `authentik_group_member`, `authentik_session`, `authentik_event`), the drift report widget, and the `authentikAdmin` ("Identity") app, which the host may nest. |
 | Required config | `baseUrl`, `apiToken`, `appKey` (lower-case letters, digits, dashes; chooses the service-account name), `applicationsInScope` (Authentik application slugs). Optional: `userScopePathStartsWith`, `groupScopeNamePrefix`, `mirrorBackendName` (phase 1 `MIRROR`), `throttleRequestsPerSecond` (default 10). |
 | Secrets / env | `apiToken` as a `${env.X}` reference (the example uses `AUTHENTIK_API_TOKEN`); `bootstrapOperators` defaults to `${env.AUTHENTIK_QBIT_BOOTSTRAP_OPERATORS}` and `webhookSecret` to `${env.AUTHENTIK_WEBHOOK_SECRET}`. Keep them in the host's secret store, never in config files. |
-| Permissions | `identity.users.read` (Identity app and tables), `identity.audit.read` (sensitive fields and tables); the full `identity.*` set is in DESIGN.md section 5.2. Granted through the Authentik group attribute `qqq.io/permissions`, read by `AuthentikGroupPermissionMapper`. |
+| Permissions | `authentik.users.read` (Identity app and tables), `authentik.audit.read` (sensitive fields and tables); the full `authentik.*` set is in DESIGN.md section 5.2. Granted through the Authentik group attribute `qqq.io/permissions`, read by `AuthentikGroupPermissionMapper`. |
 | Storage | None for the read-only line, except the mirror tables when `MIRROR` is enabled on `mirrorBackendName`. |
 | Known limitations | Read-only: every write is refused by `AuthentikGuard` until phases 2-3. `RBAC`, `WEBHOOK` and `SNAPSHOT_EXPORT` are refused by config validation. |
 | Upgrading | First release line; nothing to migrate. |

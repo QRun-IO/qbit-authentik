@@ -74,7 +74,7 @@ entries:
       name: identity-admins
     attrs:
       attributes:
-        qqq.io/permissions: ["identity.*"]
+        qqq.io/permissions: ["authentik.*"]
         qqq.io/app-access: ["kof22-website-prod"]
   - model: authentik_core.group
     state: created

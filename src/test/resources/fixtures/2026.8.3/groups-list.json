@@ -45,7 +45,7 @@
     "name": "identity-admins",
     "attributes": {
       "qqq.io/app-access": ["kof22-website-prod"],
-      "qqq.io/permissions": ["identity.*"]
+      "qqq.io/permissions": ["authentik.*"]
     },
     "pk": "2eab2c0f-14f0-474c-b27f-d02c3bfcb7ed",
     "children_obj": [],

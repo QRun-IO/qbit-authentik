@@ -30,7 +30,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitComponentMetaData
 /*******************************************************************************
  ** The "Identity Drift Report" widget: a standard TABLE widget (generic UI, no
  ** frontend work) listing the AuthentikDriftReport findings. Needs
- ** identity.admin. The renderer finds the qbit through the "backendName"
+ ** authentik.admin. The renderer finds the qbit through the "backendName"
  ** default value.
  *******************************************************************************/
 public class AuthentikDriftReportWidgetProducer extends QBitComponentMetaDataProducer<QWidgetMetaData, AuthentikQBitConfig>
