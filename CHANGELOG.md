@@ -4,6 +4,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Documentation
+- README: "Adopting in another app" section (coordinates, configuration, secrets, permissions, limitations) linking the QQQ adoption checklist; examples use neutral names instead of one host's (#3).
+
 ### Added (phase 1, read-only MVP)
 - Tables: `authentikGroupMember` (virtual membership table: by group, by user, by key, or a bounded sweep), `authentikSession` and `authentikEvent` (both need `identity.audit.read`).
 - `GroupGraph` and `EffectivePermissionResolver`: groups, including inherited parents, become QQQ permissions. `identity.*` and catalog wildcards are expanded; unknown names are reported, never granted. Groups show inherited superuser status and effective permissions; users show effective permissions.

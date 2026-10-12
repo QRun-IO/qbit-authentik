@@ -23,8 +23,8 @@ import java.util.function.LongSupplier;
 
 /*******************************************************************************
  ** Self-imposed client-side rate limit (DESIGN.md section 9.3). Authentik does
- ** not throttle authenticated API calls at all, and kof22's Authentik shares the
- ** website's Postgres, so the qbit limits itself: a token bucket refilled at
+ ** not throttle authenticated API calls at all, and an Authentik may share the
+ ** Postgres of other applications, so the qbit limits itself: a token bucket refilled at
  ** requestsPerSecond, holding at most burst tokens. acquire() blocks until a
  ** token is available. Shared by all requests of one qbit instance.
  *******************************************************************************/
