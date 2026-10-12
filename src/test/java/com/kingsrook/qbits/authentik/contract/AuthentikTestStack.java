@@ -48,6 +48,7 @@ import org.testcontainers.utility.MountableFile;
 public final class AuthentikTestStack
 {
    public static final String BOOTSTRAP_TOKEN    = "contract-test-bootstrap-token-0123456789";
+   public static final String BOOTSTRAP_PASSWORD = "contract-test-password-123";
    public static final String SERVICE_ACCOUNT    = "qqq-kof22-admin-idadmin";
    public static final String BREAK_GLASS        = "kof22-breakglass";
    public static final String SUPERUSER_GROUP    = "authentik Admins";
@@ -116,7 +117,7 @@ public final class AuthentikTestStack
       env.put("AUTHENTIK_POSTGRESQL__PASSWORD", "authentik-test");
       env.put("AUTHENTIK_POSTGRESQL__NAME", "authentik");
       env.put("AUTHENTIK_BOOTSTRAP_TOKEN", BOOTSTRAP_TOKEN);
-      env.put("AUTHENTIK_BOOTSTRAP_PASSWORD", "contract-test-password-123");
+      env.put("AUTHENTIK_BOOTSTRAP_PASSWORD", BOOTSTRAP_PASSWORD);
       env.put("AUTHENTIK_BOOTSTRAP_EMAIL", "akadmin@example.test");
       env.put("AUTHENTIK_EMAIL__HOST", "mailpit");
       env.put("AUTHENTIK_EMAIL__PORT", "1025");

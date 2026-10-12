@@ -27,7 +27,10 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import com.kingsrook.qbits.authentik.AuthentikRuntime;
+import com.kingsrook.qbits.authentik.permissions.EffectivePermissionResolver;
+import com.kingsrook.qbits.authentik.permissions.GroupGraph;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
+import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -54,6 +57,7 @@ import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import com.kingsrook.qqq.backend.module.api.actions.BaseAPIActionUtil;
 import com.kingsrook.qqq.backend.module.api.actions.QHttpResponse;
 import com.kingsrook.qqq.backend.module.api.model.OutboundAPILog;
+import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
 import org.apache.http.Header;
 import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.NameValuePair;
@@ -98,6 +102,32 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
    private static final AtomicBoolean VERSION_CHECKED = new AtomicBoolean(false);
 
+   /** Maximum memberships / groups read by one sweep (bounded, never silently: see memberships()). */
+   public static final int MAX_SWEEP_OBJECTS = 20_000;
+
+   /** Display value for derived fields when the group graph cannot be read. */
+   public static final String UNAVAILABLE = "Unavailable (Authentik groups could not be read)";
+
+   private EffectivePermissionResolver resolverForCall;
+
+
+
+   /*******************************************************************************
+    ** A client for a qbit API backend of the current QInstance, for code that
+    ** is not a table action (widgets, the drift report). Honours the backend's
+    ** configured action util class (tests swap it).
+    *******************************************************************************/
+   public static AuthentikActionUtil forBackend(String backendName) throws QException
+   {
+      if(QContext.getQInstance() == null || !(QContext.getQInstance().getBackend(backendName) instanceof APIBackendMetaData backend))
+      {
+         throw (new QException("No Authentik API backend named " + backendName));
+      }
+      BaseAPIActionUtil util = QCodeLoader.getAdHoc(BaseAPIActionUtil.class, backend.getActionUtil());
+      util.setBackendMetaData(backend);
+      return ((AuthentikActionUtil) util);
+   }
+
 
 
    /*******************************************************************************
@@ -134,8 +164,14 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       AuthentikTableSpec spec = spec(table);
       runtime().getGuard().checkRead(spec);
 
+      CountOutput output = new CountOutput();
+      if(spec.isVirtual())
+      {
+         output.setCount(memberships(spec, countInput.getFilter()).size());
+         return (output);
+      }
+
       AuthentikFilterMapper.MappedFilter mapped = map(spec, countInput.getFilter());
-      CountOutput                        output = new CountOutput();
       if(mapped.isKeyLookup())
       {
          output.setCount(fetchByKeys(table, spec, mapped.keyLookup(), null).size());
@@ -143,7 +179,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       }
 
       JSONObject page = getJson(listUrl(spec, mapped, 1, 1));
-      output.setCount(page.optJSONObject("pagination") == null ? 0 : page.getJSONObject("pagination").optInt("count", 0));
+      output.setCount(pagination(page).optInt("count", 0));
       return (output);
    }
 
@@ -162,6 +198,17 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       if(getInput.getPrimaryKey() == null)
       {
          throw (new QUserFacingException(spec.getLabel() + " can only be fetched by id."));
+      }
+
+      if(spec.isVirtual())
+      {
+         List<JSONObject> rows = memberships(spec, new QQueryFilter(new com.kingsrook.qqq.backend.core.model.actions.tables.query.QFilterCriteria(spec.getKeyFieldName(),
+            com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator.EQUALS, getInput.getPrimaryKey())));
+         if(!rows.isEmpty())
+         {
+            output.setRecord(toRecord(spec, rows.get(0), runtime().getGuard().maySeeSensitive()));
+         }
+         return (output);
       }
 
       JSONObject object = getObject(spec, getInput.getPrimaryKey());
@@ -183,13 +230,31 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       AuthentikTableSpec spec = spec(table);
       runtime().getGuard().checkRead(spec);
 
-      QueryOutput                        output    = new QueryOutput(queryInput);
-      QQueryFilter                       filter    = queryInput.getFilter();
-      AuthentikFilterMapper.MappedFilter mapped    = map(spec, filter);
-      boolean                            sensitive = runtime().getGuard().maySeeSensitive();
+      QueryOutput  output    = new QueryOutput(queryInput);
+      QQueryFilter filter    = queryInput.getFilter();
+      boolean      sensitive = runtime().getGuard().maySeeSensitive();
 
       Integer limit = filter == null ? null : filter.getLimit();
       int     skip  = filter == null || filter.getSkip() == null ? 0 : filter.getSkip();
+
+      if(limit != null && limit <= 0)
+      {
+         return (output);
+      }
+
+      if(spec.isVirtual())
+      {
+         List<JSONObject> rows  = memberships(spec, filter);
+         int              added = 0;
+         for(int i = skip; i < rows.size() && (limit == null || added < limit); i++)
+         {
+            output.addRecord(toRecord(spec, rows.get(i), sensitive));
+            added++;
+         }
+         return (output);
+      }
+
+      AuthentikFilterMapper.MappedFilter mapped = map(spec, filter);
 
       if(mapped.isKeyLookup())
       {
@@ -245,8 +310,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
          offset = 0;
 
-         JSONObject pagination = response.optJSONObject("pagination");
-         int        totalPages = pagination == null ? page : pagination.optInt("total_pages", page);
+         int totalPages = pagination(response).optInt("total_pages", page);
          if(page >= totalPages || queryInput.getAsyncJobCallback().wasCancelRequested())
          {
             return (output);
@@ -300,7 +364,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    public JSONObject getObject(AuthentikTableSpec spec, Serializable key) throws QException
    {
       String keyText = String.valueOf(key).trim();
-      if(keyText.isEmpty() || !keyText.matches("[A-Za-z0-9._:-]+"))
+      if(keyText.isEmpty() || !keyText.matches("[A-Za-z0-9._:-]+") || keyText.contains(".."))
       {
          return (null);
       }
@@ -354,8 +418,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          {
             rs.add(results.getJSONObject(i));
          }
-         JSONObject pagination = response.optJSONObject("pagination");
-         if(rs.size() >= maxObjects || pagination == null || page >= pagination.optInt("total_pages", page))
+         if(rs.size() >= maxObjects || page >= pagination(response).optInt("total_pages", page))
          {
             return (rs);
          }
@@ -422,6 +485,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
          if(AuthentikTables.USER.equals(spec.getName()))
          {
+            checkWithinUserScope(mapped.params());
             addUserScope(builder, usedNames);
          }
          builder.addParameter("page", String.valueOf(page));
@@ -440,6 +504,31 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     ** Server-side user scope (records are also checked one by one). A filter
     ** the operator set on the same parameter wins server-side; the per-record
     ** check still enforces the scope.
+    *******************************************************************************/
+   private void checkWithinUserScope(List<NameValuePair> params) throws QUserFacingException
+   {
+      String       pathPrefix  = runtime().getConfig().getUserScopePathStartsWith();
+      List<String> scopeGroups = runtime().getConfig().getUserScopeGroupNames() == null ? List.of() : runtime().getConfig().getUserScopeGroupNames();
+      for(NameValuePair param : params)
+      {
+         boolean outside = switch(param.getName())
+         {
+            case "type" -> !List.of(AuthentikTables.DEFAULT_USER_TYPES).contains(param.getValue());
+            case "path", "path_startswith" -> StringUtils.hasContent(pathPrefix) && !param.getValue().startsWith(pathPrefix);
+            case "groups_by_name" -> !scopeGroups.isEmpty() && !scopeGroups.contains(param.getValue());
+            default -> false;
+         };
+         if(outside)
+         {
+            throw (new QUserFacingException("That filter (" + param.getName() + " = " + param.getValue() + ") is outside the users this app may see."));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Scope parameters (the operator's narrower filter, checked above, wins).
     *******************************************************************************/
    private void addUserScope(URIBuilder builder, List<String> usedNames)
    {
@@ -527,6 +616,37 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
             {
                record.setDisplayValue("isProtected", "Protected: " + protection.reason());
             }
+
+            EffectivePermissionResolver resolver = resolverForCall();
+            if(resolver != null)
+            {
+               List<String> groupPks = new ArrayList<>();
+               JSONArray    groups   = object.optJSONArray("groups_obj");
+               for(int i = 0; groups != null && i < groups.length(); i++)
+               {
+                  groupPks.add(groups.getJSONObject(i).optString("pk"));
+               }
+               record.setValue("effectivePermissions", String.join(", ", resolver.resolveGroups(groupPks).sessionPermissions()));
+            }
+            else
+            {
+               record.setDisplayValue("effectivePermissions", UNAVAILABLE);
+            }
+         }
+         else if(AuthentikTables.GROUP.equals(spec.getName()))
+         {
+            EffectivePermissionResolver resolver = resolverForCall();
+            if(resolver != null)
+            {
+               String pk = object.optString("pk");
+               record.setValue("isSuperuserInherited", resolverGraph.isSuperuserInherited(pk));
+               record.setValue("effectivePermissions", String.join(", ", resolver.resolveGroups(List.of(pk)).sessionPermissions()));
+            }
+            else
+            {
+               record.setDisplayValue("effectivePermissions", UNAVAILABLE);
+               record.setDisplayValue("isSuperuserInherited", UNAVAILABLE);
+            }
          }
          return (record);
       }
@@ -539,12 +659,342 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
 
    /*******************************************************************************
+    ** The current group graph: every group with parents, attributes and member
+    ** pks (cached for groupCacheTtlSeconds).
+    *******************************************************************************/
+   public GroupGraph groupGraph() throws QException
+   {
+      AuthentikRuntime runtime = runtime();
+      boolean          cache   = runtime.getConfig().getGroupCacheTtlSeconds() != null && runtime.getConfig().getGroupCacheTtlSeconds() > 0;
+      if(cache)
+      {
+         Optional<GroupGraph> cached = runtime.getGroupGraphCache().getMemoizedResult("all").map(m -> m.getResult());
+         if(cached.isPresent())
+         {
+            return (cached.get());
+         }
+      }
+
+      List<JSONObject> groups = getAllPages("/core/groups/?include_users=false&include_parents=false&include_children=false&ordering=name", MAX_SWEEP_OBJECTS);
+      if(groups.size() >= MAX_SWEEP_OBJECTS)
+      {
+         throw (new QUserFacingException("More than " + MAX_SWEEP_OBJECTS + " Authentik groups; the group graph is not supported at this size."));
+      }
+      GroupGraph graph = GroupGraph.fromGroups(groups);
+      if(cache)
+      {
+         runtime.getGroupGraphCache().storeResult("all", graph);
+      }
+      return (graph);
+   }
+
+
+
+   /*******************************************************************************
+    ** A resolver over the current group graph and the instance's permissions.
+    *******************************************************************************/
+   public EffectivePermissionResolver resolver() throws QException
+   {
+      return (new EffectivePermissionResolver(groupGraph(), runtime().getPermissionCatalog()));
+   }
+
+
+
+   private GroupGraph resolverGraph;
+   private boolean    resolverFailed;
+
+
+
+   /*******************************************************************************
+    ** The resolver for this call (built once per util instance); null when the
+    ** group graph cannot be read, in which case derived fields stay empty.
+    *******************************************************************************/
+   private EffectivePermissionResolver resolverForCall()
+   {
+      if(resolverForCall == null && !resolverFailed)
+      {
+         try
+         {
+            resolverGraph = groupGraph();
+            resolverForCall = new EffectivePermissionResolver(resolverGraph, runtime().getPermissionCatalog());
+         }
+         catch(Exception e)
+         {
+            resolverFailed = true;
+            LOG.warn("Group graph unavailable; effective permissions shown as unavailable", logPair("error", AuthentikRedactor.redactText(String.valueOf(e.getMessage()), token())));
+            return (null);
+         }
+      }
+      return (resolverForCall);
+   }
+
+
+
+   /*******************************************************************************
+    ** Rows of the virtual membership table for a filter. Criteria: groupPk
+    ** (equals / in), groupName, userPk, username (equals), id (key lookup);
+    ** AND only. The narrowest criterion picks the source (a group, a user, or a
+    ** sweep of all groups); all criteria are then applied to the rows, which
+    ** are sorted by the requested ordering (default group, then username).
+    *******************************************************************************/
+   public List<JSONObject> memberships(AuthentikTableSpec spec, QQueryFilter filter) throws QException
+   {
+      AuthentikFilterMapper.MappedFilter mapped = runtime().getFilterMapper().map(spec, filter, runtime().getGuard().maySeeSensitive());
+
+      java.util.Map<String, List<String>> wanted   = new java.util.LinkedHashMap<>();
+      String                              ordering = "groupName";
+      for(NameValuePair param : mapped.params())
+      {
+         if(param.getName().equals("ordering"))
+         {
+            ordering = param.getValue();
+         }
+         else
+         {
+            wanted.computeIfAbsent(param.getName(), k -> new ArrayList<>()).add(param.getValue());
+         }
+      }
+      if(mapped.isKeyLookup())
+      {
+         for(Serializable key : mapped.keyLookup())
+         {
+            String[] parts = String.valueOf(key).split(":", 2);
+            if(parts.length == 2)
+            {
+               wanted.computeIfAbsent("groupPk", k -> new ArrayList<>()).add(parts[0]);
+               wanted.computeIfAbsent("id", k -> new ArrayList<>()).add(String.valueOf(key));
+            }
+         }
+         if(!wanted.containsKey("id"))
+         {
+            return (List.of());
+         }
+      }
+
+      List<JSONObject> rows = new ArrayList<>();
+      if(wanted.containsKey("groupPk"))
+      {
+         for(String groupPk : new java.util.LinkedHashSet<>(wanted.get("groupPk")))
+         {
+            JSONObject group = groupPk.matches("[A-Za-z0-9-]+") ? getJsonOrNull(runtime().getConfig().getApiRoot() + "/core/groups/" + groupPk + "/?include_users=true") : null;
+            addGroupRows(rows, group);
+         }
+      }
+      else if(wanted.containsKey("groupName"))
+      {
+         JSONArray results = getApiJson("/core/groups/?include_users=true&name=" + encode(wanted.get("groupName").get(0))).optJSONArray("results");
+         addGroupRows(rows, results == null || results.isEmpty() ? null : results.getJSONObject(0));
+      }
+      else if(wanted.containsKey("userPk") || wanted.containsKey("username"))
+      {
+         JSONObject user;
+         if(wanted.containsKey("userPk"))
+         {
+            String userPk = wanted.get("userPk").get(0);
+            user = userPk.matches("[0-9]+") ? getJsonOrNull(runtime().getConfig().getApiRoot() + "/core/users/" + userPk + "/") : null;
+         }
+         else
+         {
+            JSONArray results = getApiJson("/core/users/?include_groups=true&username=" + encode(wanted.get("username").get(0))).optJSONArray("results");
+            user = results == null || results.isEmpty() ? null : results.getJSONObject(0);
+         }
+         addUserRows(rows, user);
+      }
+      else
+      {
+         List<JSONObject> groups = getAllPages("/core/groups/?include_users=true&ordering=name", MAX_SWEEP_OBJECTS);
+         for(JSONObject group : groups)
+         {
+            addGroupRows(rows, group);
+         }
+         if(rows.size() >= MAX_SWEEP_OBJECTS || groups.size() >= MAX_SWEEP_OBJECTS)
+         {
+            throw (new QUserFacingException("Too many memberships to list without a filter; filter by group or user."));
+         }
+      }
+
+      List<JSONObject> matching = new ArrayList<>();
+      for(JSONObject row : rows)
+      {
+         boolean keep = true;
+         for(java.util.Map.Entry<String, List<String>> entry : wanted.entrySet())
+         {
+            if(!entry.getValue().contains(String.valueOf(row.opt(entry.getKey()))))
+            {
+               keep = false;
+               break;
+            }
+         }
+         if(keep && isMemberInScope(row))
+         {
+            matching.add(row);
+         }
+      }
+
+      matching.sort(membershipComparator(ordering));
+      return (matching);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static java.util.Comparator<JSONObject> membershipComparator(String ordering)
+   {
+      java.util.Comparator<JSONObject> rs = null;
+      for(String part : ordering.split(","))
+      {
+         boolean                          descending = part.startsWith("-");
+         String                           field      = descending ? part.substring(1) : part;
+         java.util.Comparator<JSONObject> one        = java.util.Comparator.comparing(o -> o.optString(field, ""), String.CASE_INSENSITIVE_ORDER);
+         if(descending)
+         {
+            one = one.reversed();
+         }
+         rs = rs == null ? one : rs.thenComparing(one);
+      }
+      java.util.Comparator<JSONObject> tieBreak = java.util.Comparator.comparing(o -> o.optString("groupName", "") + "\u0000" + o.optString("username", ""));
+      return (rs == null ? tieBreak : rs.thenComparing(tieBreak));
+   }
+
+
+
+   /*******************************************************************************
+    ** Rows for every member of a group (from users_obj).
+    *******************************************************************************/
+   private static void addGroupRows(List<JSONObject> rows, JSONObject group)
+   {
+      if(group == null)
+      {
+         return;
+      }
+      JSONArray users = group.optJSONArray("users_obj");
+      for(int i = 0; users != null && i < users.length(); i++)
+      {
+         JSONObject user = users.getJSONObject(i);
+         rows.add(membershipRow(group.optString("pk"), group.optString("name"), user));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Rows for every group of a user (from groups_obj).
+    *******************************************************************************/
+   private static void addUserRows(List<JSONObject> rows, JSONObject user)
+   {
+      if(user == null)
+      {
+         return;
+      }
+      JSONArray groups = user.optJSONArray("groups_obj");
+      for(int i = 0; groups != null && i < groups.length(); i++)
+      {
+         JSONObject group = groups.getJSONObject(i);
+         rows.add(membershipRow(group.optString("pk"), group.optString("name"), user));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static JSONObject membershipRow(String groupPk, String groupName, JSONObject user)
+   {
+      return (new JSONObject()
+         .put("id", groupPk + ":" + user.optInt("pk"))
+         .put("groupPk", groupPk)
+         .put("groupName", groupName)
+         .put("userPk", user.optInt("pk"))
+         .put("username", user.optString("username"))
+         .put("name", user.optString("name"))
+         .put("email", user.optString("email"))
+         .put("isActive", user.optBoolean("is_active", true)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Membership rows carry partial users (no type or path), so with a user
+    ** scope configured each member is checked through a (cached) user GET.
+    *******************************************************************************/
+   private boolean isMemberInScope(JSONObject row) throws QException
+   {
+      if(scopedUserPks == null)
+      {
+         scopedUserPks = new java.util.HashSet<>();
+         try
+         {
+            URIBuilder builder = new URIBuilder("/core/users/");
+            addUserScope(builder, List.of());
+            String query = builder.build().getRawQuery();
+            for(JSONObject user : getAllPages("/core/users/?" + query, MAX_SWEEP_OBJECTS))
+            {
+               if(runtime().getGuard().isUserInScope(user))
+               {
+                  scopedUserPks.add(user.getInt("pk"));
+               }
+            }
+         }
+         catch(java.net.URISyntaxException e)
+         {
+            throw (new QException("Bad Authentik URL", e));
+         }
+      }
+      return (scopedUserPks.contains(row.optInt("userPk")));
+   }
+
+
+
+   private java.util.Set<Integer> scopedUserPks;
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static String encode(String value)
+   {
+      return (java.net.URLEncoder.encode(value, StandardCharsets.UTF_8));
+   }
+
+
+
+   /*******************************************************************************
     ** GET JSON through the response cache.
     *******************************************************************************/
    private JSONObject getJson(String url) throws QException
    {
       String body = getBody(url, false);
       return (parse(url, body));
+   }
+
+
+
+   /*******************************************************************************
+    ** The pagination object of a list response; a list response without one
+    ** means the API changed, which must not read as "no results".
+    *******************************************************************************/
+   static JSONObject pagination(JSONObject response) throws QException
+   {
+      JSONObject pagination = response.optJSONObject("pagination");
+      if(pagination == null)
+      {
+         throw (new QException("Unexpected Authentik list response (no pagination object); has the API changed?"));
+      }
+      return (pagination);
+   }
+
+
+
+   /*******************************************************************************
+    ** GET an API path (relative to /api/v3) as JSON, or null on 404.
+    *******************************************************************************/
+   public JSONObject getApiJsonOrNull(String pathAndQuery) throws QException
+   {
+      return (getJsonOrNull(runtime().getConfig().getApiRoot() + pathAndQuery));
    }
 
 
@@ -725,7 +1175,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     *******************************************************************************/
    static QException mapError(HttpRequestBase request, String path, int status, String body, String token)
    {
-      String detail = AuthentikRedactor.redactText(errorDetail(body), token);
+      String detail = AuthentikRedactor.redactText(errorDetail(AuthentikRedactor.redactText(body, token)), token);
       if(AuthentikRedactor.isSensitivePath(path))
       {
          detail = "(details omitted for a sensitive endpoint)";
@@ -851,7 +1301,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       }
       catch(Exception e)
       {
-         LOG.warn("Error logging an outbound Authentik call", logPair("path", path));
+         LOG.warn("Error logging an outbound Authentik call", logPair("path", path), logPair("error", e.getClass().getSimpleName()));
       }
    }
 
@@ -868,7 +1318,13 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          return;
       }
       String expected = runtime().getConfig().getExpectedServerVersion();
-      fetchServerVersion().ifPresent(actual ->
+      Optional<String> version = fetchServerVersion();
+      if(version.isEmpty())
+      {
+         VERSION_CHECKED.set(false);
+         return;
+      }
+      version.ifPresent(actual ->
       {
          if(StringUtils.hasContent(expected) && !actual.startsWith(expected + ".") && !actual.equals(expected))
          {

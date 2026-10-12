@@ -1,0 +1,44 @@
+{
+  "pagination": {
+    "next": 0,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 1,
+    "end_index": 1,
+    "total_pages": 1
+  },
+  "autocomplete": {},
+  "results": [{
+    "last_ip": "::ffff:172.26.0.1",
+    "current": false,
+    "expires": "2026-10-13T01:15:42.224550Z",
+    "geo_ip": null,
+    "last_used": "2026-10-12T01:15:42.225072Z",
+    "last_user_agent": "Java-http-client/21.0.12.1",
+    "uuid": "3d4611d5-ea75-4e48-b1f2-cdd6b5145a86",
+    "asn": null,
+    "user": 4,
+    "user_agent": {
+      "string": "Java-http-client/21.0.12.1",
+      "os": {
+        "patch": null,
+        "patch_minor": null,
+        "major": null,
+        "minor": null,
+        "family": "Other"
+      },
+      "device": {
+        "model": null,
+        "family": "Other",
+        "brand": null
+      },
+      "user_agent": {
+        "patch": null,
+        "major": null,
+        "minor": null,
+        "family": "Other"
+      }
+    }
+  }]
+}

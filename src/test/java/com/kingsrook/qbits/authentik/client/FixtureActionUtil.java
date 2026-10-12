@@ -33,9 +33,15 @@ import org.apache.http.message.BasicHeader;
  *******************************************************************************/
 public class FixtureActionUtil extends AuthentikActionUtil
 {
+   public static final String EMPTY_PAGE = "{\"pagination\":{\"count\":0,\"current\":1,\"total_pages\":1},\"results\":[]}";
+
    public static final List<HttpRequestBase> REQUESTS = new ArrayList<>();
 
    public static Function<HttpRequestBase, QHttpResponse> handler = r -> response(404, "{\"detail\":\"Not found.\"}");
+
+   /** Body served for the group-graph sweep (GET /core/groups/?include_users=false&include_parents=false...). */
+   public static String groupGraphBody = EMPTY_PAGE;
+
 
 
 
@@ -46,6 +52,7 @@ public class FixtureActionUtil extends AuthentikActionUtil
    {
       REQUESTS.clear();
       handler = r -> response(404, "{\"detail\":\"Not found.\"}");
+      groupGraphBody = EMPTY_PAGE;
       AuthentikActionUtil.resetVersionCheck();
    }
 
@@ -61,6 +68,10 @@ public class FixtureActionUtil extends AuthentikActionUtil
       if(request.getURI().getPath().endsWith("/admin/version/"))
       {
          return (response(200, AuthentikTestSupport.resource("fixtures/2026.8.3/admin-version.json")));
+      }
+      if(request.getURI().getPath().endsWith("/core/groups/") && String.valueOf(request.getURI().getRawQuery()).contains("include_parents=false"))
+      {
+         return (response(200, groupGraphBody));
       }
       return (handler.apply(request));
    }

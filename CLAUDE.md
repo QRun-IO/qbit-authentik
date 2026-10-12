@@ -32,9 +32,11 @@ CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Post
   - Writes go to the guard, which refuses them in 0.1.
   - `execute()` is the single request loop: throttle, bearer header, 429/5xx retry, error mapping, logging.
   - `send()` is the test seam (`FixtureActionUtil`, `QbitReadContractIT.RecordingActionUtil`).
-- `client/AuthentikTables` maps tables to the pinned schema (users, groups). `client/AuthentikApiSurface` lists every operation and parameter used. `SchemaDriftTest` and `SchemaDriftIT` check that surface.
+- `client/AuthentikTables` maps tables to the pinned schema (users, groups, sessions, events), plus the **virtual** `groupMember` table, which `AuthentikActionUtil.memberships()` serves from a group, a user, or a bounded sweep. `client/AuthentikApiSurface` lists every operation and parameter used. `SchemaDriftTest` and `SchemaDriftIT` check that surface.
 - `client/AuthentikFilterMapper` maps a QQQ filter to Authentik params, or rejects it with a `QUserFacingException`. It never filters client-side.
 - `security/AuthentikGuard` handles read and write permission checks, the user scope, and protected-account detection. `security/IdentityPermission` is the `identity.*` catalog (session form `<name>.hasAccess`).
+- `permissions/GroupGraph` + `EffectivePermissionResolver` (pure) turn groups and their ancestors into QQQ permissions. The util caches the graph for `groupCacheTtlSeconds` and uses it for derived fields.
+- `drift/AuthentikDriftReport` holds the drift checks, using only the service account's read permissions. It is rendered by `metadata/AuthentikDriftReportWidgetRenderer`, a standard TABLE widget gated by `identity.admin`.
 
 ## Invariants (do not break)
 

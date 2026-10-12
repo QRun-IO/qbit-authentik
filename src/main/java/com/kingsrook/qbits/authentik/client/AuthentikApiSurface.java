@@ -58,6 +58,17 @@ public final class AuthentikApiSurface
    {
       List<Operation> rs = new ArrayList<>();
       rs.add(new Operation("get", "/admin/version/", Set.of()));
+
+      ///////////////////////////////////////////////////////////
+      // virtual membership table, group graph, drift report  //
+      ///////////////////////////////////////////////////////////
+      rs.add(new Operation("get", "/core/groups/", Set.of("include_users", "include_parents", "include_children", "name", "ordering", "page", "page_size")));
+      rs.add(new Operation("get", "/core/groups/{key}/", Set.of("include_users")));
+      rs.add(new Operation("get", "/core/users/", Set.of("username", "include_groups", "attributes", "type", "path_startswith", "groups_by_name", "page", "page_size")));
+      rs.add(new Operation("get", "/core/users/{key}/", Set.of()));
+      rs.add(new Operation("get", "/managed/blueprints/", Set.of("page", "page_size")));
+      rs.add(new Operation("get", "/core/tokens/", Set.of("user__username", "intent", "page", "page_size")));
+      rs.add(new Operation("get", "/events/events/", Set.of("username", "ordering", "page", "page_size")));
       return (rs);
    }
 
@@ -71,6 +82,10 @@ public final class AuthentikApiSurface
       List<Operation> rs = new ArrayList<>();
       for(AuthentikTableSpec spec : AuthentikTables.all().values())
       {
+         if(spec.isVirtual())
+         {
+            continue;
+         }
          Set<String> listParams = new LinkedHashSet<>(List.of("page", "page_size", "ordering"));
          for(AuthentikFieldSpec field : spec.getFields())
          {

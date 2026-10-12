@@ -65,7 +65,10 @@ class AuthentikQBitProducerTest
 
       QAppMetaData app = qInstance.getApp("authentikAdmin");
       assertThat(app.getLabel()).isEqualTo("Identity");
-      assertThat(app.getChildren()).extracting(c -> c.getName()).containsExactly("authentikUser", "authentikGroup");
+      assertThat(app.getChildren()).extracting(c -> c.getName()).containsExactly("authentikUser", "authentikGroup", "authentikGroupMember", "authentikSession", "authentikEvent");
+      assertThat(app.getWidgets()).containsExactly("authentikDriftReport");
+      assertThat(qInstance.getTable("authentikSession").getPermissionRules().getPermissionBaseName()).isEqualTo("identity.audit.read");
+      assertThat(qInstance.getWidget("authentikDriftReport").getPermissionRules().getPermissionBaseName()).isEqualTo("identity.admin");
 
       assertThat(PermissionsHelper.getAllAvailablePermissionNames(qInstance)).contains(IdentityPermission.USERS_READ.getSessionPermission());
       assertThat(qInstance.getQBits()).containsKey("com.kingsrook.qbits:authentik");

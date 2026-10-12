@@ -29,7 +29,8 @@ new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance);
 
 This produces:
 - an API backend `authentikApi`
-- read-only tables (`authentikUser`, `authentikGroup`, ...)
+- read-only tables `authentikUser`, `authentikGroup`, `authentikGroupMember`, `authentikSession` and `authentikEvent`
+- the Identity Drift Report widget
 - an app `authentikAdmin`, labelled "Identity", that hosts can nest, for example under Admin
 
 Access is controlled by QQQ permissions:

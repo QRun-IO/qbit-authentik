@@ -33,7 +33,7 @@ The agent cannot read production data. The rehearsal runs entirely in local Dock
    git -C cluster-gitops show origin/main:tenants/kof22/website-authentik/blueprint-configmap.yaml > before.yaml
    git -C cluster-gitops show origin/feat/kof22-identity-bootstrap:tenants/kof22/website-authentik/blueprint-configmap.yaml > after.yaml
    ```
-3. **Run** `docs/cluster-gitops-phase0/rehearse-phase0.sh authentik-<date>.dump before.yaml after.yaml`.
+3. **Run** `docs/cluster-gitops-phase0/rehearse-phase0.sh authentik-<date>.dump before.yaml after.yaml` from macOS, Linux or Git Bash. The script has already passed on a synthetic production-like dump: today's `main` blueprint with James re-pinned by the `present` entry, plus UI-made publishers.
    - The script restores the dump into a throwaway Postgres and starts Authentik 2026.8.3 on the current blueprints. It then records every user's groups, switches to the phase 0 blueprints, re-applies both twice, and checks:
      - nobody's memberships changed
      - `james.maes` keeps `authentik Admins` and `kof22-admins`

@@ -1,0 +1,520 @@
+{
+  "pagination": {
+    "next": 2,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 14,
+    "end_index": 10,
+    "total_pages": 2
+  },
+  "autocomplete": {
+    "models": {
+      "authentik_events.event_brand": {
+        "app": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "model_name": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "name": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "pk": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        }
+      },
+      "authentik_events.event_user": {
+        "pk": {
+          "nullable": false,
+          "options": null,
+          "type": "int"
+        },
+        "email": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "username": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        }
+      },
+      "authentik_events.event_context_http_request": {
+        "args": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_events.event_context_http_request_args"
+        },
+        "path": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "method": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "request_id": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "user_agent": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        }
+      },
+      "authentik_events.event": {
+        "app": {
+          "nullable": false,
+          "options": [
+            "authentik.core.api.tokens",
+            "authentik.events.middleware",
+            "authentik.events.models",
+            "authentik.events.signals"
+          ],
+          "type": "str"
+        },
+        "created": {
+          "nullable": false,
+          "options": [],
+          "type": "datetime"
+        },
+        "context": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_events.event_context"
+        },
+        "action": {
+          "nullable": false,
+          "options": [
+            "login",
+            "login_failed",
+            "logout",
+            "user_write",
+            "user_offboarded",
+            "suspicious_request",
+            "password_set",
+            "secret_view",
+            "secret_rotate",
+            "invitation_used",
+            "authorize_application",
+            "source_linked",
+            "impersonation_started",
+            "impersonation_ended",
+            "flow_execution",
+            "policy_execution",
+            "policy_exception",
+            "property_mapping_exception",
+            "system_task_execution",
+            "system_task_exception",
+            "system_exception",
+            "configuration_error",
+            "configuration_warning",
+            "model_created",
+            "model_updated",
+            "model_deleted",
+            "email_sent",
+            "update_available",
+            "export_ready",
+            "review_initiated",
+            "review_overdue",
+            "review_attested",
+            "review_completed",
+            "access_request_created",
+            "access_request_approved",
+            "access_request_denied",
+            "access_request_revoked",
+            "custom_"
+          ],
+          "type": "str"
+        },
+        "client_ip": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "event_uuid": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "user": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_events.event_user"
+        },
+        "brand": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_events.event_brand"
+        }
+      },
+      "authentik_events.event_context": {"http_request": {
+        "nullable": false,
+        "options": null,
+        "type": "relation",
+        "relation": "authentik_events.event_context_http_request"
+      }}
+    },
+    "current_model": "authentik_events.event"
+  },
+  "results": [
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:41.304242Z",
+      "created": "2026-10-12T01:15:41.305079Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "phase1-bad-attributes",
+          "pk": "9f6f47fc18aa4a2da8a1874ebc93939a"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/",
+          "method": "POST",
+          "request_id": "a5c1ff0a98474e90a8656fffe77aaf44",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_created",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "1e29dbee-b80b-4a4a-ad40-15a4e44c15a4",
+      "user": {
+        "pk": 4,
+        "email": "akadmin@example.test",
+        "username": "akadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:41.196525Z",
+      "created": "2026-10-12T01:15:41.197572Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "phase1-child-of-identity-admins",
+          "pk": "a5c199450e4641bb85b68853eb3f375d"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/a5c19945-0e46-41bb-85b6-8853eb3f375d/add_user/",
+          "method": "POST",
+          "request_id": "cb9cc4cf6a75443281704de20b1303a7",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "fcf4c969-8ad9-485c-92e0-1c9b5d1b5b34",
+      "user": {
+        "pk": 4,
+        "email": "akadmin@example.test",
+        "username": "akadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:40.707696Z",
+      "created": "2026-10-12T01:15:40.708545Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "phase1-child-of-identity-admins",
+          "pk": "a5c199450e4641bb85b68853eb3f375d"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/",
+          "method": "POST",
+          "request_id": "a761aec34f40435d83613d6745641069",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "e411eff2-6675-4f88-89c7-91821e7f666d",
+      "user": {
+        "pk": 4,
+        "email": "akadmin@example.test",
+        "username": "akadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:40.670838Z",
+      "created": "2026-10-12T01:15:40.671750Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "phase1-child-of-identity-admins",
+          "pk": "a5c199450e4641bb85b68853eb3f375d"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/",
+          "method": "POST",
+          "request_id": "a761aec34f40435d83613d6745641069",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_created",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "cd6f91a5-dd47-4caf-84af-dd121bc9eb16",
+      "user": {
+        "pk": 4,
+        "email": "akadmin@example.test",
+        "username": "akadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:36.198409Z",
+      "created": "2026-10-12T01:15:36.199330Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "kof-website-publishers",
+          "pk": "014cb7a18c864990a92cedf6985939a7"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/014cb7a1-8c86-4990-a92c-edf6985939a7/add_user/",
+          "method": "POST",
+          "request_id": "0b6d047cc050411a943769a8407f4800",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "f29fd3cb-2dc4-45bf-99d7-8d261459f930",
+      "user": {
+        "pk": 4,
+        "email": "akadmin@example.test",
+        "username": "akadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:34.820256Z",
+      "created": "2026-10-12T01:15:34.822932Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "floor-plain",
+          "pk": "65283c7b44e844749cf3e61b54fa725c"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/65283c7b-44e8-4474-9cf3-e61b54fa725c/remove_user/",
+          "method": "POST",
+          "request_id": "5aaa9626c90a4e0ead7d0d5ea3515933",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "0a8aa038-5571-4a96-bc76-4a4045fb50bc",
+      "user": {
+        "pk": 7,
+        "email": "",
+        "username": "qqq-kof22-admin-idadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:34.693177Z",
+      "created": "2026-10-12T01:15:34.695787Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "floor-plain",
+          "pk": "65283c7b44e844749cf3e61b54fa725c"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/65283c7b-44e8-4474-9cf3-e61b54fa725c/add_user/",
+          "method": "POST",
+          "request_id": "7e3392719cb7460fb2fa98391d9ebeec",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "59a6957e-d6d3-4a0e-b561-0f5a824c4a8f",
+      "user": {
+        "pk": 7,
+        "email": "",
+        "username": "qqq-kof22-admin-idadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:32.863998Z",
+      "created": "2026-10-12T01:15:32.864931Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "authentik Admins",
+          "pk": "c4e3b3ea2dca4f4babfee83f4784a302"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/c4e3b3ea-2dca-4f4b-abfe-e83f4784a302/",
+          "method": "PATCH",
+          "request_id": "1bb86894bd8d4941b35b2b982b0b0e67",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "e402f70e-3cab-4532-aed4-1f29ac66fbc8",
+      "user": {
+        "pk": 4,
+        "email": "akadmin@example.test",
+        "username": "akadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:32.746918Z",
+      "created": "2026-10-12T01:15:32.749840Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "authentik Admins renamed",
+          "pk": "c4e3b3ea2dca4f4babfee83f4784a302"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/c4e3b3ea-2dca-4f4b-abfe-e83f4784a302/",
+          "method": "PATCH",
+          "request_id": "3d62eb9053564fa1b247206000ccff05",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "d7e2aa37-b6bf-40e8-961f-e3fb0d38f96c",
+      "user": {
+        "pk": 7,
+        "email": "",
+        "username": "qqq-kof22-admin-idadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    },
+    {
+      "app": "authentik.events.middleware",
+      "expires": "2027-10-12T01:15:32.126855Z",
+      "created": "2026-10-12T01:15:32.127799Z",
+      "context": {
+        "model": {
+          "app": "authentik_core",
+          "model_name": "group",
+          "name": "authentik Admins",
+          "pk": "c4e3b3ea2dca4f4babfee83f4784a302"
+        },
+        "http_request": {
+          "args": {},
+          "path": "/api/v3/core/groups/c4e3b3ea-2dca-4f4b-abfe-e83f4784a302/add_user/",
+          "method": "POST",
+          "request_id": "95bf776e7597468f8004474d067569cd",
+          "user_agent": "Java-http-client/21.0.12.1"
+        }
+      },
+      "action": "model_updated",
+      "client_ip": "::ffff:172.26.0.1",
+      "pk": "fcfb303a-ee9f-483c-bd58-c82090ab1d2f",
+      "user": {
+        "pk": 4,
+        "email": "akadmin@example.test",
+        "username": "akadmin"
+      },
+      "brand": {
+        "app": "authentik_brands",
+        "model_name": "brand",
+        "name": "Default brand",
+        "pk": "82bdd9761ed545b2a24e1d2d30ddd4ac"
+      }
+    }
+  ]
+}

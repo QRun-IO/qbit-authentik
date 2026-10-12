@@ -1,0 +1,60 @@
+{
+  "pagination": {
+    "next": 0,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 1,
+    "end_index": 1,
+    "total_pages": 1
+  },
+  "autocomplete": {
+    "models": {
+      "authentik_core.group": {
+        "is_superuser": {
+          "nullable": true,
+          "options": null,
+          "type": "bool"
+        },
+        "name": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "attributes": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_core.group_attributes"
+        }
+      },
+      "authentik_core.group_attributes": {}
+    },
+    "current_model": "authentik_core.group"
+  },
+  "results": [{
+    "inherited_roles_obj": null,
+    "roles_obj": [],
+    "is_superuser": false,
+    "roles": [],
+    "num_pk": 22032,
+    "users_obj": [{
+      "uid": "20731f37d1294a501fbd54f5092ea9b81f03fda1349b2394aa893873670ec195",
+      "is_active": true,
+      "last_login": null,
+      "name": "Phase One",
+      "attributes": {},
+      "pk": 14,
+      "email": "phase1@example.test",
+      "username": "phase1.member"
+    }],
+    "users": [14],
+    "parents_obj": null,
+    "children": [],
+    "name": "phase1-child-of-identity-admins",
+    "attributes": {},
+    "pk": "a5c19945-0e46-41bb-85b6-8853eb3f375d",
+    "children_obj": null,
+    "parents": ["2eab2c0f-14f0-474c-b27f-d02c3bfcb7ed"]
+  }]
+}

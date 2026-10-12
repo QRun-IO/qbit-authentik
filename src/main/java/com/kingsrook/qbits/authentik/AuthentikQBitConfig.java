@@ -75,6 +75,7 @@ public class AuthentikQBitConfig implements QBitConfig
    private Integer               connectTimeoutMillis     = 5_000;
    private Integer               socketTimeoutMillis      = 30_000;
    private String                expectedServerVersion    = "2026.8";
+   private Boolean               allowInsecureHttp        = false;
 
 
 
@@ -97,6 +98,10 @@ public class AuthentikQBitConfig implements QBitConfig
             if(uri.getScheme() == null || !(uri.getScheme().equals("https") || uri.getScheme().equals("http")) || uri.getHost() == null)
             {
                errors.add("baseUrl must be an absolute http(s) URL: " + baseUrl);
+            }
+            else if(uri.getScheme().equals("http") && !Boolean.TRUE.equals(allowInsecureHttp) && !isLoopback(uri.getHost()))
+            {
+               errors.add("baseUrl must use https (the API token would travel in cleartext); http is allowed only for localhost or with allowInsecureHttp: " + baseUrl);
             }
             else if(uri.getPath() != null && uri.getPath().contains("/api/v3"))
             {
@@ -122,6 +127,11 @@ public class AuthentikQBitConfig implements QBitConfig
       if(tableNamePrefix != null && !tableNamePrefix.isEmpty() && !PREFIX_PATTERN.matcher(tableNamePrefix).matches())
       {
          errors.add("tableNamePrefix must start with a letter and contain only letters and digits: " + tableNamePrefix);
+      }
+
+      if(StringUtils.hasContent(groupScopeNamePrefix))
+      {
+         errors.add("groupScopeNamePrefix is not available in this release of qbit-authentik");
       }
 
       Set<AuthentikFeature> requested = features == null ? EnumSet.noneOf(AuthentikFeature.class) : features;
@@ -171,6 +181,38 @@ public class AuthentikQBitConfig implements QBitConfig
       {
          errors.add("throttleRequestsPerSecond must be at least 1");
       }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static boolean isLoopback(String host)
+   {
+      return ("localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host) || "[::1]".equals(host) || "::1".equals(host));
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for allowInsecureHttp
+    *******************************************************************************/
+   public Boolean getAllowInsecureHttp()
+   {
+      return (this.allowInsecureHttp);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for allowInsecureHttp (plain http to a non-loopback host;
+    ** for tests and private networks only)
+    *******************************************************************************/
+   public AuthentikQBitConfig withAllowInsecureHttp(Boolean allowInsecureHttp)
+   {
+      this.allowInsecureHttp = allowInsecureHttp;
+      return (this);
    }
 
 

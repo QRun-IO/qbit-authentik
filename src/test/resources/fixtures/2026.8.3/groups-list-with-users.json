@@ -1,0 +1,267 @@
+{
+  "pagination": {
+    "next": 0,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 11,
+    "end_index": 11,
+    "total_pages": 1
+  },
+  "autocomplete": {
+    "models": {
+      "authentik_core.group": {
+        "is_superuser": {
+          "nullable": true,
+          "options": null,
+          "type": "bool"
+        },
+        "name": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "attributes": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_core.group_attributes"
+        }
+      },
+      "authentik_core.group_attributes": {}
+    },
+    "current_model": "authentik_core.group"
+  },
+  "results": [
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": true,
+      "roles": [],
+      "num_pk": 26171,
+      "users_obj": [
+        {
+          "uid": "f36b1954a79a34292da5065aa22c92661cbfee796a6683f4550f24ce05d2ea9c",
+          "is_active": true,
+          "last_login": "2026-10-12T01:15:42.211224Z",
+          "name": "authentik Default Admin",
+          "attributes": {},
+          "pk": 4,
+          "email": "akadmin@example.test",
+          "username": "akadmin"
+        },
+        {
+          "uid": "5ec4f8d482fa84b43d02d51827dbcac6d160fcd7e058acabfde3cf935e03184a",
+          "is_active": true,
+          "last_login": null,
+          "name": "Break-glass admin",
+          "attributes": {"qqq.io/protected": true},
+          "pk": 8,
+          "email": "",
+          "username": "kof22-breakglass"
+        }
+      ],
+      "users": [
+        4,
+        8
+      ],
+      "parents_obj": null,
+      "children": ["db725d12-8ed2-46c8-8f98-3a43325302a6"],
+      "name": "authentik Admins",
+      "attributes": {},
+      "pk": "c4e3b3ea-2dca-4f4b-abfe-e83f4784a302",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [{
+        "name": "authentik Agent-Users",
+        "pk": "d6e97495-fe8d-4084-9c12-ccc466afa21d"
+      }],
+      "is_superuser": false,
+      "roles": ["d6e97495-fe8d-4084-9c12-ccc466afa21d"],
+      "num_pk": 23858,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": [],
+      "name": "authentik Agent-Users",
+      "attributes": {"notes": "A group with an auto-generated role that allows its members to create agent users.\n"},
+      "pk": "b37d9565-490f-47aa-9d00-b8b1470241be",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [{
+        "name": "authentik Read-only",
+        "pk": "4db176bf-888d-47f9-913d-448ded912eb8"
+      }],
+      "is_superuser": false,
+      "roles": ["4db176bf-888d-47f9-913d-448ded912eb8"],
+      "num_pk": 32585,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": [],
+      "name": "authentik Read-only",
+      "attributes": {"notes": "A group with an auto-generated role that allows read-only permissions on all objects.\n"},
+      "pk": "f525c9f5-6e92-4694-af30-93efcbafd4b2",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 29169,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": [],
+      "name": "floor-child-of-admins",
+      "attributes": {},
+      "pk": "db725d12-8ed2-46c8-8f98-3a43325302a6",
+      "children_obj": null,
+      "parents": ["c4e3b3ea-2dca-4f4b-abfe-e83f4784a302"]
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 13446,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": [],
+      "name": "floor-plain",
+      "attributes": {},
+      "pk": "65283c7b-44e8-4474-9cf3-e61b54fa725c",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 62033,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": ["a5c19945-0e46-41bb-85b6-8853eb3f375d"],
+      "name": "identity-admins",
+      "attributes": {
+        "qqq.io/app-access": ["kof22-website-prod"],
+        "qqq.io/permissions": ["identity.*"]
+      },
+      "pk": "2eab2c0f-14f0-474c-b27f-d02c3bfcb7ed",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 20911,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": [],
+      "name": "kof-website-drafters",
+      "attributes": {},
+      "pk": "9d517d04-2803-41e2-bf9f-d6714d290b90",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 17275,
+      "users_obj": [{
+        "uid": "dcc9281974526cbcdab77e51b5fb506584e8e7d954ae55bca93f5760a91cc8dc",
+        "is_active": true,
+        "last_login": null,
+        "name": "Read Probe 1",
+        "attributes": {},
+        "pk": 10,
+        "email": "read.probe1@example.test",
+        "username": "read.probe1"
+      }],
+      "users": [10],
+      "parents_obj": null,
+      "children": [],
+      "name": "kof-website-publishers",
+      "attributes": {},
+      "pk": "014cb7a1-8c86-4990-a92c-edf6985939a7",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 10530,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": [],
+      "name": "kof22-admins",
+      "attributes": {},
+      "pk": "4f39d0b0-228d-418d-8bf2-9c2c3f5595fd",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 21192,
+      "users_obj": [],
+      "users": [],
+      "parents_obj": null,
+      "children": [],
+      "name": "phase1-bad-attributes",
+      "attributes": {
+        "qqq.io/app-access": ["not-in-scope-app"],
+        "qqq.io/permissions": ["no.such.permission"]
+      },
+      "pk": "9f6f47fc-18aa-4a2d-a8a1-874ebc93939a",
+      "children_obj": null,
+      "parents": []
+    },
+    {
+      "inherited_roles_obj": null,
+      "roles_obj": [],
+      "is_superuser": false,
+      "roles": [],
+      "num_pk": 22032,
+      "users_obj": [{
+        "uid": "20731f37d1294a501fbd54f5092ea9b81f03fda1349b2394aa893873670ec195",
+        "is_active": true,
+        "last_login": null,
+        "name": "Phase One",
+        "attributes": {},
+        "pk": 14,
+        "email": "phase1@example.test",
+        "username": "phase1.member"
+      }],
+      "users": [14],
+      "parents_obj": null,
+      "children": [],
+      "name": "phase1-child-of-identity-admins",
+      "attributes": {},
+      "pk": "a5c19945-0e46-41bb-85b6-8853eb3f375d",
+      "children_obj": null,
+      "parents": ["2eab2c0f-14f0-474c-b27f-d02c3bfcb7ed"]
+    }
+  ]
+}
