@@ -44,7 +44,7 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
  ** Sign-in permissions from Authentik groups (DESIGN.md section 5.6). Use as
  ** (or extend in) the host's OAuth2 authentication customizer.
  **
- ** 1. Group names come from the token's "groups" claim (kof22's profile
+ ** 1. Group names come from the token's "groups" claim (a typical profile
  **    mapping emits direct groups only).
  ** 2. Each group is resolved with its ancestors through the cached group
  **    graph; the union of qqq.io/permissions becomes session permissions,

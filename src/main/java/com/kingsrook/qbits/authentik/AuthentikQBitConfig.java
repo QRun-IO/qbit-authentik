@@ -121,7 +121,7 @@ public class AuthentikQBitConfig implements QBitConfig
 
       if(!StringUtils.hasContent(appKey) || !APP_KEY_PATTERN.matcher(appKey).matches())
       {
-         errors.add("appKey is required: lower-case letters, digits and dashes, e.g. kof22-admin");
+         errors.add("appKey is required: lower-case letters, digits and dashes, e.g. my-app-admin");
       }
 
       if(tableNamePrefix != null && !tableNamePrefix.isEmpty() && !PREFIX_PATTERN.matcher(tableNamePrefix).matches())

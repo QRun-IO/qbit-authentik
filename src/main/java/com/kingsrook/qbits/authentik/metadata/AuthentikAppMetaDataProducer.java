@@ -32,8 +32,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
 /*******************************************************************************
  ** The "Identity" app (DESIGN.md section 8.1): the qbit's tables (and, from
- ** phase 1, its widgets), gated by identity.users.read. Hosts re-parent it, e.g.
- ** kof22 nests it under Admin; its name stays the same. Processes are only
+ ** phase 1, its widgets), gated by identity.users.read. Hosts may re-parent it,
+ ** for example under an Admin app; its name stays the same. Processes are only
  ** ever table or record actions, never navigation entries.
  *******************************************************************************/
 public class AuthentikAppMetaDataProducer extends QBitComponentMetaDataProducer<QAppMetaData, AuthentikQBitConfig>
