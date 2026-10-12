@@ -157,6 +157,7 @@ class AuthentikProcessesTest
       assertThat(Outcome.messages(review.review())).anyMatch(m -> m.contains("membership will be added") || m.contains("memberships will be added"));
       assertThat(review.review()).anyMatch(l -> l.getStatus() == Status.ERROR && l.getMessage().toLowerCase().contains("protected"));
       assertThat(t.writes()).as("review is a dry run").isEmpty();
+      assertThat(review.review().stream().filter(l -> l.getStatus() == Status.ERROR).flatMap(l -> l.getBulletsOfText().stream())).anyMatch(b -> b.contains("breakglass"));
 
       Outcome result = run("authentikAddToGroup", t.config.applyTablePrefix(AuthentikTables.USER), "pk", List.of(3, 4, 7), form, true);
       assertThat(result.result()).anyMatch(l -> l.getStatus() == Status.OK && l.getCount() == 2);
@@ -250,6 +251,20 @@ class AuthentikProcessesTest
       Map<String, Serializable> typed = Map.of("group", t.authentik.pk("kof-website-publishers"), "reason", "bulk", "confirmText", "30");
       Outcome result = run("authentikAddToGroup", t.config.applyTablePrefix(AuthentikTables.USER), "pk", keys, typed, true);
       assertThat(result.result()).anyMatch(l -> l.getStatus() == Status.OK && l.getCount() == 30);
+   }
+
+
+   /*******************************************************************************
+    ** Records carry their table name (the Next UI rejects a record without one),
+    ** and the drift report understands undashed group pks in events.
+    *******************************************************************************/
+   @Test
+   void recordsCarryTheirTableName() throws QException
+   {
+      var input = new com.kingsrook.qqq.backend.core.model.actions.tables.get.GetInput(t.config.applyTablePrefix(AuthentikTables.USER));
+      input.setPrimaryKey(3);
+      assertThat(new com.kingsrook.qqq.backend.core.actions.tables.GetAction().execute(input).getRecord().getTableName()).isEqualTo("authentik_user");
+      assertThat(com.kingsrook.qbits.authentik.drift.AuthentikDriftReport.class.getDeclaredMethods()).anyMatch(m -> m.getName().equals("dashed"));
    }
 
 }

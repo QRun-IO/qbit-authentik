@@ -599,7 +599,7 @@ public class AuthentikAdmin
       {
          return (plan.refuse("The password email is not configured (recoveryEmailStage)."));
       }
-      plan.withChange(null, username + " <" + email + ">" + (labels.isEmpty() ? "" : ", in " + String.join(", ", labels)));
+      plan.withChange("(new)", username + " <" + email + ">" + (labels.isEmpty() ? "" : ", in " + String.join(", ", labels)));
       plan.getNotes().add(recovery ? email + " receives an email from Authentik to set their own password. QQQ never sees it." : "No password email is sent; use Send password reset email later.");
       return (plan);
    }

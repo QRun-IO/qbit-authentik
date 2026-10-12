@@ -683,6 +683,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       try
       {
          QRecord record = new QRecord();
+         record.setTableName(tableNameOf(spec));
          for(AuthentikFieldSpec field : spec.getFields())
          {
             if(field.isSensitive() && !maySeeSensitive)
@@ -770,6 +771,17 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          runtime.getGroupGraphCache().storeResult("all", graph);
       }
       return (graph);
+   }
+
+
+
+   /*******************************************************************************
+    ** The produced (prefixed) table name for a spec: records must carry it (the
+    ** Next UI rejects a record response without a tableName).
+    *******************************************************************************/
+   private String tableNameOf(AuthentikTableSpec spec)
+   {
+      return (runtime().getConfig().applyTablePrefix(spec.getName()));
    }
 
 

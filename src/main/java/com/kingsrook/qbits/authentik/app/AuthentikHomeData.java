@@ -283,9 +283,10 @@ public class AuthentikHomeData
             for(JSONObject token : util.getAllPages("/core/tokens/?user__username=" + java.net.URLEncoder.encode(config.getEffectiveServiceAccountUsername(), java.nio.charset.StandardCharsets.UTF_8), 50))
             {
                Instant expires = AuthentikJson.parseInstant(token.optString("expires", null));
-               if(expires != null && expires.isBefore(soon))
+               if(token.optBoolean("expiring", true) && expires != null && expires.isBefore(soon))
                {
-                  attention.add("The qbit's API token (" + token.optString("identifier") + ") expires " + expires + ": rotate it (owner checklist).");
+                  attention.add("The qbit's API token (" + token.optString("identifier") + ") expires on "
+                     + java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(java.time.ZoneOffset.UTC).format(expires) + ": rotate it (owner checklist).");
                }
             }
          }

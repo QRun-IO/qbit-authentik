@@ -154,13 +154,13 @@ public final class AuthentikProcesses
          hidden("expectedFingerprint"), reason), "Change a person's name, email or path."));
       defs.add(new Def("deactivateUser", "Deactivate User", AdminAction.DEACTIVATE_USER, Kind.USERS, users, "block", false, List.of(
          new QFieldMetaData("revokeAppPasswords", QFieldType.BOOLEAN).withLabel("Also revoke their app passwords").withDefaultValue(false),
-         typed, reason), "Deactivating ends their sessions immediately. Nothing is deleted. For several people, type the username only when one is selected; otherwise type the number selected."));
+         typed, reason), "Deactivating ends their sessions immediately and deletes nothing. Type the username to confirm (when you select several people, type the username of the first one)."));
       defs.add(new Def("reactivateUser", "Reactivate User", AdminAction.REACTIVATE_USER, Kind.USERS, users, "check_circle", false, List.of(reason), null));
       defs.add(new Def("addToGroup", "Add To Group", AdminAction.ADD_MEMBER, Kind.USERS, users, "group_add", false, List.of(group,
-         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Type the number of people (only when more than 25)"), reason),
+         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason),
          "You can only add people to a group whose permissions you hold yourself."));
       defs.add(new Def("removeFromGroup", "Remove From Group", AdminAction.REMOVE_MEMBER, Kind.USERS, users, "group_remove", false, List.of(group,
-         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Type the number of people (only when more than 25)"), reason), null));
+         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason), null));
       defs.add(new Def("sendPasswordReset", "Send Password Reset Email", AdminAction.SEND_RECOVERY_EMAIL, Kind.USERS, users, "lock_reset", false, List.of(reason),
          "Authentik emails the person a link. You never see the link."));
       defs.add(new Def("resetMfa", "Reset MFA", AdminAction.RESET_MFA, Kind.USERS, users, "phonelink_erase", false, List.of(typed, reason),
@@ -186,10 +186,10 @@ public final class AuthentikProcesses
          "You can only add permissions you hold yourself. Adding authentik.* needs a second person to approve."));
       defs.add(new Def("addMembers", "Add Members", AdminAction.ADD_MEMBER, Kind.GROUP_USERNAMES, groups, "person_add", false, List.of(
          new QFieldMetaData("usernames", QFieldType.TEXT).withLabel("Usernames (one per line)").withIsRequired(true),
-         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Type the number of people (only when more than 25)"), reason), null));
+         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason), null));
       defs.add(new Def("removeMembers", "Remove Members", AdminAction.REMOVE_MEMBER, Kind.GROUP_USERNAMES, groups, "person_remove", false, List.of(
          new QFieldMetaData("usernames", QFieldType.TEXT).withLabel("Usernames (one per line)").withIsRequired(true),
-         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Type the number of people (only when more than 25)"), reason), null));
+         new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason), null));
 
       defs.add(new Def("cancelInvitation", "Cancel Invitation", AdminAction.CANCEL_INVITATION, Kind.INVITATIONS, "invitation", "cancel", false, List.of(reason), null));
       defs.add(new Def("approve", "Approve And Apply", null, Kind.APPROVALS, AuthentikLocalTables.APPROVAL_REQUEST, "check", false, List.of(), "A second person applies the change. The change is checked again against live data."));
@@ -575,6 +575,7 @@ public final class AuthentikProcesses
    {
       private final Map<String, ProcessSummaryLine> lines   = new LinkedHashMap<>();
       private final List<String>                    details = new ArrayList<>();
+      private final Map<String, List<String>>       targetsByLine = new LinkedHashMap<>();
       private final List<String>                    notes   = new ArrayList<>();
       private AuthentikAdmin                        admin;
       private Integer                               totalTargets;
@@ -658,10 +659,7 @@ public final class AuthentikProcesses
             case READY ->
             {
                add(Status.OK, w[0], w[1], w[2], w[3], "ready");
-               if(details.size() < 10 && (plan.getBefore() != null || plan.getAfter() != null))
-               {
-                  details.add(plan.describe());
-               }
+               name("ready", plan);
                plan.getNotes().forEach(note ->
                {
                   if(!notes.contains(note))
@@ -674,15 +672,15 @@ public final class AuthentikProcesses
             {
                add(Status.WARNING, "change needs a second person's approval and will be requested", "changes need a second person's approval and will be requested",
                   "change was sent for approval", "changes were sent for approval", "approval");
-               if(details.size() < 10)
-               {
-                  details.add(plan.describe());
-               }
+               name("approval", plan);
             }
             case NO_CHANGE -> add(Status.INFO, "target needs no change: " + plan.getMessage(), "targets need no change: " + plan.getMessage(),
                "target needed no change: " + plan.getMessage(), "targets needed no change: " + plan.getMessage(), "nochange:" + plan.getMessage());
-            default -> add(Status.ERROR, "target is refused: " + plan.getMessage(), "targets are refused: " + plan.getMessage(),
-               "target was refused: " + plan.getMessage(), "targets were refused: " + plan.getMessage(), "refused:" + plan.getMessage());
+            default -> {
+               add(Status.ERROR, "target is refused: " + plan.getMessage(), "targets are refused: " + plan.getMessage(),
+                  "target was refused: " + plan.getMessage(), "targets were refused: " + plan.getMessage(), "refused:" + plan.getMessage());
+               name("refused:" + plan.getMessage(), plan);
+            }
          }
       }
 
@@ -699,6 +697,20 @@ public final class AuthentikProcesses
 
 
       /*******************************************************************************
+       ** Remember which target a line is about (shown as bullets, first 10).
+       *******************************************************************************/
+      private void name(String key, AdminPlan plan)
+      {
+         List<String> names = targetsByLine.computeIfAbsent(key, k -> new ArrayList<>());
+         if(names.size() < 10)
+         {
+            names.add(plan.getBefore() != null || plan.getAfter() != null ? plan.describe() : (plan.getTargetLabel() == null ? plan.getRequest().targetKey() : plan.getTargetLabel()));
+         }
+      }
+
+
+
+      /*******************************************************************************
        ** Review lines: one per outcome, then the before and after of the first
        ** targets and any notes.
        *******************************************************************************/
@@ -706,17 +718,20 @@ public final class AuthentikProcesses
       public ArrayList<ProcessSummaryLineInterface> getProcessSummary(RunBackendStepOutput output, boolean isForResultScreen)
       {
          ArrayList<ProcessSummaryLineInterface> rs = new ArrayList<>();
-         for(ProcessSummaryLine line : lines.values())
+         for(Map.Entry<String, ProcessSummaryLine> entry : lines.entrySet())
          {
-            if(line.getStatus() == Status.OK && !details.isEmpty() && !isForResultScreen)
+            List<String> names = targetsByLine.get(entry.getKey());
+            if(names != null && !names.isEmpty() && !isForResultScreen)
             {
-               line.setBulletsOfText(new ArrayList<>(details));
+               entry.getValue().setBulletsOfText(new ArrayList<>(names));
             }
-            line.addSelfToListIfAnyCount(rs);
+            entry.getValue().addSelfToListIfAnyCount(rs);
          }
          for(String note : notes)
          {
-            rs.add(new ProcessSummaryLine(Status.INFO, note));
+            ProcessSummaryLine noteLine = new ProcessSummaryLine(Status.INFO, note);
+            noteLine.setCount(null);
+            rs.add(noteLine);
          }
          return (rs);
       }
@@ -828,8 +843,8 @@ public final class AuthentikProcesses
          }
          else
          {
-            lines.computeIfAbsent("error:" + result.message(), k -> line(Status.ERROR, "target failed: " + result.message(), "targets failed: " + result.message(),
-               "target failed: " + result.message(), "targets failed: " + result.message())).incrementCount();
+            lines.computeIfAbsent("error:" + result.message(), k -> line(Status.ERROR, "target was not changed: " + result.message(), "targets were not changed: " + result.message(),
+               "target was not changed: " + result.message(), "targets were not changed: " + result.message())).incrementCount();
          }
       }
 
