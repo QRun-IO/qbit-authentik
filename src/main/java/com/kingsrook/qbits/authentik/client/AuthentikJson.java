@@ -102,6 +102,51 @@ public final class AuthentikJson
 
 
    /*******************************************************************************
+    ** A value at a nested path (e.g. "user", "username"), as a string, or null.
+    ** Objects and arrays are rendered as JSON text.
+    *******************************************************************************/
+   public static Function<JSONObject, Serializable> at(String... path)
+   {
+      return (o ->
+      {
+         Object current = o;
+         for(String key : path)
+         {
+            if(!(current instanceof JSONObject object) || !object.has(key) || object.isNull(key))
+            {
+               return (null);
+            }
+            current = object.get(key);
+         }
+         return (String.valueOf(current));
+      });
+   }
+
+
+
+   /*******************************************************************************
+    ** An integer at a nested path, or null.
+    *******************************************************************************/
+   public static Function<JSONObject, Serializable> intAt(String... path)
+   {
+      Function<JSONObject, Serializable> text = at(path);
+      return (o ->
+      {
+         Serializable value = text.apply(o);
+         try
+         {
+            return (value == null ? null : Integer.valueOf(String.valueOf(value)));
+         }
+         catch(NumberFormatException e)
+         {
+            return (null);
+         }
+      });
+   }
+
+
+
+   /*******************************************************************************
     ** Length of an array value, or null.
     *******************************************************************************/
    public static Function<JSONObject, Serializable> arrayLength(String key)

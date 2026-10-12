@@ -67,6 +67,12 @@ public class AuthentikAppMetaDataProducer extends QBitComponentMetaDataProducer<
                app.withChild(table);
             }
          }
+
+         String driftReport = config.applyPrefix(AuthentikDriftReportWidgetProducer.NAME);
+         if(produced.get(com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData.class, driftReport) != null)
+         {
+            app.withWidgets(java.util.List.of(driftReport));
+         }
       }
       return (app);
    }

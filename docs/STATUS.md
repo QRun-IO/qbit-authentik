@@ -18,6 +18,24 @@ The Authentik qbit's progress through DESIGN.md section 11, with links. Updated 
 | 10 | Seed attributes, break-glass password | **owner** | checklist |
 | 11 | Read-only on staging | after 6-10 | flip `AUTHENTIK_QBIT_ENABLED` |
 
+## Phase 1: read-only MVP
+
+| Item | State |
+|---|---|
+| Users, groups, memberships, sessions, events tables | done (phase 1 PR) |
+| Effective permissions (resolver), inherited superuser | done |
+| Identity drift report (widget) | done |
+| Identity app under Admin, after Web Users (kof22) | Website-Backend draft PR #94 |
+| `AuthentikGroupPermissionMapper` (sign-in permissions from groups) | next PR (needs the OAuth2 module hook) |
+| Mirror tables, group tree, access-matrix widgets | next PRs |
+
 ## Contract test results (Authentik 2026.8.3)
 
-`CI=true ./mvnw verify`: 48 unit tests and 27 contract tests, all green; JaCoCo gate met.
+`CI=true ./mvnw verify`:
+
+| Phase | Unit tests | Contract tests |
+|---|---|---|
+| 0 | 48 | 27 |
+| 1 | 60 | 31 |
+
+All green, JaCoCo gate met. CircleCI is not enabled for this repo yet (owner checklist D1).

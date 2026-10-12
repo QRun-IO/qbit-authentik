@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.authentik.client.AuthentikFilterMapper;
 import com.kingsrook.qbits.authentik.client.AuthentikTableSpec;
 import com.kingsrook.qbits.authentik.client.TokenBucketThrottle;
+import com.kingsrook.qbits.authentik.permissions.GroupGraph;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 
@@ -42,6 +43,8 @@ public class AuthentikRuntime
    private final AuthentikGuard                  guard;
    private final AuthentikFilterMapper           filterMapper = new AuthentikFilterMapper();
    private final Memoization<String, String>     responseCache;
+   private final Memoization<String, GroupGraph> groupGraphCache;
+   private volatile java.util.Set<String>        permissionCatalog;
    private final Map<String, AuthentikTableSpec> specsByTableName = new ConcurrentHashMap<>();
 
 
@@ -55,6 +58,7 @@ public class AuthentikRuntime
       this.throttle = new TokenBucketThrottle(config.getThrottleRequestsPerSecond(), config.getThrottleBurst());
       this.guard = new AuthentikGuard(config);
       this.responseCache = new Memoization<String, String>(Duration.ofSeconds(config.getListCacheTtlSeconds())).withMaxSize(500);
+      this.groupGraphCache = new Memoization<String, GroupGraph>(Duration.ofSeconds(config.getGroupCacheTtlSeconds())).withMaxSize(1);
    }
 
 
@@ -121,6 +125,34 @@ public class AuthentikRuntime
    public void invalidateCache()
    {
       responseCache.clear();
+      groupGraphCache.clear();
+   }
+
+
+
+   /*******************************************************************************
+    ** Cache for the group graph (groupCacheTtlSeconds; 0 disables).
+    *******************************************************************************/
+   public Memoization<String, GroupGraph> getGroupGraphCache()
+   {
+      return (groupGraphCache);
+   }
+
+
+
+   /*******************************************************************************
+    ** QQQ permission names that qqq.io/permissions may grant: every permission
+    ** the instance's metadata defines (PermissionsHelper), computed once.
+    *******************************************************************************/
+   public java.util.Set<String> getPermissionCatalog()
+   {
+      if(permissionCatalog == null)
+      {
+         com.kingsrook.qqq.backend.core.model.metadata.QInstance qInstance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
+         permissionCatalog = qInstance == null ? java.util.Set.of()
+            : new java.util.TreeSet<>(com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper.getAllAvailablePermissionNames(qInstance));
+      }
+      return (permissionCatalog);
    }
 
 

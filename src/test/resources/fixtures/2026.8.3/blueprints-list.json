@@ -1,0 +1,549 @@
+{
+  "pagination": {
+    "next": 0,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 33,
+    "end_index": 33,
+    "total_pages": 1
+  },
+  "autocomplete": {},
+  "results": [
+    {
+      "path": "default/flow-default-authentication-flow.yaml",
+      "metadata": {
+        "name": "Default - Authentication flow",
+        "labels": {}
+      },
+      "last_applied_hash": "8c42e464620993e314bada38a90279ebfde283c0df1be15610a38f0dda1cc98a8cc16020857c2a58fcfe28c9b40117d29b73fdb197253c012b4382384b3f3c24",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:30.747553Z",
+      "name": "Default - Authentication flow",
+      "context": {},
+      "pk": "9cca0e34-bc1f-4e2c-b0d6-479d5e4fc27b",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/default-brand.yaml",
+      "metadata": {
+        "name": "Default - Brand",
+        "labels": {}
+      },
+      "last_applied_hash": "8f15f035ea71a470c13a975bf66d32b031ef4032b0d178a754f43d16a0abf79470929cbb860b0fe884f8f42914310b7beda32db4b34be55e754fa25fd5d7e4b1",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:40.903959Z",
+      "name": "Default - Brand",
+      "context": {},
+      "pk": "b432d6f0-9e72-4a1c-9d28-986b72becda7",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/events-default.yaml",
+      "metadata": {
+        "name": "Default - Events Transport & Rules",
+        "labels": {}
+      },
+      "last_applied_hash": "9cf24006d70a07a619a18e8b5707ec58bb306568a228ed8c1ebfe6639400d78df02b9042405e78e6202805ac22180b73e474fb72025652f91a26ab41623ced6d",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:31.539388Z",
+      "name": "Default - Events Transport & Rules",
+      "context": {},
+      "pk": "7e07d275-bde7-42ba-8810-9711d9bcdb0d",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-invalidation-flow.yaml",
+      "metadata": {
+        "name": "Default - Invalidation flow",
+        "labels": {}
+      },
+      "last_applied_hash": "a143bf2b9a1d20e2078389f7c37d213e51c52ea6a8df8f8ae7a7e6a1bb129ec4b862803aa44b8b1dbfe727e98e45cedac7a1a03632065040c87f045dcabab86a",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:32.416250Z",
+      "name": "Default - Invalidation flow",
+      "context": {},
+      "pk": "eb5a6337-3226-4a2d-95a0-031832a06311",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-oobe.yaml",
+      "metadata": {
+        "name": "Default - Out-of-box-experience flow",
+        "labels": {
+          "blueprints.goauthentik.io/system-oobe": "true",
+          "blueprints.goauthentik.io/system": "true"
+        }
+      },
+      "last_applied_hash": "38d5b1d1e6b06206bba89bd0859a389ce8324ac1ab095fc9b2a015be5a9e6fbb404bed013f870b94965630726bf183f9c1193ce25aface8211a14e2355a7b791",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:32.140739Z",
+      "name": "Default - Out-of-box-experience flow",
+      "context": {},
+      "pk": "6bc549b0-fa02-4c90-92a8-4496ce65ccff",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-password-change.yaml",
+      "metadata": {
+        "name": "Default - Password change flow",
+        "labels": {}
+      },
+      "last_applied_hash": "4de0acc5fd9e5c5de59cb4bf32db7f192e495ed285454daef8268409d6055b780043a27b895bd0d48262451653fd7299c73f0fdd51dfb4925958a449c6a9f49c",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:32.325034Z",
+      "name": "Default - Password change flow",
+      "context": {},
+      "pk": "ae3a5a27-10d1-4a55-af06-e3cc75e9492f",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-provider-authorization-explicit-consent.yaml",
+      "metadata": {
+        "name": "Default - Provider authorization flow (explicit consent)",
+        "labels": {}
+      },
+      "last_applied_hash": "598eee861d8814c0dc200542f59e5d8085c140f7131e87a9fc6baf688a3e9e7b0a32e865c439084f76b11992ce056be574e5aba2664375cee287206d66d345c9",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:30.362956Z",
+      "name": "Default - Provider authorization flow (explicit consent)",
+      "context": {},
+      "pk": "4428307d-f07c-4d18-84f0-b993bdff5219",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-provider-authorization-implicit-consent.yaml",
+      "metadata": {
+        "name": "Default - Provider authorization flow (implicit consent)",
+        "labels": {}
+      },
+      "last_applied_hash": "2321088d922a57fdb741f6857eb48d3090210b552a6ecadf9b08de4832f574c5231f37943da3dfda3a4fa07c900d236ace3d237710e2e986a207c758859c1ecb",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:32.232059Z",
+      "name": "Default - Provider authorization flow (implicit consent)",
+      "context": {},
+      "pk": "dfff0561-79fd-47c1-8b0c-aa62578155c5",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-provider-invalidation.yaml",
+      "metadata": {
+        "name": "Default - Provider invalidation flow",
+        "labels": {}
+      },
+      "last_applied_hash": "92310bf9e2aceeec2f8dc4762ce4921588cadd9f5990a23abb796bb84b61a619fc9ddf8e6a9b580a208abc8cabb15cff244238581c089d98a48c15ac5eb078ce",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:27.202867Z",
+      "name": "Default - Provider invalidation flow",
+      "context": {},
+      "pk": "772a73b6-f5bb-48f9-828b-74693208d31e",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/rbac-role-agents.yaml",
+      "metadata": {
+        "name": "Default - RBAC - Agent Users",
+        "labels": {}
+      },
+      "last_applied_hash": "d8340ba349322534e4013ac86f7a662ad4bb82430c13eb9d2fbd1b15a5e2bb306956497c13ec293e117ef8c88625b7325b22e6135f11474a9c49b2dc67bd1659",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:26.831237Z",
+      "name": "Default - RBAC - Agent Users",
+      "context": {},
+      "pk": "1c865e1a-22cb-43f1-bb80-aeda3d135aec",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/rbac-role-read-only.yaml",
+      "metadata": {
+        "name": "Default - RBAC - Read-only",
+        "labels": {}
+      },
+      "last_applied_hash": "2e44f3070adfcfc63abb1429386fd663ee179b5c9db2cfce36e515f8216543cf59d48b9a331db5955c9732024e75068433b3f2b5579b441839522b2c40a8b637",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:31.596000Z",
+      "name": "Default - RBAC - Read-only",
+      "context": {},
+      "pk": "26b9a15d-f2fc-4d05-9d63-177922a123da",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-request-flow.yaml",
+      "metadata": {
+        "name": "Default - Request flow",
+        "labels": {}
+      },
+      "last_applied_hash": "53365439bd7d2ada828846653d4a53556fd1a7ffd7564de5badf9beb1436d3f95bf45bbf02bf6829849f2b861a034f6aac2f53d478201bbfe7aa73cf94744407",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:31.680198Z",
+      "name": "Default - Request flow",
+      "context": {},
+      "pk": "7eccd6fb-7247-4aa6-94e1-7d290e3dacad",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-source-authentication.yaml",
+      "metadata": {
+        "name": "Default - Source authentication flow",
+        "labels": {}
+      },
+      "last_applied_hash": "d86613f21394af35d554692e9868e7e714bb7cbd99a362ef3b64476edc1ffcb832443610f193d3d116685a360a1734482a7152b6b6bc8913f45be9aac3934233",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:29.666916Z",
+      "name": "Default - Source authentication flow",
+      "context": {},
+      "pk": "3e07d4bc-6fb4-4079-a22f-07e5afe43feb",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-source-enrollment.yaml",
+      "metadata": {
+        "name": "Default - Source enrollment flow",
+        "labels": {}
+      },
+      "last_applied_hash": "a3995e67834828ddeabf14d1220547df84d870f72d743bed3cd3f27c57fefaf3c72d0e1cec85f65d48d9e5c8c7c539e3b636c2d96be94ffa3a979fb78e3e36fd",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:23.486786Z",
+      "name": "Default - Source enrollment flow",
+      "context": {},
+      "pk": "9aa59b95-4e2c-48bf-87dc-96061d64509e",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-source-pre-authentication.yaml",
+      "metadata": {
+        "name": "Default - Source pre-authentication flow",
+        "labels": {}
+      },
+      "last_applied_hash": "51b6b65fb60f2f925d80b38cf173e7aa1bc00a074990e8d0b0dfaae088007ceb9051d0722f41500da309af5d0c78417dfa08a40c706203c3d6ee1eb613ad564c",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:29.374131Z",
+      "name": "Default - Source pre-authentication flow",
+      "context": {},
+      "pk": "973eac96-d318-4a56-a1ab-532920e18388",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-authenticator-static-setup.yaml",
+      "metadata": {
+        "name": "Default - Static MFA setup flow",
+        "labels": {}
+      },
+      "last_applied_hash": "2734d44185d0f37fe3af72cc28a9cc0bd06f8b160f021412571933f3062d0b47f056e832307c3de2367651eea43793e9a105d873917370717935bc66d765ea9c",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:42.374678Z",
+      "name": "Default - Static MFA setup flow",
+      "context": {},
+      "pk": "a297b4a2-52fc-4f66-a952-5e2e9d51884b",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-authenticator-totp-setup.yaml",
+      "metadata": {
+        "name": "Default - TOTP MFA setup flow",
+        "labels": {}
+      },
+      "last_applied_hash": "88836c8721b8b163584bd208ceb0a29ec5a44f56e749bdd44dabf541c331da99c57dfb128e06d8f073c4ddef0e1565eefa62696aae14f01ab4ff688eda277603",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:22.773974Z",
+      "name": "Default - TOTP MFA setup flow",
+      "context": {},
+      "pk": "df7af2c7-0666-4e38-854a-4d291e27bba5",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-user-settings-flow.yaml",
+      "metadata": {
+        "name": "Default - User settings flow",
+        "labels": {}
+      },
+      "last_applied_hash": "fde7a4686603bbca15824b1b412e7cd6b93cb051c0286d95f31708f66cdd1150e539c8be3d18a6c2ec0871bd77d4c8e4de5654844705e821ccfaee1434c25ac9",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:42.002441Z",
+      "name": "Default - User settings flow",
+      "context": {},
+      "pk": "e260c804-6da9-4f93-b9b6-e10013594366",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "default/flow-default-authenticator-webauthn-setup.yaml",
+      "metadata": {
+        "name": "Default - WebAuthn MFA setup flow",
+        "labels": {}
+      },
+      "last_applied_hash": "7ec577d44f40616ac216be5039b6e0133af162c2dd9925adf51d49d15841be082ab9c98debc51a25ac1a12566a728f07845e16203446e8a724e457b5255c65c8",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:30.186106Z",
+      "name": "Default - WebAuthn MFA setup flow",
+      "context": {},
+      "pk": "139ef4ed-28c1-447c-b859-787cd387d359",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "migrations/migrate-prompt-name.yaml",
+      "metadata": {
+        "name": "Migration - Remove old prompt fields",
+        "labels": {"blueprints.goauthentik.io/description": "Migrate to 2023.2, remove unused prompt fields"}
+      },
+      "last_applied_hash": "75617432af2bb8d9cbf74db0ba9d6ec1b123811fdb40975685386c85d8fa4046cc4749a8e6f1f3e0c1068e45bf2af73914c6ede5b3d31fa2ac3195a53b94cf43",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:42.232707Z",
+      "name": "Migration - Remove old prompt fields",
+      "context": {},
+      "pk": "05a1d36f-d5dd-496a-8336-b8b0452d13ad",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/providers-google-workspace.yaml",
+      "metadata": {
+        "name": "System - Google Workspace Provider - Mappings",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "43e8e572057af9709f3c30c076f20987c4a8ccab629cb0a15417979b5aa865d3993e5a03e485e7f7f3232a521844cf49285304dfc57d8355affdc4477b3d5933",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:41.548061Z",
+      "name": "System - Google Workspace Provider - Mappings",
+      "context": {},
+      "pk": "4206aa46-241a-4603-86d5-3c30940be755",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/sources-kerberos.yaml",
+      "metadata": {
+        "name": "System - Kerberos Source - Mappings",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "49db6f6c3ee0fba992b9ad6756b499393f4648db17592c988462fa6c8c312f4c6b2adcf4e3e1fd8653fe05ebc20c7cffa258f3959f872b9590369b74e860dca8",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:23.255310Z",
+      "name": "System - Kerberos Source - Mappings",
+      "context": {},
+      "pk": "c1ed6282-df71-44cb-83d4-ab8b1cf11948",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/sources-ldap.yaml",
+      "metadata": {
+        "name": "System - LDAP Source - Mappings",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "36a01c42520e0a7929dc62005dfd701099cbbf74527718c97ea2c800fd26c1c816474cc2b402729584914ec77bdc35e26bb62d74a9e521207eebd28e3524e8e4",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:41.721906Z",
+      "name": "System - LDAP Source - Mappings",
+      "context": {},
+      "pk": "f5dc928e-aa22-4d32-a11e-0cfde1a9dc18",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/providers-microsoft-entra.yaml",
+      "metadata": {
+        "name": "System - Microsoft Entra Provider - Mappings",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "ad85e885bf0bbb0df2398b2a252f1f32f222140fbbd8df8abac83a8debedba7c57955d388330e1e22420679fe940167c2ed5b4c5a8c8cb6c742b0282b3b56732",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:26.771728Z",
+      "name": "System - Microsoft Entra Provider - Mappings",
+      "context": {},
+      "pk": "7d903a64-096a-4961-8df3-5d1bdb414ef5",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/providers-oauth2.yaml",
+      "metadata": {
+        "name": "System - OAuth2 Provider - Scopes",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "da8a4bde589c67be18de2df424e3cd175ef2babff6e14f1649003c83fd096e1bab7f39cbf6294b49d59acca24c7f64e35d8b76fcebebb2e82c6590903db1e88d",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:41.081341Z",
+      "name": "System - OAuth2 Provider - Scopes",
+      "context": {},
+      "pk": "306554ca-93d9-4b62-9964-7956c8dd59b5",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/object-attributes-user.yaml",
+      "metadata": {
+        "name": "System - Object Attributes - User",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "dea2d6bb95198ebdb6fdda23cd5d8339105087841e9007919c92b446b98a70454d9512b882d8c884bdaf80aa926b7e91013da3239424a715d5c306ad4290d6eb",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:29.802102Z",
+      "name": "System - Object Attributes - User",
+      "context": {},
+      "pk": "059b544b-1ce7-48fa-9d52-d7728fe0218d",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/providers-proxy.yaml",
+      "metadata": {
+        "name": "System - Proxy Provider - Scopes",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "c92fa491977a1a528005dd11953a6c524ae91cbb8f390938a8083211df02428168c883e75ce3b4a76484cad89310633ef34f2a8a6a272b27e1a53914ea53a8d5",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:41.151981Z",
+      "name": "System - Proxy Provider - Scopes",
+      "context": {},
+      "pk": "7327ddb8-a884-47dc-ba99-48b4623c1883",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/providers-rac.yaml",
+      "metadata": {
+        "name": "System - RAC Provider - Mappings",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "6332bda15401895bd478f07d4e6e6b7db90f335c61ba7d924ed8ab02bddb4bdf5f40c888b1acf24b5c51133705d825b323030461db3c46dfc4fb91d4609e5e76",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:26.989465Z",
+      "name": "System - RAC Provider - Mappings",
+      "context": {},
+      "pk": "25ece34f-ae5a-4ed5-b94e-ade794143dae",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/providers-saml.yaml",
+      "metadata": {
+        "name": "System - SAML Provider - Mappings",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "4f77ca1c7729136332a04e89a12c713a72bdf08a766132c3092586cbf8580c51aafc6f3c1f6220dd2415b6c66646632980f2f3a424cb609d62df8680e3ea7b3e",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:30.003502Z",
+      "name": "System - SAML Provider - Mappings",
+      "context": {},
+      "pk": "532b9d75-09a3-4fa1-8dfc-6f1ce6daf138",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/providers-scim.yaml",
+      "metadata": {
+        "name": "System - SCIM Provider - Mappings",
+        "labels": {"blueprints.goauthentik.io/system": "true"}
+      },
+      "last_applied_hash": "4dfec958adf1eec36e394e0ca48b53448eca34e24e8082c745da5cd61a0fd8b0034ca340a29f4788046f2310773e7b1e79abd91650dd47cc2406f2aa510e9b9a",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:21.392651Z",
+      "name": "System - SCIM Provider - Mappings",
+      "context": {},
+      "pk": "aca7b811-f3ed-4360-b52e-68e6ff2d104b",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "system/bootstrap.yaml",
+      "metadata": {
+        "name": "authentik Bootstrap",
+        "labels": {
+          "blueprints.goauthentik.io/system-bootstrap": "true",
+          "blueprints.goauthentik.io/system": "true",
+          "blueprints.goauthentik.io/description": "This blueprint configures the default admin user and group, and configures them for the [Automated install](https://docs.goauthentik.io/docs/install-config/automated-install?utm_source=bootstrap_blueprint).\n"
+        }
+      },
+      "last_applied_hash": "a654534f252c03881ba290d278bfd57014c433799b02c6b521e054a1f62751aba67114cd6c16b89b031f98706e84279e4f5ccae4da6df8f21c5556096945e685",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:42.104201Z",
+      "name": "authentik Bootstrap",
+      "context": {},
+      "pk": "0722bfd2-b49e-4cbb-a4f6-80b6f1c83f10",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "custom/kof22-identity-bootstrap.yaml",
+      "metadata": {
+        "name": "kof22-identity-bootstrap",
+        "labels": {"blueprints.goauthentik.io/instantiate": "true"}
+      },
+      "last_applied_hash": "4958e74112d408a5c593c6c6164af852993180c859fbe3a494b77fd8b19dae69132f2fb3cf19dc71787f114e60b8515f26215ae2d8efb87a650823c038ba8acb",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:26.702006Z",
+      "name": "kof22-identity-bootstrap",
+      "context": {},
+      "pk": "d68e6be0-4d09-4c0d-9c76-4199b0cc44f1",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    },
+    {
+      "path": "custom/kof22-oauth2-apps.yaml",
+      "metadata": {
+        "name": "kof22-oauth2-apps",
+        "labels": {"blueprints.goauthentik.io/instantiate": "true"}
+      },
+      "last_applied_hash": "7113b8b72d619886c4a8c75a0ab83fe83b4949f77e8d0ceb3d521570064c1fac52b21fd5fa375e1c916648a2af147d74b3beac1ece199b5fb14d697745971119",
+      "managed_models": [],
+      "last_applied": "2026-10-12T01:15:28.407023Z",
+      "name": "kof22-oauth2-apps",
+      "context": {},
+      "pk": "d9230137-f9fd-4a78-9132-fd20265670b2",
+      "enabled": true,
+      "content": "",
+      "status": "successful"
+    }
+  ]
+}

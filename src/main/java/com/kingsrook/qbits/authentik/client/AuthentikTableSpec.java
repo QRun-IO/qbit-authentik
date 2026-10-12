@@ -45,6 +45,7 @@ public class AuthentikTableSpec
    private String                                defaultOrdering;
    private List<String>                          recordLabelFields     = new ArrayList<>();
    private String                                requiredFilterField;
+   private boolean                               virtual;
 
 
 
@@ -142,6 +143,29 @@ public class AuthentikTableSpec
    {
       this.requiredFilterField = requiredFilterField;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Mark as virtual: served by custom logic in AuthentikActionUtil rather than
+    ** by one list endpoint (its filter "params" are field names, not Authentik
+    ** query parameters).
+    *******************************************************************************/
+   public AuthentikTableSpec withVirtual()
+   {
+      this.virtual = true;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for virtual
+    *******************************************************************************/
+   public boolean isVirtual()
+   {
+      return (virtual);
    }
 
 

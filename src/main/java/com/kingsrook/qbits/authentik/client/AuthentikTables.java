@@ -20,10 +20,13 @@ package com.kingsrook.qbits.authentik.client;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
+import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import static com.kingsrook.qbits.authentik.client.AuthentikJson.at;
 import static com.kingsrook.qbits.authentik.client.AuthentikJson.attributeList;
 import static com.kingsrook.qbits.authentik.client.AuthentikJson.bool;
 import static com.kingsrook.qbits.authentik.client.AuthentikJson.instant;
+import static com.kingsrook.qbits.authentik.client.AuthentikJson.intAt;
 import static com.kingsrook.qbits.authentik.client.AuthentikJson.integer;
 import static com.kingsrook.qbits.authentik.client.AuthentikJson.joined;
 import static com.kingsrook.qbits.authentik.client.AuthentikJson.json;
@@ -41,8 +44,11 @@ import static com.kingsrook.qbits.authentik.client.AuthentikJson.string;
  *******************************************************************************/
 public final class AuthentikTables
 {
-   public static final String USER  = "user";
-   public static final String GROUP = "group";
+   public static final String USER         = "user";
+   public static final String GROUP        = "group";
+   public static final String GROUP_MEMBER = "groupMember";
+   public static final String SESSION      = "session";
+   public static final String EVENT        = "event";
 
    /** User types the qbit shows by default: everything but outposts' internal service accounts. */
    public static final String[] DEFAULT_USER_TYPES = { "internal", "external", "service_account" };
@@ -53,6 +59,9 @@ public final class AuthentikTables
    {
       register(users());
       register(groups());
+      register(groupMembers());
+      register(sessions());
+      register(events());
    }
 
 
@@ -140,6 +149,7 @@ public final class AuthentikTables
       spec.withField(new AuthentikFieldSpec("uuid", "UUID", QFieldType.STRING, string("uuid"))
          .withFilter(QCriteriaOperator.EQUALS, "uuid").withHidden());
       spec.withField(new AuthentikFieldSpec("qqqAttributes", "QQQ Attributes", QFieldType.TEXT, qqqAttributes()));
+      spec.withField(new AuthentikFieldSpec("effectivePermissions", "Effective QQQ Permissions", QFieldType.TEXT, o -> null));
       spec.withField(new AuthentikFieldSpec("passwordChangeDate", "Password Changed", QFieldType.DATE_TIME, instant("password_change_date"))
          .withSensitive());
       spec.withField(new AuthentikFieldSpec("attributes", "Attributes", QFieldType.TEXT, json("attributes"))
@@ -176,11 +186,104 @@ public final class AuthentikTables
       spec.withField(new AuthentikFieldSpec("memberUsername", "Member Username", QFieldType.STRING, o -> null)
          .withFilter(QCriteriaOperator.EQUALS, "members_by_username").withFilter(QCriteriaOperator.IN, "members_by_username").withHidden());
       spec.withField(new AuthentikFieldSpec("permissions", "QQQ Permissions", QFieldType.TEXT, attributeList(AuthentikJson.ATTR_PERMISSIONS)));
+      spec.withField(new AuthentikFieldSpec("effectivePermissions", "Effective QQQ Permissions (incl. parents)", QFieldType.TEXT, o -> null));
       spec.withField(new AuthentikFieldSpec("appAccess", "App Access", QFieldType.TEXT, attributeList(AuthentikJson.ATTR_APP_ACCESS)));
       spec.withField(new AuthentikFieldSpec("roleNames", "Roles", QFieldType.STRING, joined("roles_obj", "name")));
       spec.withField(new AuthentikFieldSpec("numPk", "Numeric Id", QFieldType.INTEGER, integer("num_pk")).withHidden());
       spec.withField(new AuthentikFieldSpec("parentPks", "Parent Ids", QFieldType.TEXT, json("parents")).withHidden());
       spec.withField(new AuthentikFieldSpec("attributes", "Attributes", QFieldType.TEXT, json("attributes")).withSensitive());
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** Virtual membership table (group x user). Served by AuthentikActionUtil
+    ** from GET /core/groups/{pk}/?include_users=true, GET /core/users/{pk}/
+    ** (groups_obj) or a group sweep; rows are synthetic objects keyed by these
+    ** field names. Key: "groupPk:userPk".
+    *******************************************************************************/
+   static AuthentikTableSpec groupMembers()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(GROUP_MEMBER, "Group Memberships", "group_add", "/core/groups/", "id")
+         .withVirtual()
+         .withDefaultOrdering("groupName")
+         .withRecordLabelFields("groupName", "username");
+
+      spec.withField(new AuthentikFieldSpec("id", "Id", QFieldType.STRING, string("id")));
+      spec.withField(new AuthentikFieldSpec("groupName", "Group", QFieldType.STRING, string("groupName"))
+         .withFilter(QCriteriaOperator.EQUALS, "groupName").withOrdering("groupName"));
+      spec.withField(new AuthentikFieldSpec("username", "Username", QFieldType.STRING, string("username"))
+         .withFilter(QCriteriaOperator.EQUALS, "username").withOrdering("username"));
+      spec.withField(new AuthentikFieldSpec("name", "Name", QFieldType.STRING, string("name")));
+      spec.withField(new AuthentikFieldSpec("email", "Email", QFieldType.STRING, string("email")));
+      spec.withField(new AuthentikFieldSpec("isActive", "Active", QFieldType.BOOLEAN, bool("isActive")));
+      spec.withField(new AuthentikFieldSpec("groupPk", "Group Id", QFieldType.STRING, string("groupPk"))
+         .withFilter(QCriteriaOperator.EQUALS, "groupPk").withFilter(QCriteriaOperator.IN, "groupPk"));
+      spec.withField(new AuthentikFieldSpec("userPk", "User Id", QFieldType.INTEGER, integer("userPk"))
+         .withFilter(QCriteriaOperator.EQUALS, "userPk"));
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** /core/authenticated_sessions/ (uuid). IPs and user agents need audit.read.
+    *******************************************************************************/
+   static AuthentikTableSpec sessions()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(SESSION, "Sessions", "devices", "/core/authenticated_sessions/", "uuid")
+         .withReadPermission(IdentityPermission.AUDIT_READ)
+         .withRecordLabelFields("uuid");
+
+      spec.withField(new AuthentikFieldSpec("uuid", "Id", QFieldType.STRING, string("uuid")));
+      spec.withField(new AuthentikFieldSpec("userPk", "User Id", QFieldType.INTEGER, integer("user")));
+      spec.withField(new AuthentikFieldSpec("username", "Username", QFieldType.STRING, o -> null)
+         .withFilter(QCriteriaOperator.EQUALS, "user__username").withHidden());
+      spec.withField(new AuthentikFieldSpec("lastIp", "Last IP", QFieldType.STRING, string("last_ip"))
+         .withFilter(QCriteriaOperator.EQUALS, "session__last_ip"));
+      spec.withField(new AuthentikFieldSpec("lastUserAgent", "Last User Agent", QFieldType.TEXT, string("last_user_agent")));
+      spec.withField(new AuthentikFieldSpec("lastUsed", "Last Used", QFieldType.DATE_TIME, instant("last_used")));
+      spec.withField(new AuthentikFieldSpec("expires", "Expires", QFieldType.DATE_TIME, instant("expires")));
+      spec.withField(new AuthentikFieldSpec("current", "Current", QFieldType.BOOLEAN, bool("current")));
+      spec.withField(new AuthentikFieldSpec("geoIp", "Geo IP", QFieldType.TEXT, json("geo_ip")));
+      spec.withField(new AuthentikFieldSpec("asn", "ASN", QFieldType.TEXT, json("asn")));
+      return (spec);
+   }
+
+
+
+   /*******************************************************************************
+    ** /events/events/ (uuid). Event contexts and client IPs need audit.read.
+    *******************************************************************************/
+   static AuthentikTableSpec events()
+   {
+      AuthentikTableSpec spec = new AuthentikTableSpec(EVENT, "Events", "receipt_long", "/events/events/", "pk")
+         .withReadPermission(IdentityPermission.AUDIT_READ)
+         .withDefaultOrdering("-created")
+         .withRecordLabelFields("action", "created");
+
+      spec.withField(new AuthentikFieldSpec("pk", "Id", QFieldType.STRING, string("pk")));
+      spec.withField(new AuthentikFieldSpec("created", "Created", QFieldType.DATE_TIME, instant("created")).withOrdering("created"));
+      spec.withField(new AuthentikFieldSpec("action", "Action", QFieldType.STRING, string("action"))
+         .withFilter(QCriteriaOperator.EQUALS, "action").withFilter(QCriteriaOperator.IN, "actions"));
+      spec.withField(new AuthentikFieldSpec("username", "Username", QFieldType.STRING, at("user", "username"))
+         .withFilter(QCriteriaOperator.EQUALS, "username"));
+      spec.withField(new AuthentikFieldSpec("userPk", "User Id", QFieldType.INTEGER, intAt("user", "pk")));
+      spec.withField(new AuthentikFieldSpec("app", "App", QFieldType.STRING, string("app")));
+      spec.withField(new AuthentikFieldSpec("clientIp", "Client IP", QFieldType.STRING, string("client_ip"))
+         .withFilter(QCriteriaOperator.EQUALS, "client_ip"));
+      spec.withField(new AuthentikFieldSpec("modelApp", "Model App", QFieldType.STRING, at("context", "model", "app"))
+         .withFilter(QCriteriaOperator.EQUALS, "context_model_app"));
+      spec.withField(new AuthentikFieldSpec("modelName", "Model", QFieldType.STRING, at("context", "model", "model_name"))
+         .withFilter(QCriteriaOperator.EQUALS, "context_model_name"));
+      spec.withField(new AuthentikFieldSpec("modelPk", "Model Id", QFieldType.STRING, at("context", "model", "pk"))
+         .withFilter(QCriteriaOperator.EQUALS, "context_model_pk"));
+      spec.withField(new AuthentikFieldSpec("modelLabel", "Object", QFieldType.STRING, at("context", "model", "name")));
+      spec.withField(new AuthentikFieldSpec("authorizedApp", "Authorized App", QFieldType.STRING, at("context", "authorized_application", "slug"))
+         .withFilter(QCriteriaOperator.EQUALS, "context_authorized_app"));
+      spec.withField(new AuthentikFieldSpec("context", "Context", QFieldType.TEXT, json("context")));
+      spec.withField(new AuthentikFieldSpec("expires", "Expires", QFieldType.DATE_TIME, instant("expires")));
       return (spec);
    }
 

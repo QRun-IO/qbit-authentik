@@ -1,8 +1,8 @@
 {
   "version_current": "2026.8.3",
   "outdated": false,
-  "version_latest_valid": false,
-  "version_latest": "0.0.0",
+  "version_latest_valid": true,
+  "version_latest": "2026.8.3",
   "outpost_outdated": false,
   "build_hash": ""
 }

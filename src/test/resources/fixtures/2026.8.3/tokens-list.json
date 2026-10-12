@@ -1,0 +1,56 @@
+{
+  "pagination": {
+    "next": 0,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 1,
+    "end_index": 1,
+    "total_pages": 1
+  },
+  "autocomplete": {},
+  "results": [{
+    "identifier": "qqq-contract-test",
+    "user_obj": {
+      "roles_obj": [
+        {
+          "name": "qqq-kof22-admin-idadmin",
+          "pk": "f8a6aea0-d491-4fd7-87cd-9764175bb5f2"
+        },
+        {
+          "name": "ak-managed-role--user-7",
+          "pk": "71d5471a-6052-49b9-aa35-59bfa7fd4f6d"
+        }
+      ],
+      "last_updated": "2026-10-12T01:15:26.584286Z",
+      "is_active": true,
+      "is_superuser": false,
+      "last_login": null,
+      "password_change_date": "2026-10-12T01:15:26.571298Z",
+      "roles": [
+        "f8a6aea0-d491-4fd7-87cd-9764175bb5f2",
+        "71d5471a-6052-49b9-aa35-59bfa7fd4f6d"
+      ],
+      "groups": [],
+      "avatar": "",
+      "type": "service_account",
+      "groups_obj": [],
+      "uuid": "7035a7ac-e5f7-4b49-b35b-043d05471854",
+      "uid": "917ea81f617d6f499ff98a9b32cc33d8023569e39f5ec156c1574d3a4c7b5c52",
+      "path": "service-accounts/qqq",
+      "name": "QQQ kof22 Admin identity service",
+      "attributes": {"qqq.io/protected": true},
+      "pk": 7,
+      "date_joined": "2026-10-12T01:15:26.570216Z",
+      "email": "",
+      "username": "qqq-kof22-admin-idadmin"
+    },
+    "expires": "2026-10-13T01:15:30.631896Z",
+    "expiring": false,
+    "managed": null,
+    "description": "",
+    "pk": "fe0ddb9c-aca3-456b-acc8-49541e746f60",
+    "intent": "api",
+    "user": 7
+  }]
+}
