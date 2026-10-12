@@ -105,6 +105,9 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    /** Maximum memberships / groups read by one sweep (bounded, never silently: see memberships()). */
    public static final int MAX_SWEEP_OBJECTS = 20_000;
 
+   /** Display value for derived fields when the group graph cannot be read. */
+   public static final String UNAVAILABLE = "Unavailable (Authentik groups could not be read)";
+
    private EffectivePermissionResolver resolverForCall;
 
 
@@ -176,7 +179,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       }
 
       JSONObject page = getJson(listUrl(spec, mapped, 1, 1));
-      output.setCount(page.optJSONObject("pagination") == null ? 0 : page.getJSONObject("pagination").optInt("count", 0));
+      output.setCount(pagination(page).optInt("count", 0));
       return (output);
    }
 
@@ -233,6 +236,11 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
       Integer limit = filter == null ? null : filter.getLimit();
       int     skip  = filter == null || filter.getSkip() == null ? 0 : filter.getSkip();
+
+      if(limit != null && limit <= 0)
+      {
+         return (output);
+      }
 
       if(spec.isVirtual())
       {
@@ -302,8 +310,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
          offset = 0;
 
-         JSONObject pagination = response.optJSONObject("pagination");
-         int        totalPages = pagination == null ? page : pagination.optInt("total_pages", page);
+         int totalPages = pagination(response).optInt("total_pages", page);
          if(page >= totalPages || queryInput.getAsyncJobCallback().wasCancelRequested())
          {
             return (output);
@@ -357,7 +364,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    public JSONObject getObject(AuthentikTableSpec spec, Serializable key) throws QException
    {
       String keyText = String.valueOf(key).trim();
-      if(keyText.isEmpty() || !keyText.matches("[A-Za-z0-9._:-]+"))
+      if(keyText.isEmpty() || !keyText.matches("[A-Za-z0-9._:-]+") || keyText.contains(".."))
       {
          return (null);
       }
@@ -411,8 +418,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          {
             rs.add(results.getJSONObject(i));
          }
-         JSONObject pagination = response.optJSONObject("pagination");
-         if(rs.size() >= maxObjects || pagination == null || page >= pagination.optInt("total_pages", page))
+         if(rs.size() >= maxObjects || page >= pagination(response).optInt("total_pages", page))
          {
             return (rs);
          }
@@ -479,6 +485,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
          if(AuthentikTables.USER.equals(spec.getName()))
          {
+            checkWithinUserScope(mapped.params());
             addUserScope(builder, usedNames);
          }
          builder.addParameter("page", String.valueOf(page));
@@ -497,6 +504,31 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     ** Server-side user scope (records are also checked one by one). A filter
     ** the operator set on the same parameter wins server-side; the per-record
     ** check still enforces the scope.
+    *******************************************************************************/
+   private void checkWithinUserScope(List<NameValuePair> params) throws QUserFacingException
+   {
+      String       pathPrefix  = runtime().getConfig().getUserScopePathStartsWith();
+      List<String> scopeGroups = runtime().getConfig().getUserScopeGroupNames() == null ? List.of() : runtime().getConfig().getUserScopeGroupNames();
+      for(NameValuePair param : params)
+      {
+         boolean outside = switch(param.getName())
+         {
+            case "type" -> !List.of(AuthentikTables.DEFAULT_USER_TYPES).contains(param.getValue());
+            case "path", "path_startswith" -> StringUtils.hasContent(pathPrefix) && !param.getValue().startsWith(pathPrefix);
+            case "groups_by_name" -> !scopeGroups.isEmpty() && !scopeGroups.contains(param.getValue());
+            default -> false;
+         };
+         if(outside)
+         {
+            throw (new QUserFacingException("That filter (" + param.getName() + " = " + param.getValue() + ") is outside the users this app may see."));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Scope parameters (the operator's narrower filter, checked above, wins).
     *******************************************************************************/
    private void addUserScope(URIBuilder builder, List<String> usedNames)
    {
@@ -596,6 +628,10 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
                }
                record.setValue("effectivePermissions", String.join(", ", resolver.resolveGroups(groupPks).sessionPermissions()));
             }
+            else
+            {
+               record.setDisplayValue("effectivePermissions", UNAVAILABLE);
+            }
          }
          else if(AuthentikTables.GROUP.equals(spec.getName()))
          {
@@ -605,6 +641,11 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
                String pk = object.optString("pk");
                record.setValue("isSuperuserInherited", resolverGraph.isSuperuserInherited(pk));
                record.setValue("effectivePermissions", String.join(", ", resolver.resolveGroups(List.of(pk)).sessionPermissions()));
+            }
+            else
+            {
+               record.setDisplayValue("effectivePermissions", UNAVAILABLE);
+               record.setDisplayValue("isSuperuserInherited", UNAVAILABLE);
             }
          }
          return (record);
@@ -660,6 +701,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
 
    private GroupGraph resolverGraph;
+   private boolean    resolverFailed;
 
 
 
@@ -669,7 +711,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     *******************************************************************************/
    private EffectivePermissionResolver resolverForCall()
    {
-      if(resolverForCall == null)
+      if(resolverForCall == null && !resolverFailed)
       {
          try
          {
@@ -678,7 +720,8 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
          catch(Exception e)
          {
-            LOG.info("Group graph unavailable; effective permissions left empty", logPair("error", AuthentikRedactor.redactText(e.getMessage(), token())));
+            resolverFailed = true;
+            LOG.warn("Group graph unavailable; effective permissions shown as unavailable", logPair("error", AuthentikRedactor.redactText(String.valueOf(e.getMessage()), token())));
             return (null);
          }
       }
@@ -879,15 +922,33 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     *******************************************************************************/
    private boolean isMemberInScope(JSONObject row) throws QException
    {
-      boolean scoped = StringUtils.hasContent(runtime().getConfig().getUserScopePathStartsWith())
-         || (runtime().getConfig().getUserScopeGroupNames() != null && !runtime().getConfig().getUserScopeGroupNames().isEmpty());
-      if(!scoped)
+      if(scopedUserPks == null)
       {
-         return (true);
+         scopedUserPks = new java.util.HashSet<>();
+         try
+         {
+            URIBuilder builder = new URIBuilder("/core/users/");
+            addUserScope(builder, List.of());
+            String query = builder.build().getRawQuery();
+            for(JSONObject user : getAllPages("/core/users/?" + query, MAX_SWEEP_OBJECTS))
+            {
+               if(runtime().getGuard().isUserInScope(user))
+               {
+                  scopedUserPks.add(user.getInt("pk"));
+               }
+            }
+         }
+         catch(java.net.URISyntaxException e)
+         {
+            throw (new QException("Bad Authentik URL", e));
+         }
       }
-      JSONObject user = getObject(AuthentikTables.get(AuthentikTables.USER), row.optInt("userPk"));
-      return (user != null && runtime().getGuard().isUserInScope(user));
+      return (scopedUserPks.contains(row.optInt("userPk")));
    }
+
+
+
+   private java.util.Set<Integer> scopedUserPks;
 
 
 
@@ -908,6 +969,32 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    {
       String body = getBody(url, false);
       return (parse(url, body));
+   }
+
+
+
+   /*******************************************************************************
+    ** The pagination object of a list response; a list response without one
+    ** means the API changed, which must not read as "no results".
+    *******************************************************************************/
+   static JSONObject pagination(JSONObject response) throws QException
+   {
+      JSONObject pagination = response.optJSONObject("pagination");
+      if(pagination == null)
+      {
+         throw (new QException("Unexpected Authentik list response (no pagination object); has the API changed?"));
+      }
+      return (pagination);
+   }
+
+
+
+   /*******************************************************************************
+    ** GET an API path (relative to /api/v3) as JSON, or null on 404.
+    *******************************************************************************/
+   public JSONObject getApiJsonOrNull(String pathAndQuery) throws QException
+   {
+      return (getJsonOrNull(runtime().getConfig().getApiRoot() + pathAndQuery));
    }
 
 
@@ -1088,7 +1175,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     *******************************************************************************/
    static QException mapError(HttpRequestBase request, String path, int status, String body, String token)
    {
-      String detail = AuthentikRedactor.redactText(errorDetail(body), token);
+      String detail = AuthentikRedactor.redactText(errorDetail(AuthentikRedactor.redactText(body, token)), token);
       if(AuthentikRedactor.isSensitivePath(path))
       {
          detail = "(details omitted for a sensitive endpoint)";
@@ -1214,7 +1301,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       }
       catch(Exception e)
       {
-         LOG.warn("Error logging an outbound Authentik call", logPair("path", path));
+         LOG.warn("Error logging an outbound Authentik call", logPair("path", path), logPair("error", e.getClass().getSimpleName()));
       }
    }
 
@@ -1231,7 +1318,13 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          return;
       }
       String expected = runtime().getConfig().getExpectedServerVersion();
-      fetchServerVersion().ifPresent(actual ->
+      Optional<String> version = fetchServerVersion();
+      if(version.isEmpty())
+      {
+         VERSION_CHECKED.set(false);
+         return;
+      }
+      version.ifPresent(actual ->
       {
          if(StringUtils.hasContent(expected) && !actual.startsWith(expected + ".") && !actual.equals(expected))
          {

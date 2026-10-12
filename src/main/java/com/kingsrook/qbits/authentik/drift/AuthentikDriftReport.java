@@ -31,6 +31,8 @@ import com.kingsrook.qbits.authentik.permissions.GroupGraph;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.logging.QLogger;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -57,6 +59,8 @@ import org.json.JSONObject;
  *******************************************************************************/
 public class AuthentikDriftReport
 {
+   private static final QLogger LOG = QLogger.getLogger(AuthentikDriftReport.class);
+
    private final AuthentikActionUtil client;
    private final AuthentikQBitConfig config;
    private final AuthentikGuard      guard;
@@ -119,8 +123,20 @@ public class AuthentikDriftReport
       }
       catch(Exception e)
       {
-         findings.add(DriftFinding.warning(name, "-", "Check could not run: " + AuthentikRedactor.redactText(e.getMessage(), config.getResolvedApiToken())));
+         String message = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
+         LOG.warn("Drift check could not run", logPair("check", name), logPair("error", AuthentikRedactor.redactText(message, config.getResolvedApiToken())));
+         findings.add(DriftFinding.error(name, "-", "Check could not run, so its result is UNKNOWN: " + AuthentikRedactor.redactText(message, config.getResolvedApiToken())));
       }
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static String encode(String value)
+   {
+      return (java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8));
    }
 
 
@@ -132,11 +148,15 @@ public class AuthentikDriftReport
    {
       String expected = config.getExpectedServerVersion();
       String actual   = client.fetchServerVersion().orElse(null);
-      if(actual == null)
+      if(expected == null || expected.isBlank())
+      {
+         findings.add(DriftFinding.info("version", actual == null ? "Authentik" : "Authentik " + actual, "No expectedServerVersion configured."));
+      }
+      else if(actual == null)
       {
          findings.add(DriftFinding.warning("version", "Authentik", "Server version unavailable (GET /admin/version/ failed)."));
       }
-      else if(expected != null && !(actual.equals(expected) || actual.startsWith(expected + ".")))
+      else if(!(actual.equals(expected) || actual.startsWith(expected + ".")))
       {
          findings.add(DriftFinding.warning("version", "Authentik " + actual, "qbit-authentik was tested against " + expected + ". Run its contract tests against " + actual + " before relying on it."));
       }
@@ -182,7 +202,7 @@ public class AuthentikDriftReport
    void checkServiceAccount(List<DriftFinding> findings) throws QException
    {
       String     username = config.getEffectiveServiceAccountUsername();
-      JSONArray  results  = client.getApiJson("/core/users/?include_groups=true&username=" + username).optJSONArray("results");
+      JSONArray  results  = client.getApiJson("/core/users/?include_groups=true&username=" + encode(username)).optJSONArray("results");
       JSONObject user     = results == null || results.isEmpty() ? null : results.getJSONObject(0);
       if(user == null)
       {
@@ -209,7 +229,7 @@ public class AuthentikDriftReport
          problems.add("it is inactive");
       }
       JSONObject attributes = user.optJSONObject("attributes");
-      if(attributes == null || !Boolean.TRUE.equals(attributes.opt(AuthentikJson.ATTR_PROTECTED)))
+      if(!AuthentikGuard.isMarkedProtected(user))
       {
          problems.add("qqq.io/protected is not true");
       }
@@ -221,8 +241,12 @@ public class AuthentikDriftReport
       ////////////////////////////////////////////////////////////////////////////
       // tokens: listing without view_token returns the caller's own tokens    //
       ////////////////////////////////////////////////////////////////////////////
-      List<JSONObject> tokens   = client.getAllPages("/core/tokens/", 200);
+      List<JSONObject> tokens   = client.getAllPages("/core/tokens/?intent=api&user__username=" + encode(username), 200);
       int              apiOwned = 0;
+      if(tokens.size() >= 200)
+      {
+         findings.add(DriftFinding.error("service account", username, "200 or more API tokens for the service account; something is minting tokens."));
+      }
       for(JSONObject token : tokens)
       {
          JSONObject owner = token.optJSONObject("user_obj");
@@ -231,12 +255,16 @@ public class AuthentikDriftReport
             apiOwned++;
          }
       }
-      if(apiOwned > 1)
+      if(apiOwned == 0)
+      {
+         findings.add(DriftFinding.warning("service account", username, "The service account's own API token is not visible, so extra tokens cannot be detected."));
+      }
+      else if(apiOwned > 1)
       {
          findings.add(DriftFinding.warning("service account", username, apiOwned + " API tokens exist for the service account; expected 1. It can mint its own tokens, so an extra one may be a leftover rotation or persistence after a compromise. Delete the ones not in Infisical."));
       }
 
-      if(problems.isEmpty() && apiOwned <= 1)
+      if(problems.isEmpty() && apiOwned == 1)
       {
          findings.add(DriftFinding.ok("service account", username, "Service account, no groups, not a superuser, protected, one API token."));
       }
@@ -253,7 +281,7 @@ public class AuthentikDriftReport
       List<String> breakGlass = new ArrayList<>();
       for(JSONObject user : protectedUsers)
       {
-         if(user.optBoolean("is_superuser", false) && user.optBoolean("is_active", true))
+         if(user.optBoolean("is_superuser", false) && user.optBoolean("is_active", true) && AuthentikGuard.isMarkedProtected(user))
          {
             breakGlass.add(user.optString("username"));
          }
@@ -280,6 +308,11 @@ public class AuthentikDriftReport
       EffectivePermissionResolver resolver = new EffectivePermissionResolver(graph, null);
 
       List<IdentityPermission> required = List.of(IdentityPermission.MEMBERSHIPS_MANAGE, IdentityPermission.PERMISSIONS_MANAGE);
+      Set<Integer>             humans   = new HashSet<>();
+      for(JSONObject human : client.getAllPages("/core/users/?type=internal&type=external", AuthentikActionUtil.MAX_SWEEP_OBJECTS))
+      {
+         humans.add(human.getInt("pk"));
+      }
       Set<Integer>             checked  = new HashSet<>();
       List<String>             admins   = new ArrayList<>();
       for(JSONObject group : groups)
@@ -288,7 +321,7 @@ public class AuthentikDriftReport
          for(int i = 0; users != null && i < users.length(); i++)
          {
             JSONObject user = users.getJSONObject(i);
-            if(!checked.add(user.getInt("pk")) || !user.optBoolean("is_active", true))
+            if(!checked.add(user.getInt("pk")) || !user.optBoolean("is_active", true) || !humans.contains(user.getInt("pk")))
             {
                continue;
             }
@@ -313,7 +346,7 @@ public class AuthentikDriftReport
       if(admins.isEmpty())
       {
          String bootstrap = config.getResolvedBootstrapOperators().isEmpty() ? "" : " bootstrapOperators is set, which covers sign-in for now.";
-         findings.add(DriftFinding.error("identity admins", "-", "Nobody can administer identities from QQQ: no active, unprotected user holds identity.memberships.manage and identity.permissions.manage. Add an administrator to a group carrying identity.* (e.g. identity-admins) in the Authentik UI." + bootstrap));
+         findings.add(DriftFinding.error("identity admins", "-", "Nobody can administer identities from QQQ: no active, unprotected human user holds identity.memberships.manage and identity.permissions.manage. Add an administrator to a group carrying identity.* (e.g. identity-admins) in the Authentik UI." + bootstrap));
       }
       else if(admins.size() == 1)
       {
@@ -339,6 +372,11 @@ public class AuthentikDriftReport
 
       for(GroupGraph.Node node : graph.nodes())
       {
+         for(String bad : node.malformed())
+         {
+            issues++;
+            findings.add(DriftFinding.warning("group attributes", node.name(), "Malformed entry ignored (" + bad + "); qqq.io/permissions and qqq.io/app-access must be lists of strings."));
+         }
          for(String permission : node.permissions())
          {
             if(resolver.expand(permission).isEmpty())
@@ -375,7 +413,7 @@ public class AuthentikDriftReport
    void checkServiceAccountActivity(List<DriftFinding> findings) throws QException
    {
       String           username = config.getEffectiveServiceAccountUsername();
-      List<JSONObject> events   = client.getAllPages("/events/events/?ordering=-created&username=" + username, 200);
+      List<JSONObject> events   = client.getAllPages("/events/events/?ordering=-created&username=" + encode(username), 200);
       GroupGraph       graph    = client.groupGraph();
       int              flagged  = 0;
 
@@ -390,20 +428,28 @@ public class AuthentikDriftReport
          String modelName = model.optString("model_name");
          String pk        = model.optString("pk");
          boolean sensitive = false;
-         if("group".equals(modelName) && graph.byPk(pk) != null && graph.isSuperuserInherited(pk))
+         if(!"user".equals(modelName) && !"group".equals(modelName))
+         {
+            continue;
+         }
+         if("model_deleted".equals(event.optString("action")))
          {
             sensitive = true;
          }
-         else if("user".equals(modelName) && pk.matches("[0-9]+"))
+         else if("group".equals(modelName))
          {
-            JSONObject user = client.getApiJson("/core/users/" + pk + "/");
-            sensitive = guard.protection(user).isProtected() && !username.equals(user.optString("username"));
+            sensitive = graph.byPk(pk) == null || graph.isSuperuserInherited(pk);
+         }
+         else if(pk.matches("[0-9]+"))
+         {
+            JSONObject user = client.getApiJsonOrNull("/core/users/" + pk + "/");
+            sensitive = user == null || (guard.protection(user).isProtected() && !username.equals(user.optString("username")));
          }
          if(sensitive)
          {
             flagged++;
             findings.add(DriftFinding.error("service-account activity", model.optString("name", pk),
-               "The qbit's service account changed a protected or superuser object (" + event.optString("action") + " at " + event.optString("created") + "). QQQ never does this; investigate as a possible compromise."));
+               "The qbit's service account changed a protected or superuser object, deleted one, or changed one that no longer exists (" + event.optString("action") + " at " + event.optString("created") + "). QQQ never does this; investigate as a possible compromise."));
          }
       }
       if(flagged == 0)

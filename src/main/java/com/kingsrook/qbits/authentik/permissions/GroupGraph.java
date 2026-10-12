@@ -42,7 +42,7 @@ public class GroupGraph
    /*******************************************************************************
     ** One group.
     *******************************************************************************/
-   public record Node(String pk, String name, boolean ownSuperuser, List<String> parentPks, List<String> permissions, List<String> appAccess, List<Integer> memberPks)
+   public record Node(String pk, String name, boolean ownSuperuser, List<String> parentPks, List<String> permissions, List<String> appAccess, List<Integer> memberPks, List<String> malformed)
    {
    }
 
@@ -50,7 +50,7 @@ public class GroupGraph
 
    private final Map<String, Node>        byPk      = new LinkedHashMap<>();
    private final Map<String, Node>        byName    = new LinkedHashMap<>();
-   private final Map<String, Set<String>> ancestors = new LinkedHashMap<>();
+   private final Map<String, Set<String>> ancestors = new java.util.concurrent.ConcurrentHashMap<>();
 
 
 
@@ -69,7 +69,8 @@ public class GroupGraph
             strings(group.optJSONArray("parents")),
             nonNull(AuthentikJson.stringList(group.optJSONObject("attributes"), AuthentikJson.ATTR_PERMISSIONS)),
             nonNull(AuthentikJson.stringList(group.optJSONObject("attributes"), AuthentikJson.ATTR_APP_ACCESS)),
-            ints(group.optJSONArray("users"))));
+            ints(group.optJSONArray("users")),
+            malformed(group.optJSONObject("attributes"))));
       }
       return (graph);
    }
@@ -151,8 +152,9 @@ public class GroupGraph
             queue.addAll(parent.parentPks());
          }
       }
-      ancestors.put(pk, seen);
-      return (seen);
+      Set<String> immutable = java.util.Collections.unmodifiableSet(seen);
+      ancestors.put(pk, immutable);
+      return (immutable);
    }
 
 
@@ -248,6 +250,24 @@ public class GroupGraph
             {
                rs.add(object.getInt("pk"));
             }
+         }
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   private static List<String> malformed(JSONObject attributes)
+   {
+      List<String> rs = new ArrayList<>();
+      for(String key : List.of(AuthentikJson.ATTR_PERMISSIONS, AuthentikJson.ATTR_APP_ACCESS))
+      {
+         for(String bad : AuthentikJson.malformedEntries(attributes, key))
+         {
+            rs.add(key + ": " + bad);
          }
       }
       return (rs);

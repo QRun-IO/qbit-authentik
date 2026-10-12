@@ -64,10 +64,10 @@ public final class AuthentikApiSurface
       ///////////////////////////////////////////////////////////
       rs.add(new Operation("get", "/core/groups/", Set.of("include_users", "include_parents", "include_children", "name", "ordering", "page", "page_size")));
       rs.add(new Operation("get", "/core/groups/{key}/", Set.of("include_users")));
-      rs.add(new Operation("get", "/core/users/", Set.of("username", "include_groups", "attributes", "page", "page_size")));
+      rs.add(new Operation("get", "/core/users/", Set.of("username", "include_groups", "attributes", "type", "path_startswith", "groups_by_name", "page", "page_size")));
       rs.add(new Operation("get", "/core/users/{key}/", Set.of()));
       rs.add(new Operation("get", "/managed/blueprints/", Set.of("page", "page_size")));
-      rs.add(new Operation("get", "/core/tokens/", Set.of("page", "page_size")));
+      rs.add(new Operation("get", "/core/tokens/", Set.of("user__username", "intent", "page", "page_size")));
       rs.add(new Operation("get", "/events/events/", Set.of("username", "ordering", "page", "page_size")));
       return (rs);
    }

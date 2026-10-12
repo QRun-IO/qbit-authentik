@@ -26,7 +26,8 @@ The Authentik qbit's progress through DESIGN.md section 11, with links. Updated 
 | Effective permissions (resolver), inherited superuser | done |
 | Identity drift report (widget) | done |
 | Identity app under Admin, after Web Users (kof22) | Website-Backend draft PR #94 |
-| `AuthentikGroupPermissionMapper` (sign-in permissions from groups) | next PR (needs the OAuth2 module hook) |
+| `AuthentikGroupPermissionMapper` (sign-in permissions from groups) | done in the qbit; the kof22 cut-over (replacing `AuthentikAuthenticationCustomizer`) waits for owner item 10 |
+| Code review (general + silent-failure) | done; all high and most medium findings fixed, with regression tests |
 | Mirror tables, group tree, access-matrix widgets | next PRs |
 
 ## Contract test results (Authentik 2026.8.3)
@@ -36,6 +37,6 @@ The Authentik qbit's progress through DESIGN.md section 11, with links. Updated 
 | Phase | Unit tests | Contract tests |
 |---|---|---|
 | 0 | 48 | 27 |
-| 1 | 60 | 31 |
+| 1 | 68 | 31 |
 
 All green, JaCoCo gate met. CircleCI is not enabled for this repo yet (owner checklist D1).

@@ -117,9 +117,13 @@ public class AuthentikFilterMapper
       boolean usedSearch = false;
       for(QFilterCriteria criterion : criteria)
       {
-         if(criterion == null || criterion.getFieldName() == null)
+         if(criterion == null)
          {
             continue;
+         }
+         if(criterion.getFieldName() == null)
+         {
+            throw (new QUserFacingException("A filter criterion without a field is not supported for " + spec.getLabel() + "."));
          }
 
          if(criterion.getOtherFieldName() != null || criterion.getFieldFunction() != null)
@@ -148,7 +152,7 @@ public class AuthentikFilterMapper
                throw (new QUserFacingException("Only one text-search criterion is supported for " + spec.getLabel() + "."));
             }
             usedSearch = true;
-            add(params, usedParams, "search", singleString(field, operator, values));
+            add(params, usedParams, "search", plainSearchTerm(field, singleString(field, operator, values)));
             continue;
          }
 
@@ -241,6 +245,13 @@ public class AuthentikFilterMapper
       for(QFilterOrderBy orderBy : CollectionUtils.nonNullList(orderBys))
       {
          AuthentikFieldSpec field = spec.getField(orderBy.getFieldName());
+         if(field != null && field.getOrderingName() == null && spec.getKeyFieldName().equals(field.getName()))
+         {
+            //////////////////////////////////////////////////////////////////
+            // UIs often sort by the key by default: use the table's default //
+            //////////////////////////////////////////////////////////////////
+            continue;
+         }
          if(field == null || field.getOrderingName() == null)
          {
             throw (new QUserFacingException(spec.getLabel() + " cannot be sorted by " + (field == null ? orderBy.getFieldName() : field.getLabel()) + "."));
@@ -340,6 +351,22 @@ public class AuthentikFilterMapper
 
 
    /*******************************************************************************
+    ** Authentik's search parameter also accepts a query language (QLSearch),
+    ** which could reach fields the session may not filter on (attributes).
+    ** Only plain text is passed: QL operators, quotes and keywords are refused.
+    *******************************************************************************/
+   static String plainSearchTerm(AuthentikFieldSpec field, String term) throws QUserFacingException
+   {
+      if(term.matches(".*[=~\"'()<>!\\\\].*") || term.matches("(?i).*\\s(and|or|not|in)\\s.*"))
+      {
+         throw (new QUserFacingException("Search " + field.getLabel() + " with plain text only (no operators or quotes)."));
+      }
+      return (term);
+   }
+
+
+
+   /*******************************************************************************
     ** Evaluate filter expressions (e.g. "now minus 90 days") into plain values.
     *******************************************************************************/
    private static List<Serializable> evaluateValues(AuthentikFieldSpec field, List<Serializable> values) throws QException
@@ -373,7 +400,15 @@ public class AuthentikFilterMapper
       if(field.getType() == QFieldType.BOOLEAN)
       {
          String text = String.valueOf(value).trim().toLowerCase();
-         return (text.equals("true") || text.equals("1") || text.equals("yes") ? "true" : "false");
+         if(text.equals("true") || text.equals("1") || text.equals("yes"))
+         {
+            return ("true");
+         }
+         if(text.equals("false") || text.equals("0") || text.equals("no"))
+         {
+            return ("false");
+         }
+         throw (new QUserFacingException("Not a valid yes/no value for " + field.getLabel() + ": " + value));
       }
       return (String.valueOf(value));
    }

@@ -265,6 +265,38 @@ public final class AuthentikJson
 
 
    /*******************************************************************************
+    ** Entries of a list attribute that stringList() drops: a value that is not a
+    ** string or array, or non-string / blank array elements. Empty when fine.
+    *******************************************************************************/
+   public static List<String> malformedEntries(JSONObject object, String key)
+   {
+      List<String> rs = new ArrayList<>();
+      if(object == null || !object.has(key) || object.isNull(key))
+      {
+         return (rs);
+      }
+      Object value = object.get(key);
+      if(value instanceof JSONArray array)
+      {
+         for(int i = 0; i < array.length(); i++)
+         {
+            Object element = array.get(i);
+            if(!(element instanceof String s) || s.isBlank())
+            {
+               rs.add(String.valueOf(element));
+            }
+         }
+      }
+      else if(!(value instanceof String))
+      {
+         rs.add(String.valueOf(value));
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
     ** Parse an Authentik timestamp (ISO-8601 with offset or Z).
     *******************************************************************************/
    public static Instant parseInstant(String value)

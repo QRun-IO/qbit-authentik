@@ -176,8 +176,7 @@ public class AuthentikGuard
       {
          return (ProtectionResult.of("Authentik superuser"));
       }
-      JSONObject attributes = user.optJSONObject("attributes");
-      if(attributes != null && isTrue(attributes.opt(AuthentikJson.ATTR_PROTECTED)))
+      if(isMarkedProtected(user))
       {
          return (ProtectionResult.of("marked qqq.io/protected"));
       }
@@ -193,6 +192,17 @@ public class AuthentikGuard
          return (ProtectionResult.of("Authentik internal service account"));
       }
       return (ProtectionResult.NOT_PROTECTED);
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether a user carries qqq.io/protected: true (boolean or "true").
+    *******************************************************************************/
+   public static boolean isMarkedProtected(JSONObject user)
+   {
+      JSONObject attributes = user == null ? null : user.optJSONObject("attributes");
+      return (attributes != null && isTrue(attributes.opt(AuthentikJson.ATTR_PROTECTED)));
    }
 
 
