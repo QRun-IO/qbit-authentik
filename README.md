@@ -1,50 +1,73 @@
 # QBit Authentik
 
-A QQQ QBit for managing [Authentik](https://goauthentik.io) identities (users, groups, memberships, and the QQQ permissions a group grants) from a QQQ app. **Authentik stays the source of truth.** The qbit reads Authentik live and will write through the Authentik API. Changes made in the Authentik admin UI are equally valid.
+A QQQ QBit to manage [Authentik](https://goauthentik.io) identities from a QQQ app: **the full user lifecycle, and groups with the permissions they grant**. Authentik stays the source of truth. The qbit reads Authentik live and writes through the Authentik API, never its database. Changes made in the Authentik admin UI are equally valid, and the qbit never overwrites them blindly.
 
-Design: [`docs/DESIGN.md`](docs/DESIGN.md) (copy of the approved spec, QRun-IO/qqq#1065). Phase 0 owner steps: [`docs/PHASE0-OWNER-CHECKLIST.md`](docs/PHASE0-OWNER-CHECKLIST.md). Status and linked PRs: [`docs/STATUS.md`](docs/STATUS.md).
+Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the approved spec, QRun-IO/qqq#1065). Status: [`docs/STATUS.md`](docs/STATUS.md). Phase 0 owner steps: [`docs/PHASE0-OWNER-CHECKLIST.md`](docs/PHASE0-OWNER-CHECKLIST.md). Table DDL: [`docs/schema.sql`](docs/schema.sql).
 
-## Status
+## What you get
 
-`0.1.0-SNAPSHOT`, the **read-only** release line (phases 0 and 1 of DESIGN.md section 11):
-
-| Available | Not yet (refused by config validation) |
+| | |
 |---|---|
-| `READ`: Authentik tables over the API | `MEMBERSHIP`, `GROUPS`, `USERS`, `CREDENTIALS`, `SESSIONS` writes (phases 2-3) |
-| `MIRROR` (phase 1) | `RBAC` (phase 4), `WEBHOOK`, `SNAPSHOT_EXPORT` |
+| **People** | Create a user (Authentik emails them a link to set their own password; QQQ never sets or sees one), invite, edit, deactivate and reactivate, send a password reset email, reset MFA, revoke app passwords, revoke sessions, cancel invitations. No hard delete. |
+| **Groups and permissions** | Create and edit groups (parents), add and remove members, and edit the QQQ permissions and app sign-in a group grants (`qqq.io/permissions`, `qqq.io/app-access` on the Authentik group). |
+| **Safety** | Operators can only grant permissions they hold themselves. No self-edits. Break-glass, the service account and superusers are untouchable, and superuser groups cannot be managed. The last administrator cannot be removed. Granting `authentik.*` needs a second person. Destructive actions need a reason and a typed confirmation. A change made in the Authentik UI after you opened a form is detected, not overwritten. |
+| **Audit** | Every attempt is a row in `authentik_admin_action` (written before the call), and Authentik's own event log gets a `custom_qqq_admin_action` event naming the human operator. |
+| **Screens** | A home dashboard (what needs attention, people, groups, recent changes, connection), standard tables with full record screens, and every action as a table or record action with the usual Review and Result steps. Nothing is in the nav except the main tables. |
 
-Every write is refused by `AuthentikGuard` in this release.
+Everything is a standard QQQ table, action and widget, so it works in any QQQ UI and over the QQQ API.
 
 ## Usage
 
 ```java
 AuthentikQBitConfig config = new AuthentikQBitConfig()
-   .withBaseUrl("https://auth.example.com")         // host root; /api/v3 is appended
-   .withApiToken("${env.AUTHENTIK_API_TOKEN}")      // service-account token, resolved by the qbit
-   .withAppKey("my-app-admin")                      // service account: qqq-my-app-admin-idadmin
-   .withApplicationsInScope(List.of("my-app-prod"));
+   .withBaseUrl("https://auth.example.com")          // host root; /api/v3 is appended
+   .withApiToken("${env.AUTHENTIK_API_TOKEN}")       // service-account token, resolved by the qbit
+   .withAppKey("my-app-admin")                       // service account: qqq-my-app-admin-idadmin
+   .withFeatures(EnumSet.of(READ, USERS, GROUPS, MEMBERSHIP, CREDENTIALS, SESSIONS))
+   .withLocalBackendName("rdbms")                    // audit trail and approval requests (see docs/schema.sql)
+   .withRecoveryEmailStage("my-recovery-email")      // Authentik email stage (name or uuid)
+   .withInvitationFlow("my-enrollment");             // optional: enables invitations
 
 new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance);
 ```
 
-This produces:
-- an API backend `authentikApi`
-- read-only tables `authentik_user`, `authentik_group`, `authentik_group_member`, `authentik_session` and `authentik_event`
-- the Identity Drift Report widget
-- an app `authentikAdmin`, labelled "Identity", that hosts can nest, for example under Admin
+Read-only is the default (`features` = `READ`). `readOnly=true` is a hard kill switch that refuses every write whatever the features say.
 
-Access is controlled by QQQ permissions:
+### What it produces
 
-| Permission (held as `<name>.hasAccess`) | Grants |
+| | |
 |---|---|
-| `authentik.users.read` | the Identity app and its tables |
-| `authentik.audit.read` | sensitive fields and tables |
+| API backend | `authentikApi` |
+| Main tables (nav) | `authentik_user`, `authentik_invitation`, `authentik_group`, `authentik_application`, `authentik_approval_request`, `authentik_admin_action` |
+| Child lists (on their parents, not in the nav) | `authentik_group_member`, `authentik_session`, `authentik_token` (metadata only, never a key), `authentik_event`, `authentik_policy_binding`, `authentik_role`, `authentik_blueprint` |
+| App and home | `authentikAdmin` (label "Identity", hosts may nest it) with the `authentikHome` widget and the drift report |
+| Actions | Create User, Invite User, Edit User, Deactivate User, Reactivate User, Add To Group, Remove From Group, Send Password Reset Email, Reset MFA, Revoke App Passwords, Revoke Sessions, Create Group, Edit Group, Edit Permissions And App Access, Add Members, Remove Members, Cancel Invitation, Approve And Apply, Reject |
 
-The full `authentik.*` set is in DESIGN.md section 5.2.
+### Permissions
+
+QQQ permissions, held as `<name>.hasAccess`, granted through the group attribute `qqq.io/permissions` and read by `AuthentikGroupPermissionMapper`:
+
+| Permission | Grants |
+|---|---|
+| `authentik.users.read` | the Identity app, home, users, groups, applications, bindings, roles, blueprints |
+| `authentik.users.manage` | create, invite, edit, deactivate, reactivate users; cancel invitations |
+| `authentik.groups.manage` | create and edit groups |
+| `authentik.memberships.manage` | add and remove members (subset rule) |
+| `authentik.permissions.manage` | edit a group's permissions and app access (subset rule) |
+| `authentik.credentials.reset` | password reset email, reset MFA, revoke app passwords |
+| `authentik.sessions.revoke` | revoke sessions |
+| `authentik.audit.read` | sessions, tokens, events, the audit trail, sensitive fields |
+| `authentik.approve` | approve or reject a second person's request |
+| `authentik.admin` | the drift report |
+| `authentik.roles.manage` | reserved (role management is phase 4) |
+
+`authentik.*` grants all of them.
 
 ### Authentik side
 
-The qbit's API token belongs to a dedicated Authentik service account whose role holds only the read permissions it needs. The bootstrap blueprint that creates it lives in the host's GitOps repo. One host's version, which the contract tests exercise, is [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml); treat it as an example, not something to apply as is.
+The qbit's API token belongs to a dedicated Authentik service account whose role holds only the permissions it needs (DESIGN.md section 5.1), created by a bootstrap blueprint in the host's GitOps repository. It is never a superuser and never holds `enable_group_superuser`, token-key, impersonate or delete permissions. [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml) is one host's worked example.
+
+Write features need these in the role, on top of the read set: `add_user`, `change_user`, `reset_user_password`, `add_group`, `change_group`, `add_user_to_group`, `remove_user_from_group`, `view_token`, `delete_token`, `delete_authenticatedsession`, invitation `view`/`add`/`delete` (if you use invitations), `authentik_flows.view_flow` (to find the invitation flow by slug), and `view_emailstage` on the recovery stage. The contract tests grant exactly this list.
 
 ## Adopting in another app
 
@@ -52,22 +75,21 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 
 | Item | What to do |
 |---|---|
-| Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release candidate or release is on Maven Central yet; CircleCI publishes snapshots from `develop`. Build from source or use a snapshot until `0.1.0` ships. |
+| Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
 | QQQ version | QQQ 4.1 (see `pom.xml` for the exact RC). Java 21. |
-| Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl` (`/api/v3` is appended). |
-| Authentik setup | A dedicated service account (default username `qqq-<appKey>-idadmin`) whose role holds only the read permissions the QBit needs, created by a bootstrap blueprint in the host's GitOps repository. `src/test/resources/blueprints/kof22-identity-bootstrap.yaml` is a worked example from one host, not something to apply as is. |
-| Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. Produces the `authentikApi` API backend, read-only tables (`authentik_user`, `authentik_group`, `authentik_group_member`, `authentik_session`, `authentik_event`), the drift report widget, and the `authentikAdmin` ("Identity") app, which the host may nest. |
-| Required config | `baseUrl`, `apiToken`, `appKey` (lower-case letters, digits, dashes; chooses the service-account name), `applicationsInScope` (Authentik application slugs). Optional: `userScopePathStartsWith`, `groupScopeNamePrefix`, `mirrorBackendName` (phase 1 `MIRROR`), `throttleRequestsPerSecond` (default 10). |
-| Secrets / env | `apiToken` as a `${env.X}` reference (the example uses `AUTHENTIK_API_TOKEN`); `bootstrapOperators` defaults to `${env.AUTHENTIK_QBIT_BOOTSTRAP_OPERATORS}` and `webhookSecret` to `${env.AUTHENTIK_WEBHOOK_SECRET}`. Keep them in the host's secret store, never in config files. |
-| Permissions | `authentik.users.read` (Identity app and tables), `authentik.audit.read` (sensitive fields and tables); the full `authentik.*` set is in DESIGN.md section 5.2. Granted through the Authentik group attribute `qqq.io/permissions`, read by `AuthentikGroupPermissionMapper`. |
-| Storage | None for the read-only line, except the mirror tables when `MIRROR` is enabled on `mirrorBackendName`. |
-| Known limitations | Read-only: every write is refused by `AuthentikGuard` until phases 2-3. `RBAC`, `WEBHOOK` and `SNAPSHOT_EXPORT` are refused by config validation. |
-| Upgrading | First release line; nothing to migrate. |
+| Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
+| Tables | Create `authentik_admin_action` and `authentik_approval_request` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
+| Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
+| Required config | `baseUrl`, `apiToken`, `appKey`. For writes: `features`, `localBackendName`, `recoveryEmailStage` (users and credentials). Optional: `invitationFlow`, `twoPersonApproval` (default on), `userScopePathStartsWith`, `protectedUsernames`, `applicationsInScope`, `linkPrefix` (default `/app`), `throttleRequestsPerSecond` (default 10), `bulkPacingMillis`. |
+| Secrets / env | `apiToken` as a `${env.X}` reference; `bootstrapOperators` defaults to `${env.AUTHENTIK_QBIT_BOOTSTRAP_OPERATORS}`. Keep them in the host's secret store. |
+| Optional host wiring | ESB: publish the local tables with `EsbTableMetaData.ofOrWithNew(table).withPublication(...)`. Quick Search: register `authentik_user` and `authentik_group` with the Quick Search qbit. Alerts: see Known limitations. |
+| Known limitations | Not in this release: the Authentik webhook, the local mirror tables and reconcile, the access-matrix widget, snapshot export, RBAC role management (phase 4), Alerts producer integration. Invitations add people but not their groups (add them to groups after they sign up). Group and user lists are read live (cached 30 s). |
+| Upgrading | See `UPGRADE.md`. |
 
 ## Build
 
 ```bash
-./mvnw test                 # unit tests (recorded 2026.8.3 fixtures, no network)
+./mvnw test                 # unit tests (recorded 2026.8.3 fixtures and an in-memory Authentik, no network)
 CI=true ./mvnw verify       # + contract tests against Authentik 2026.8.3 in Docker (Testcontainers)
 ./mvnw verify -Dauthentik.test.image=ghcr.io/goauthentik/server:2026.10.0   # rehearse an upgrade
 ./mvnw verify -Dauthentik.fixtures.record=true                              # refresh unit fixtures

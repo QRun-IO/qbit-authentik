@@ -4,6 +4,24 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (v1: full user lifecycle and group/permission management, phases 2-3)
+- **Writes through the Authentik API**, behind the features `USERS`, `GROUPS`, `MEMBERSHIP`, `CREDENTIALS` and `SESSIONS` (read-only stays the default; `readOnly` is a hard kill switch). Every change goes through `AuthentikAdmin`: it plans against live Authentik data (the guardrails of DESIGN.md 5.4), audits first, calls Authentik, posts a `custom_qqq_admin_action` event naming the operator, and finishes the audit row. `AuthentikActionUtil.write` needs a `WriteAuthorization`, which only `AuthentikGuard.authorize` can mint.
+- **Actions** (table and record actions with Review and Result steps; none in the nav): Create User, Invite User, Edit User, Deactivate User, Reactivate User, Add To Group, Remove From Group, Send Password Reset Email, Reset MFA, Revoke App Passwords, Revoke Sessions, Create Group, Edit Group, Edit Permissions And App Access, Add Members, Remove Members, Cancel Invitation, Approve And Apply, Reject.
+- **Safety**: the subset (no escalation) rule evaluated from the operator's live groups; protected accounts and superuser groups; no self-edits; last-administrator protection; reasons; typed confirmations (and a typed count above 25 targets); a 100-target cap; stale checks by fingerprint (groups have no `last_updated`); attribute edits merge only the `qqq.io/*` keys into the current attributes; two-person approval for granting `authentik.*`.
+- **Local tables** `authentik_admin_action` (append-only audit) and `authentik_approval_request` (DDL in `docs/schema.sql`), on the new `localBackendName`.
+- **Read tables** `authentik_application`, `authentik_policy_binding`, `authentik_blueprint`, `authentik_role`, `authentik_token` (metadata only, never a key) and `authentik_invitation`. Sub-tables appear as child lists on their parents; the nav lists only the main tables.
+- **Home**: the `authentikHome` widget (needs attention, people, groups and permissions, recent changes, connection).
+- Config: `localBackendName` (replaces `mirrorBackendName`), `twoPersonApproval`, `schedulerName`, `linkPrefix`.
+- Tests: an in-memory Authentik for the rules, process tests through `RunProcessAction`, and write contract tests on Authentik 2026.8.3 (`QbitWriteContractIT`, including the recovery email arriving in Mailpit).
+
+### Fixed
+- Count reported no distinct count, so a process Review showed no total; group lists now include member pks (member counts were 0).
+- Spec: multi-value filters are repeated plain names (`type=a&type=b`), never `type[]=a` (which Authentik silently ignores); stale role-state, `check_access`, re-parenting-risk, private-repo and backend-name wording corrected (spec revision 4).
+
+### Not in this release
+- The Authentik webhook, the local mirror tables and reconcile, the access-matrix widget, snapshot export, RBAC role management (phase 4) and the Alerts producer integration. `MIRROR`, `WEBHOOK`, `ACCESS_MATRIX`, `SNAPSHOT_EXPORT` and `RBAC` are refused by config validation.
+
+
 ### Changed
 - **Permissions renamed `identity.*` → `authentik.*`** (same suffixes; owner naming rule, 2026-10-12; spec #1065 amended). Legacy names are reported as unknown and never granted. The old names are kept as `@Deprecated` `IdentityPermission.LEGACY_PREFIX`/`LEGACY_WILDCARD`/`getLegacyShortName()`. Update the `qqq.io/permissions` group attributes before deploying; see [UPGRADE.md](UPGRADE.md).
 - **Table names are lowercase snake_case with the `authentik_` prefix** (owner naming rule, 2026-10-12): `authentik_user`, `authentik_group`, `authentik_group_member`, `authentik_session`, `authentik_event` (were `authentikUser`, ...). New `AuthentikQBitConfig.applyTablePrefix` and `toSnakeCase`; apps, widgets, the backend and processes keep camelCase names (`authentikAdmin`, `authentikApi`). The old names are kept as `@Deprecated` `AuthentikTables.LEGACY_*_TABLE_NAME` constants. See [UPGRADE.md](UPGRADE.md).

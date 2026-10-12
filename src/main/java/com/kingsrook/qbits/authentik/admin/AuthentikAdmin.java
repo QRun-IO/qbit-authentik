@@ -1586,7 +1586,7 @@ public class AuthentikAdmin
    /*******************************************************************************
     ** The delete path of an MFA device from its type and pk.
     *******************************************************************************/
-   static String devicePath(JSONObject device)
+   public static String devicePath(JSONObject device)
    {
       String type = (device.optString("type", "") + " " + device.optString("meta_model_name", "")).toLowerCase(Locale.ROOT);
       String pk   = device.has("pk") ? String.valueOf(device.get("pk")) : null;

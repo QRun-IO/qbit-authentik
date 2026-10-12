@@ -5,13 +5,13 @@ These are the steps only James can take: items 6, 7, 8 and 10 of DESIGN.md secti
 Links:
 - cluster-gitops draft PR: KofTwentyTwo/cluster-gitops#72 (the identity bootstrap blueprint, the removal of the `present` entries, the attribute-driven sign-in policy, inert webhook plumbing, and the blueprint lint)
 - Website-Backend and cluster-gitops wiring draft PRs: see `docs/STATUS.md`
-- Spec: QRun-IO/qqq#1065 (revision 3 records the phase 0 findings)
+- Spec: QRun-IO/qqq#1065 (revision 4: phase 0 findings, review fixes, owner decisions of 2026-10-12)
 
 ## 0. Decisions surfaced by phase 0 (read first)
 
 | # | Decision | Recommendation |
 |---|---|---|
-| D1 | **Repo visibility.** `QRun-IO/qbit-authentik` was created **private**, because creating a public repo was blocked for the agent. Other generic qbits (quick-search, sql-workbench) are public, and the spec is already public in qqq#1065. CI publishes `develop` snapshots and `release/*` RCs to Maven Central / Sonatype (with sources jars), which would make the code public anyway. | Make it public before the first publish: *Settings → General → Change visibility*. Then check that CircleCI follows the repo (it must, for PR CI). |
+| D1 | **Repo visibility.** Resolved: `QRun-IO/qbit-authentik` is public. | Check that CircleCI follows the repo (it does for PR CI); nothing else to do. |
 | D2 | **Lockout risk.** Authentik stops the service account from *escalating*, but not from *locking out*. With the phase 2/3 permissions it can do all of the following (contract test `SuperuserFloorIT`): remove members from `authentik Admins`, deactivate `kof22-breakglass`, strip `qqq.io/protected`, and rename the superuser group. The qbit guard refuses all of these; Authentik does not. | Accept, with the mitigations in the spec (§5.1, revision 3). The real break-glass for a compromised QQQ is cluster access: `kubectl exec` into the Authentik worker and run `ak shell` to reactivate or re-add. Optionally, phase 2 grants `remove_user_from_group` per group (object permissions) instead of globally. |
 | D3 | **Self-minted tokens.** Any authenticated user, including the service account, can create API tokens **for itself** without `add_token`, and read their keys. A compromised QQQ could therefore keep a second token alive after you rotate the first. | Accept. The phase 1 drift report flags service-account tokens beyond the expected one. Check that list after every rotation (item 8). |
 | D4 | **Access matrix.** `check_access?for_user=` only works for superusers. For the service account it silently answers *for itself*. The policy-test endpoint returns HTTP 500 for non-superusers on 2026.8.3. | Accepted in the spec: the qbit computes app access itself from `qqq.io/app-access` and the app's bindings, and shows other expression policies as "not evaluated". |
@@ -77,6 +77,7 @@ Do these in order, in one sitting.
    ```yaml
    qqq.io/app-access: ["kof22-website-prod"]
    qqq.io/permissions:
+     - authentik.users.read
      - esbView.hasAccess
      - esbOperate.hasAccess
      - esbDelete.hasAccess
@@ -90,7 +91,7 @@ Do these in order, in one sitting.
      - quickSearchFailedEvent.write
      - dataHealth.hasAccess
    ```
-   Keep the existing attributes of the group. Add only these two keys.
+   Keep the existing attributes of the group. Add only these two keys. `authentik.users.read` lets `kof22-admins` open the Identity app; the seed group `identity-admins` already carries `authentik.*` (all identity permissions) from the blueprint, so you get everything through it once you join it (step 1).
 3. On group **`kof-website-publishers`** → *Attributes*: `qqq.io/app-access: ["kof22-website-prod"]`. This keeps the `kof-publisher-prod` service account's client-credentials tokens working once the name fallback is removed.
 4. **`kof-website-drafters`**: leave it without `qqq.io/app-access` until you decide that drafters should sign in to the admin. Granting it later is that one attribute.
 5. **Break-glass password**:
@@ -101,3 +102,26 @@ Do these in order, in one sitting.
 ## After items 6-10
 
 Tell the agent "phase 0 owner steps done". Next come item 11 (the qbit in read-only mode on staging, behind `AUTHENTIK_QBIT_ENABLED`), then the phase 1 mapper cut-over, then removal of the sign-in name fallback.
+
+
+## Item 12: turn on the full lifecycle (v1)
+
+The qbit can now create and change users and groups, not just read. Do this only after items 6-11 are done and the read-only screens look right on staging. Nothing here is applied by an agent.
+
+1. **Add the write permissions to the service account's role.** In the identity bootstrap blueprint, append these to `qqq-kof22-admin-idadmin`'s `permissions` list (they are re-asserted additively on every apply; the PR is prepared as a separate commit on cluster-gitops#72):
+   ```
+   authentik_core.add_user              authentik_core.change_user
+   authentik_core.reset_user_password   authentik_core.add_group
+   authentik_core.change_group          authentik_core.add_user_to_group
+   authentik_core.remove_user_from_group
+   authentik_core.view_token            authentik_core.delete_token
+   authentik_core.delete_authenticatedsession
+   authentik_stages_authenticator_{totp,static,webauthn,email,sms,duo}.view_<kind>device
+   authentik_stages_authenticator_{totp,static,webauthn,email,sms,duo}.delete_<kind>device
+   ```
+   Never add `enable_group_superuser`, `view_token_key`, `set_token_key`, `add_token`, `impersonate` or `delete_user`. Invitations are not used at kof22 yet (there is no enrollment flow), so the invitation permissions and `view_flow` are left out; add them with the enrollment flow.
+2. **Check the brand's recovery flow.** The password reset email (also used by Create User) fails with "No recovery flow set." unless the brand that serves `auth.kof22.com` has a recovery flow. In Authentik admin, *System → Brands*, edit the brand and set *Recovery flow* to `kof22-recovery`. This is a one-time setting.
+3. **Create the two local tables** (`authentik_admin_action`, `authentik_approval_request`) with the Liquibase change in the Website-Backend PR (see `docs/schema.sql` for the DDL it follows).
+4. **Turn the features on** in the Website-Backend deployment (the draft PR defines the flags; the default stays read-only). Start with `AUTHENTIK_QBIT_WRITES=false`, check the Identity home, then switch writes on.
+5. **Try it on a test user**: create one, add them to `kof-website-publishers`, deactivate them. Check that Authentik's *Events* shows `custom_qqq_admin_action` events naming you, and that *Identity → Admin Actions* shows the rows.
+6. **Two-person approval.** Granting `authentik.*` to a group needs a second person with `authentik.approve`. While you are the only identity administrator, make those grants in the Authentik UI (the break-glass in the spec), or turn `twoPersonApproval` off until a second administrator exists.
