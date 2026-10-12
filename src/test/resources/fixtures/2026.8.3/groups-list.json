@@ -1,0 +1,54 @@
+{
+  "pagination": {
+    "next": 0,
+    "current": 1,
+    "previous": 0,
+    "start_index": 1,
+    "count": 1,
+    "end_index": 1,
+    "total_pages": 1
+  },
+  "autocomplete": {
+    "models": {
+      "authentik_core.group": {
+        "is_superuser": {
+          "nullable": true,
+          "options": null,
+          "type": "bool"
+        },
+        "name": {
+          "nullable": false,
+          "options": null,
+          "type": "str"
+        },
+        "attributes": {
+          "nullable": false,
+          "options": null,
+          "type": "relation",
+          "relation": "authentik_core.group_attributes"
+        }
+      },
+      "authentik_core.group_attributes": {}
+    },
+    "current_model": "authentik_core.group"
+  },
+  "results": [{
+    "inherited_roles_obj": null,
+    "roles_obj": [],
+    "is_superuser": false,
+    "roles": [],
+    "num_pk": 97374,
+    "users_obj": null,
+    "users": [],
+    "parents_obj": [],
+    "children": [],
+    "name": "identity-admins",
+    "attributes": {
+      "qqq.io/app-access": ["kof22-website-prod"],
+      "qqq.io/permissions": ["identity.*"]
+    },
+    "pk": "4941bc80-3f27-446f-b4d3-ba023f044b65",
+    "children_obj": [],
+    "parents": []
+  }]
+}

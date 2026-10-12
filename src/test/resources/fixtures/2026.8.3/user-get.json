@@ -1,0 +1,22 @@
+{
+  "roles_obj": [],
+  "last_updated": "2026-10-12T00:42:44.589851Z",
+  "is_active": true,
+  "is_superuser": false,
+  "last_login": null,
+  "password_change_date": "2026-10-12T00:42:44.548432Z",
+  "roles": [],
+  "groups": [],
+  "avatar": "",
+  "type": "internal",
+  "groups_obj": [],
+  "uuid": "b99e966f-61bb-4f9f-b136-b747d5fb68f7",
+  "uid": "77947ea5357373462f042427a96e83bb14ea799dfae76daf6a014d01fc4580ce",
+  "path": "users",
+  "name": "Read Probe 2",
+  "attributes": {},
+  "pk": 17,
+  "date_joined": "2026-10-12T00:42:44.548001Z",
+  "email": "read.probe2@example.test",
+  "username": "read.probe2"
+}

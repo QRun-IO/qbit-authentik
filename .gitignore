@@ -19,3 +19,5 @@ dependency-reduced-pom.xml
 /.env.local
 /.cache/
 .claude/settings.local.json
+__pycache__/
+*.py[cod]

@@ -1,0 +1,372 @@
+# Test fixture: an infrastructure blueprint shaped like kof22's production
+# kof22-oauth2-apps.yaml (cluster-gitops tenants/kof22/website-authentik),
+# trimmed to what the contract tests need. Branding and the authorization
+# flow's consent stage are left out. The provider secret comes from !Env, as in
+# production; the test container sets KOF22_OAUTH2_CLIENT_SECRET to a dummy.
+#
+# This is the AFTER-migration shape (DESIGN.md section 4.4): the present
+# james.maes user and kof22-admins group entries have been removed, and the
+# sign-in policy is attribute-driven with the group-name fallback.
+version: 1
+metadata:
+  name: kof22-oauth2-apps
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - model: authentik_flows.flow
+    id: kof22-recovery-flow
+    state: present
+    identifiers:
+      slug: kof22-recovery
+    attrs:
+      name: "Kof22 Recovery"
+      title: "Reset your password"
+      designation: recovery
+      authentication: require_unauthenticated
+
+  - model: authentik_stages_identification.identificationstage
+    id: kof22-recovery-identification-stage
+    state: present
+    identifiers:
+      name: kof22-recovery-identification
+    attrs:
+      user_fields: [username, email]
+      pretend_user_exists: true
+      show_matched_user: false
+
+  - model: authentik_stages_email.emailstage
+    id: kof22-recovery-email-stage
+    state: present
+    identifiers:
+      name: kof22-recovery-email
+    attrs:
+      use_global_settings: true
+      template: email/password_reset.html
+      subject: "Kof Twenty Two: reset your password"
+      token_expiry: minutes=30
+      activate_user_on_success: true
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf kof22-recovery-flow
+      stage: !KeyOf kof22-recovery-identification-stage
+      order: 10
+    attrs:
+      target: !KeyOf kof22-recovery-flow
+      stage: !KeyOf kof22-recovery-identification-stage
+      order: 10
+
+  - model: authentik_flows.flowstagebinding
+    state: present
+    identifiers:
+      target: !KeyOf kof22-recovery-flow
+      stage: !KeyOf kof22-recovery-email-stage
+      order: 20
+    attrs:
+      target: !KeyOf kof22-recovery-flow
+      stage: !KeyOf kof22-recovery-email-stage
+      order: 20
+
+  - model: authentik_flows.flow
+    id: kof22-authorization-flow
+    state: present
+    identifiers:
+      slug: kof22-authorization
+    attrs:
+      name: "Kof22 Authorization"
+      title: "Authorize Kof Twenty Two"
+      designation: authorization
+      authentication: require_authenticated
+
+  - model: authentik_flows.flow
+    id: kof22-invalidation-prod-flow
+    state: present
+    identifiers:
+      slug: kof22-invalidation-prod
+    attrs:
+      name: "Kof22 Invalidation (Production)"
+      title: "Signing out..."
+      designation: invalidation
+      authentication: none
+
+  - model: authentik_providers_oauth2.oauth2provider
+    state: present
+    identifiers:
+      name: kof22-website-prod
+    attrs:
+      name: kof22-website-prod
+      authorization_flow: !KeyOf kof22-authorization-flow
+      invalidation_flow: !KeyOf kof22-invalidation-prod-flow
+      client_type: confidential
+      client_id: kof22-website-prod
+      client_secret: !Env KOF22_OAUTH2_CLIENT_SECRET
+      redirect_uris:
+        - matching_mode: strict
+          url: "https://admin.kof22.test/token"
+      sub_mode: user_email
+      issuer_mode: per_provider
+
+  - model: authentik_core.application
+    state: present
+    identifiers:
+      slug: kof22-website-prod
+    attrs:
+      name: "Kof22 Website (Production)"
+      slug: kof22-website-prod
+      provider: !Find [authentik_providers_oauth2.oauth2provider, [name, kof22-website-prod]]
+      policy_engine_mode: any
+
+  - model: authentik_policies_expression.expressionpolicy
+    id: kof22-require-admins-policy
+    state: present
+    identifiers:
+      name: kof22-require-admins-group
+    attrs:
+      name: kof22-require-admins-group
+      # Attribute-driven app access (DESIGN.md section 4.4): any group of the
+      # user, including inherited parents, whose qqq.io/app-access lists this
+      # app. A plain string is treated as a list of one (never a substring).
+      expression: |
+        appkey = "kof22-website-prod"
+        for group in request.user.all_groups():
+            access = (group.attributes or {}).get("qqq.io/app-access", [])
+            if isinstance(access, str):
+                access = [access]
+            if isinstance(access, list) and appkey in access:
+                return True
+        # Transition fallback (DESIGN.md section 4.4 step 2); remove after the backend cut-over.
+        return ak_is_group_member(request.user, name__in=["kof22-admins", "kof-website-publishers"])
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !Find [authentik_core.application, [slug, kof22-website-prod]]
+      policy: !KeyOf kof22-require-admins-policy
+      order: 0
+    attrs:
+      target: !Find [authentik_core.application, [slug, kof22-website-prod]]
+      policy: !KeyOf kof22-require-admins-policy
+      order: 0
+      enabled: true
+      negate: false
+      timeout: 30
+      failure_result: false
+
+  # ===== qbit-authentik webhook plumbing (DESIGN.md section 7.1) =====
+  # Infrastructure, `present`. INERT until phase 2: the rule has no destination
+  # (destination_event_user false, no destination_group), so Authentik creates
+  # no notifications and sends nothing. Phase 2 flips destination_event_user to
+  # true once the QQQ receiver (/qqq/v1/authentik/webhook) exists.
+
+  - model: authentik_events.notificationwebhookmapping
+    id: qqq-kof22-admin-webhook-body
+    state: present
+    identifiers:
+      name: qqq-kof22-admin-webhook-body
+    attrs:
+      name: qqq-kof22-admin-webhook-body
+      expression: |
+        event = notification.event
+        if event is None:
+            return {"eventPk": None, "action": None}
+        return {
+            "eventPk": str(event.pk),
+            "action": event.action,
+            "created": event.created.isoformat(),
+            "username": (event.user or {}).get("username"),
+            "model": (event.context or {}).get("model"),
+            "app": event.app,
+        }
+
+  - model: authentik_events.notificationwebhookmapping
+    id: qqq-kof22-admin-webhook-headers
+    state: present
+    identifiers:
+      name: qqq-kof22-admin-webhook-headers
+    attrs:
+      name: qqq-kof22-admin-webhook-headers
+      # Shared secret from the worker environment (Infisical, never in git).
+      expression: |
+        import os
+        return {"X-QQQ-Webhook-Secret": os.environ.get("QQQ_KOF22_ADMIN_WEBHOOK_SECRET", "")}
+
+  - model: authentik_events.notificationtransport
+    id: qqq-kof22-admin-transport
+    state: present
+    identifiers:
+      name: qqq-kof22-admin
+    attrs:
+      name: qqq-kof22-admin
+      mode: webhook
+      webhook_url: "https://admin.kof22.com/qqq/v1/authentik/webhook"
+      webhook_mapping_body: !KeyOf qqq-kof22-admin-webhook-body
+      webhook_mapping_headers: !KeyOf qqq-kof22-admin-webhook-headers
+      send_once: true
+
+  - model: authentik_events.notificationrule
+    id: qqq-kof22-admin-rule
+    state: present
+    identifiers:
+      name: qqq-kof22-admin-sync
+    attrs:
+      name: qqq-kof22-admin-sync
+      severity: notice
+      transports:
+        - !KeyOf qqq-kof22-admin-transport
+      destination_event_user: false
+
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-user-created
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-user-created }
+    attrs: { action: model_created, model: authentik_core.user }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-user-updated
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-user-updated }
+    attrs: { action: model_updated, model: authentik_core.user }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-user-deleted
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-user-deleted }
+    attrs: { action: model_deleted, model: authentik_core.user }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-group-created
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-group-created }
+    attrs: { action: model_created, model: authentik_core.group }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-group-updated
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-group-updated }
+    attrs: { action: model_updated, model: authentik_core.group }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-group-deleted
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-group-deleted }
+    attrs: { action: model_deleted, model: authentik_core.group }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-login
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-login }
+    attrs: { action: login }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-login-failed
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-login-failed }
+    attrs: { action: login_failed }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-password-set
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-password-set }
+    attrs: { action: password_set }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-invitation-used
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-invitation-used }
+    attrs: { action: invitation_used }
+  - model: authentik_policies_event_matcher.eventmatcherpolicy
+    id: qqq-sync-user-write
+    state: present
+    identifiers: { name: qqq-kof22-admin-sync-user-write }
+    attrs: { action: user_write }
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-created
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-created
+      order: 0
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-updated
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-updated
+      order: 1
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-deleted
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-deleted
+      order: 2
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-group-created
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-group-created
+      order: 3
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-group-updated
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-group-updated
+      order: 4
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-group-deleted
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-group-deleted
+      order: 5
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-login
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-login
+      order: 6
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-login-failed
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-login-failed
+      order: 7
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-password-set
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-password-set
+      order: 8
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-invitation-used
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-invitation-used
+      order: 9
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-write
+    attrs:
+      target: !KeyOf qqq-kof22-admin-rule
+      policy: !KeyOf qqq-sync-user-write
+      order: 10
