@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=https://goauthentik.io/blueprints/schema.json
+#
+# Example: put the merged group policies into the sign-in token (POLICY-FORMAT.md,
+# "Getting policies into the token"). The contract test PolicyClaimMappingIT loads
+# this file and runs the mapping through Authentik's property-mapping test
+# endpoint, so the example in the docs is pinned to a real Authentik.
+#
+# Keep spec, version, attribute and the claim name equal to the qbit config
+# (policySpec, policyVersion, policyAttribute, policyClaim). Add the mapping to
+# your OAuth2 provider's property_mappings.
+version: 1
+metadata:
+  name: qqq-policy-claim
+  labels:
+    blueprints.goauthentik.io/description: "QQQ policy claim (qbit-authentik example)"
+entries:
+  - model: authentik_providers_oauth2.scopemapping
+    id: qqq-policy-claim-mapping
+    state: present
+    identifiers:
+      name: qqq-policy-claim
+    attrs:
+      name: qqq-policy-claim
+      # "profile" is requested by every QQQ sign-in, so no client change is needed.
+      scope_name: profile
+      description: "QQQ policies of all the user's groups, including inherited parents"
+      expression: |
+        import json
+
+        spec = "qqq-iam"
+        version = "1.0.0"
+        attribute = "qqq.io/policy"
+
+        statements = []
+        for group in request.user.all_groups():
+            raw = (group.attributes or {}).get(attribute)
+            if raw is None or raw == "":
+                continue
+            try:
+                document = json.loads(raw) if isinstance(raw, str) else raw
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(document, dict):
+                continue
+            if document.get("PolicySpec") != spec or document.get("PolicyVersion") != version:
+                continue
+            found = document.get("Statement")
+            if isinstance(found, list):
+                statements.extend(found)
+
+        return {"qqq_policy": json.dumps({"PolicySpec": spec, "PolicyVersion": version, "Statement": statements})}

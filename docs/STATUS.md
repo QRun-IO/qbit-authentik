@@ -11,6 +11,7 @@ The Authentik qbit's progress through DESIGN.md section 11, with links. Updated 
 | 2. Memberships and permission editing | done, except the webhook route, ESB trigger, inbox and session re-evaluation marking |
 | 3. Full user lifecycle | done, except the optional snapshot export |
 | 4. RBAC role management | post-v1, not started |
+| 5. Policies and full CRUD (DESIGN.md section 12) | spec approved 2026-10-13; 5a policy model, 5b editor, 5c CRUD additions in progress |
 
 ### Built in this line (0.1)
 
