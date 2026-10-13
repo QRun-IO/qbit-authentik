@@ -182,6 +182,27 @@ class AuthentikGroupPermissionMapperTest
     ** Inherited authentik.* through a child group; existing permissions kept.
     *******************************************************************************/
    @Test
+   void policyClaimIsAdded()
+   {
+      String policy = "{\"PolicySpec\":\"qqq-iam\",\"PolicyVersion\":\"1.0.0\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"read\"],\"Resource\":[\"cms_page\"]}]}";
+      Map<String, Object> ctx = context("someone@example.test", new JSONArray());
+      ctx.put("idToken", new JSONObject().put("qqq_policy", policy));
+      QSession session = new QSession();
+      new AuthentikGroupPermissionMapper().customizeSession(qInstance, session, ctx);
+      assertThat(session.getPermissions()).contains("cms_page.read");
+
+      ctx.put("idToken", new JSONObject().put("qqq_policy", policy.replace("Allow", "Deny")));
+      QSession denied = new QSession();
+      new AuthentikGroupPermissionMapper().customizeSession(qInstance, denied, ctx);
+      assertThat(denied.getPermissions()).doesNotContain("cms_page.read");
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
    void groupsBecomePermissions()
    {
       QSession session = new QSession();

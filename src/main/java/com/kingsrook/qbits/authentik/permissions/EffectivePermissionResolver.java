@@ -17,6 +17,7 @@
 package com.kingsrook.qbits.authentik.permissions;
 
 
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -101,7 +102,9 @@ public class EffectivePermissionResolver
                continue;
             }
             appAccess.addAll(node.appAccess());
-            for(String raw : node.permissions())
+            List<String> raws = new ArrayList<>(node.permissions());
+            raws.addAll(node.policyPermissions());
+            for(String raw : raws)
             {
                Set<String> expanded = expand(raw);
                if(expanded.isEmpty())
