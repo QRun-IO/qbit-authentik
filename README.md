@@ -8,8 +8,9 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the approved spec, QRun-IO/qqq#1065)
 
 | | |
 |---|---|
-| **People** | Create a user (Authentik emails them a link to set their own password; QQQ never sets or sees one), invite, edit, deactivate and reactivate, send a password reset email, reset MFA, revoke app passwords, revoke sessions, cancel invitations. No hard delete. |
-| **Groups and permissions** | Create and edit groups (parents), add and remove members, and edit the QQQ permissions and app sign-in a group grants (`qqq.io/permissions`, `qqq.io/app-access` on the Authentik group). |
+| **People** | Create a user (Authentik emails them a link to set their own password; QQQ never sets or sees one), invite, edit, deactivate and reactivate, send a password reset email, reset MFA, revoke app passwords, revoke sessions, cancel invitations. Edit covers username, name, email, path and other attributes. Delete is a separate, explicit action behind the `DELETE` feature (off by default); deactivate stays the default. |
+| **Groups and permissions** | Create, edit (parents, other attributes) and delete groups, add and remove members, and edit the QQQ permissions and app sign-in a group grants (`qqq.io/permissions`, `qqq.io/app-access` on the Authentik group). |
+| **Policies** | IAM-style policy documents on groups (`qqq.io/policy`, format in [docs/POLICY-FORMAT.md](docs/POLICY-FORMAT.md)), edited with a matrix of the app's apps, tables, processes and reports and a live JSON preview (Next UI widget `AUTHENTIK_POLICY_EDITOR`). At sign-in they become QQQ permissions through `AuthentikGroupPermissionMapper`, or through the token claim with `AuthentikPolicyClaimMapper`. Parsing fails closed. |
 | **Safety** | Operators can only grant permissions they hold themselves. No self-edits. Break-glass, the service account and superusers are untouchable, and superuser groups cannot be managed. The last administrator cannot be removed. Granting `authentik.*` needs a second person. Destructive actions need a reason and a typed confirmation. A change made in the Authentik UI after you opened a form is detected, not overwritten. |
 | **Audit** | Every attempt is a row in `authentik_admin_action` (written before the call), and Authentik's own event log gets a `custom_qqq_admin_action` event naming the human operator. |
 | **Screens** | A home dashboard (what needs attention, people, groups, recent changes, connection), standard tables with full record screens, and every action as a table or record action with the usual Review and Result steps. Nothing is in the nav except the main tables. |
@@ -23,7 +24,7 @@ AuthentikQBitConfig config = new AuthentikQBitConfig()
    .withBaseUrl("https://auth.example.com")          // host root; /api/v3 is appended
    .withApiToken("${env.AUTHENTIK_API_TOKEN}")       // service-account token, resolved by the qbit
    .withAppKey("my-app-admin")                       // service account: qqq-my-app-admin-idadmin
-   .withFeatures(EnumSet.of(READ, USERS, GROUPS, MEMBERSHIP, CREDENTIALS, SESSIONS))
+   .withFeatures(EnumSet.of(READ, USERS, GROUPS, MEMBERSHIP, CREDENTIALS, SESSIONS, POLICIES))  // + DELETE for delete actions
    .withLocalBackendName("rdbms")                    // audit trail and approval requests (see docs/schema.sql)
    .withRecoveryEmailStage("my-recovery-email")      // Authentik email stage (name or uuid)
    .withInvitationFlow("my-enrollment");             // optional: enables invitations
@@ -38,10 +39,10 @@ Read-only is the default (`features` = `READ`). `readOnly=true` is a hard kill s
 | | |
 |---|---|
 | API backend | `authentikApi` |
-| Main tables (nav) | `authentik_user`, `authentik_invitation`, `authentik_group`, `authentik_application`, `authentik_approval_request`, `authentik_admin_action` |
+| Main tables (nav) | `authentik_user`, `authentik_invitation`, `authentik_group`, `authentik_policy` (with `POLICIES`), `authentik_application`, `authentik_approval_request`, `authentik_admin_action` |
 | Child lists (on their parents, not in the nav) | `authentik_group_member`, `authentik_session`, `authentik_token` (metadata only, never a key), `authentik_event`, `authentik_policy_binding`, `authentik_role`, `authentik_blueprint` |
 | App and home | `authentikAdmin` (label "Identity", hosts may nest it) with the `authentikHome` widget and the drift report |
-| Actions | Create User, Invite User, Edit User, Deactivate User, Reactivate User, Add To Group, Remove From Group, Send Password Reset Email, Reset MFA, Revoke App Passwords, Revoke Sessions, Create Group, Edit Group, Edit Permissions And App Access, Add Members, Remove Members, Cancel Invitation, Approve And Apply, Reject |
+| Actions | Create User, Invite User, Edit User, Deactivate User, Reactivate User, Add To Group, Remove From Group, Send Password Reset Email, Reset MFA, Revoke App Passwords, Revoke Sessions, Create Group, Edit Group, Edit Permissions And App Access, Add Members, Remove Members, Cancel Invitation, Approve And Apply, Reject; with `POLICIES`: Edit Policy (on groups and policies); with `DELETE`: Delete User, Delete Group |
 
 ### Permissions
 
@@ -54,6 +55,7 @@ QQQ permissions, held as `<name>.hasAccess`, granted through the group attribute
 | `authentik.groups.manage` | create and edit groups |
 | `authentik.memberships.manage` | add and remove members (subset rule) |
 | `authentik.permissions.manage` | edit a group's permissions and app access (subset rule) |
+| `authentik.policies.manage` | edit a group's policy (subset rule) |
 | `authentik.credentials.reset` | password reset email, reset MFA, revoke app passwords |
 | `authentik.sessions.revoke` | revoke sessions |
 | `authentik.audit.read` | sessions, tokens, events, the audit trail, sensitive fields |
@@ -65,9 +67,9 @@ QQQ permissions, held as `<name>.hasAccess`, granted through the group attribute
 
 ### Authentik side
 
-The qbit's API token belongs to a dedicated Authentik service account whose role holds only the permissions it needs (DESIGN.md section 5.1), created by a bootstrap blueprint in the host's GitOps repository. It is never a superuser and never holds `enable_group_superuser`, token-key, impersonate or delete permissions. [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml) is one host's worked example.
+The qbit's API token belongs to a dedicated Authentik service account whose role holds only the permissions it needs (DESIGN.md section 5.1), created by a bootstrap blueprint in the host's GitOps repository. It is never a superuser and never holds `enable_group_superuser`, token-key or impersonate permissions, and holds delete permissions only when the `DELETE` feature is on. [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml) is one host's worked example.
 
-Write features need these in the role, on top of the read set: `add_user`, `change_user`, `reset_user_password`, `add_group`, `change_group`, `add_user_to_group`, `remove_user_from_group`, `view_token`, `delete_token`, `delete_authenticatedsession`, invitation `view`/`add`/`delete` (if you use invitations), `authentik_flows.view_flow` (to find the invitation flow by slug), and `view_emailstage` on the recovery stage. The contract tests grant exactly this list.
+Write features need these in the role, on top of the read set: `add_user`, `change_user`, `reset_user_password`, `add_group`, `change_group`, `add_user_to_group`, `remove_user_from_group`, `view_token`, `delete_token`, `delete_authenticatedsession`, invitation `view`/`add`/`delete` (if you use invitations), `authentik_flows.view_flow` (to find the invitation flow by slug), and `view_emailstage` on the recovery stage. Saving a policy uses `change_group`. The `DELETE` feature also needs `delete_user` and `delete_group`. The contract tests grant exactly this list.
 
 ## Adopting in another app
 

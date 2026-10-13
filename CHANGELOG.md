@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (full user and group CRUD, phase 5c: DESIGN.md section 12.5)
+- **Edit User** also changes the username (validated, unique) and the other attributes (a JSON object; reserved `qqq.io/` and `goauthentik.io/` keys are kept and cannot be set; blank leaves them as they are; editing attributes needs `authentik.audit.read`, which is also what shows them on the form). **Edit Group** edits other attributes the same way.
+- **Delete User** and **Delete Group** record actions behind the new `DELETE` feature (off by default; needs Authentik's `delete_user` / `delete_group`). Typed confirmation; never yourself, a protected account, a superuser group or the last identity administrator; a group must have no members and no child groups first; the group's `authentik_policy` row goes with it. Deactivate stays the default for people.
+
 ### Added (policy editor, phase 5b: DESIGN.md section 12.4)
 - **Edit Policy** record action on groups and on policies (feature `POLICIES`, permission `authentik.policies.manage`): a standard streamed-ETL action whose step shows the `AUTHENTIK_POLICY_EDITOR` widget (Next UI). Review parses the submitted document (fail closed), regenerates it in canonical form with the round-trip check, refuses new resources this app does not define, applies the subset rule to the permissions it adds, and lists what is added and removed. Result merge-patches `qqq.io/policy` into the group's current attributes (removed when empty). Optional second-person approval (`policyTwoPersonApproval`).
 - **`PolicyCatalog`**: every app, table, process (hidden record actions included), report and protected widget a policy can grant, with the actions QQQ checks, grouped by app. Its permission names join the permission catalog.

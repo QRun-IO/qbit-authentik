@@ -297,6 +297,29 @@ public class FakeAuthentik
          user.put("last_updated", "2026-10-12T01:00:00Z");
          return (ok(200, render(user)));
       }
+      if(path.matches("/core/users/[0-9]+/") && method.equals("DELETE"))
+      {
+         int pk = Integer.parseInt(path.split("/")[3]);
+         users.remove(pk);
+         for(JSONObject group : groups.values())
+         {
+            JSONArray kept = new JSONArray();
+            for(int i = 0; i < group.getJSONArray("users").length(); i++)
+            {
+               if(group.getJSONArray("users").getInt(i) != pk)
+               {
+                  kept.put(group.getJSONArray("users").getInt(i));
+               }
+            }
+            group.put("users", kept);
+         }
+         return (ok(204, null));
+      }
+      if(path.matches("/core/groups/[^/]+/") && method.equals("DELETE"))
+      {
+         groups.remove(path.split("/")[3]);
+         return (ok(204, null));
+      }
       if(path.matches("/core/groups/[^/]+/") && method.equals("PATCH"))
       {
          JSONObject group = groups.get(path.split("/")[3]);
