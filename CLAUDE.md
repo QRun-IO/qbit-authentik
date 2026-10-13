@@ -51,7 +51,7 @@ CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Post
 - `check_access?for_user=` is useless for the service account: it is silently evaluated for the caller. Never use it for other users.
 - Nothing but `AuthentikAdmin` may call `AuthentikActionUtil.write`. Every write needs a reason, passes the guard, and is audited first.
 - `recovery_email` needs the brand to have a recovery flow ("No recovery flow set." otherwise), the role's `add_user` (DRF maps POST to add) plus `reset_user_password`, and `view_emailstage` on the stage.
-- The service account must never be a superuser and never hold `enable_group_superuser`, token-key, impersonate or delete permissions.
+- The service account must never be a superuser and never hold `enable_group_superuser`, token-key or impersonate permissions; `delete_user`/`delete_group` only when the host turns the `DELETE` feature on.
 
 ## Code Style
 

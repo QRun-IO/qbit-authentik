@@ -25,11 +25,13 @@ import java.util.HexFormat;
 import java.util.List;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
+import com.kingsrook.qqq.backend.core.actions.tables.DeleteAction;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.tables.delete.DeleteInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QCriteriaOperator;
@@ -107,6 +109,23 @@ public final class PolicyStore
       queryInput.setFilter(new QQueryFilter(new QFilterCriteria("groupPk", QCriteriaOperator.EQUALS, groupPk)));
       QueryOutput output = new QueryAction().execute(queryInput);
       return (output.getRecords().isEmpty() ? null : output.getRecords().get(0));
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove the row of a deleted group (no-op without one).
+    *******************************************************************************/
+   public static void delete(AuthentikQBitConfig config, String groupPk) throws QException
+   {
+      QRecord existing = find(config, groupPk);
+      if(existing != null)
+      {
+         DeleteInput deleteInput = new DeleteInput();
+         deleteInput.setTableName(config.applyTablePrefix(AuthentikLocalTables.POLICY));
+         deleteInput.setPrimaryKeys(List.of(existing.getValue("id")));
+         new DeleteAction().execute(deleteInput);
+      }
    }
 
 

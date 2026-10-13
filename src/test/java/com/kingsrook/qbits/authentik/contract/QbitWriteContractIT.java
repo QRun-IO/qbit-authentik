@@ -78,7 +78,7 @@ class QbitWriteContractIT
 
    /** The phase 2/3 permissions of DESIGN.md section 5.1 (plus view_flow to resolve the invitation flow by slug). */
    private static final List<String> ROLE_PERMISSIONS = List.of(
-      "authentik_core.add_user", "authentik_core.change_user", "authentik_core.reset_user_password",
+      "authentik_core.add_user", "authentik_core.change_user", "authentik_core.reset_user_password", "authentik_core.delete_user", "authentik_core.delete_group",
       "authentik_core.add_group", "authentik_core.change_group", "authentik_core.add_user_to_group", "authentik_core.remove_user_from_group",
       "authentik_core.view_token", "authentik_core.delete_token", "authentik_core.delete_authenticatedsession",
       "authentik_stages_invitation.view_invitation", "authentik_stages_invitation.add_invitation", "authentik_stages_invitation.delete_invitation",
@@ -166,7 +166,7 @@ class QbitWriteContractIT
          .withRecoveryEmailStage("kof22-recovery-email")
          .withInvitationFlow("wr-enrollment")
          .withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-            AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES));
+            AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE));
 
       qInstance = new QInstance();
       qInstance.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
@@ -341,6 +341,35 @@ class QbitWriteContractIT
       AuthentikAdmin.AdminResult cleared = run(AdminRequest.of(AdminAction.SAVE_POLICY, pk, "contract test").with(AuthentikAdmin.POLICY_DOCUMENT, ""));
       assertThat(cleared.ok()).as(cleared.message()).isTrue();
       assertThat(admin.get("/core/groups/" + pk + "/").json().getJSONObject("attributes").has("qqq.io/policy")).isFalse();
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete user and delete group on a real Authentik (delete_user and
+    ** delete_group granted only for the DELETE feature); a group with members is
+    ** refused by the qbit before any call.
+    *******************************************************************************/
+   @Test
+   void deleteUserAndGroup() throws Exception
+   {
+      admin.post("/core/users/", new JSONObject().put("username", "wr.leaver").put("name", "WR Leaver").put("email", "wr.leaver@example.test").put("type", "internal").put("path", "users"));
+      int leaver = admin.userPk("wr.leaver");
+      admin.post("/core/groups/", new JSONObject().put("name", "wr-doomed"));
+      String doomed = admin.groupPk("wr-doomed");
+      admin.post("/core/groups/" + doomed + "/add_user/", new JSONObject().put("pk", leaver));
+
+      AuthentikAdmin.AdminResult notEmpty = run(AdminRequest.of(AdminAction.DELETE_GROUP, doomed, "contract test").with("confirmText", "wr-doomed"));
+      assertThat(notEmpty.ok()).isFalse();
+      assertThat(notEmpty.message()).contains("member(s)");
+
+      AuthentikAdmin.AdminResult user = run(AdminRequest.of(AdminAction.DELETE_USER, String.valueOf(leaver), "contract test").with("confirmText", "wr.leaver"));
+      assertThat(user.ok()).as(user.message()).isTrue();
+      assertThat(admin.get("/core/users/" + leaver + "/").status()).isEqualTo(404);
+
+      AuthentikAdmin.AdminResult group = run(AdminRequest.of(AdminAction.DELETE_GROUP, doomed, "contract test").with("confirmText", "wr-doomed"));
+      assertThat(group.ok()).as(group.message()).isTrue();
+      assertThat(admin.get("/core/groups/" + doomed + "/").status()).isEqualTo(404);
    }
 
 

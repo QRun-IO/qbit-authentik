@@ -93,6 +93,9 @@ public class AuthentikAdmin
    /** Process value / request parameter that carries a submitted policy document. */
    public static final String POLICY_DOCUMENT = "policyDocument";
 
+   /** Request parameter with the non-reserved attributes (JSON object text) of Edit User and Edit Group. */
+   public static final String OTHER_ATTRIBUTES = "otherAttributes";
+
    private static final Pattern UUID_PATTERN = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
    private static final Pattern USERNAME     = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._@+-]{0,149}");
    private static final Pattern EMAIL        = Pattern.compile("[^@\\s]+@[^@\\s]+\\.[^@\\s]+");
@@ -261,6 +264,8 @@ public class AuthentikAdmin
          case EDIT_GROUP -> planEditGroup(plan, request);
          case EDIT_PERMISSIONS -> planEditPermissions(plan, request);
          case SAVE_POLICY -> planSavePolicy(plan, request);
+         case DELETE_USER -> planDeleteUser(plan, request);
+         case DELETE_GROUP -> planDeleteGroup(plan, request);
          case SEND_RECOVERY_EMAIL -> planRecovery(plan, request);
          case RESET_MFA -> planResetMfa(plan, request);
          case REVOKE_APP_PASSWORDS -> planAppPasswords(plan, request);
@@ -665,6 +670,23 @@ public class AuthentikAdmin
       {
          return (plan);
       }
+      String username = request.params().containsKey("username") && StringUtils.hasContent(request.str("username")) ? request.str("username") : user.optString("username");
+      if(!username.equals(user.optString("username")))
+      {
+         if(!USERNAME.matcher(username).matches())
+         {
+            return (plan.refuse("A username is letters, digits and . _ @ + - (up to 150)."));
+         }
+         if(findUserByUsername(username) != null)
+         {
+            return (plan.refuse("Another user already has the username " + username + "."));
+         }
+      }
+      String attributesProblem = otherAttributesProblem(request, user.optJSONObject("attributes"));
+      if(attributesProblem != null)
+      {
+         return (plan.refuse(attributesProblem));
+      }
       String name  = request.params().containsKey("name") ? request.str("name") : user.optString("name");
       String email = request.params().containsKey("email") ? request.str("email") : user.optString("email");
       String path  = request.params().containsKey("path") ? request.str("path") : user.optString("path");
@@ -694,8 +716,14 @@ public class AuthentikAdmin
          return (plan.refuse("This user was changed (for example in the Authentik admin UI) since you opened it. Review it again."));
       }
 
-      String before = user.optString("name") + " <" + user.optString("email") + ">, " + user.optString("path");
-      String after  = name + " <" + email + ">, " + path;
+      String before = user.optString("username") + ": " + user.optString("name") + " <" + user.optString("email") + ">, " + user.optString("path");
+      String after  = username + ": " + name + " <" + email + ">, " + path;
+      String keys   = changedAttributeKeys(request, user.optJSONObject("attributes"));
+      if(keys != null)
+      {
+         before = before + "; attributes";
+         after = after + "; attributes (" + keys + ")";
+      }
       if(before.equals(after))
       {
          return (plan.noChange("Nothing to change."));
@@ -932,7 +960,13 @@ public class AuthentikAdmin
       {
          return (plan.refuse("This group was changed (for example in the Authentik admin UI) since you opened it. Review it again."));
       }
-      if(newName.equals(group.optString("name")) && new LinkedHashSet<>(newParents).equals(new LinkedHashSet<>(currentParents)))
+      String attributesProblem = otherAttributesProblem(request, group.optJSONObject("attributes"));
+      if(attributesProblem != null)
+      {
+         return (plan.refuse(attributesProblem));
+      }
+      String keys = changedAttributeKeys(request, group.optJSONObject("attributes"));
+      if(newName.equals(group.optString("name")) && new LinkedHashSet<>(newParents).equals(new LinkedHashSet<>(currentParents)) && keys == null)
       {
          return (plan.noChange("Nothing to change."));
       }
@@ -949,7 +983,8 @@ public class AuthentikAdmin
       }
 
       plan.getRequest().params().put("resolvedParentPks", String.join(",", newParents));
-      return (plan.withChange(group.optString("name") + ", parents " + names(currentParents), newName + ", parents " + names(newParents)));
+      return (plan.withChange(group.optString("name") + ", parents " + names(currentParents) + (keys == null ? "" : "; attributes"),
+         newName + ", parents " + names(newParents) + (keys == null ? "" : "; attributes (" + keys + ")")));
    }
 
 
@@ -1109,6 +1144,235 @@ public class AuthentikAdmin
          plan.withState(AdminPlan.State.NEEDS_APPROVAL).withMessage("policy changes need a second person");
       }
       return (plan);
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete a person (DESIGN.md section 12.5): explicit, typed, never yourself,
+    ** a protected account or the last identity administrator.
+    *******************************************************************************/
+   private AdminPlan planDeleteUser(AdminPlan plan, AdminRequest request) throws QException
+   {
+      JSONObject user = targetUser(plan, request.targetKey(), false);
+      if(user == null)
+      {
+         return (plan);
+      }
+      String typed = typedProblem(request, user.optString("username"));
+      if(typed != null)
+      {
+         return (plan.refuse(typed));
+      }
+      Set<Integer> before = adminsNow();
+      if(before.contains(user.optInt("pk")))
+      {
+         List<AuthentikSafety.UserFacts> changed = new ArrayList<>();
+         for(AuthentikSafety.UserFacts facts : userFacts())
+         {
+            if(facts.pk() != user.optInt("pk"))
+            {
+               changed.add(facts);
+            }
+         }
+         if(AuthentikSafety.removesLastAdmin(before, AuthentikSafety.qualifyingAdmins(membersGraph(), new EffectivePermissionResolver(membersGraph(), runtime.getPermissionCatalog()), changed)))
+         {
+            return (plan.refuse("This is the last active person who can manage memberships and permissions. Add another administrator first."));
+         }
+      }
+      plan.getNotes().add("Deleting cannot be undone. Deactivate User keeps the account and its history.");
+      return (plan.withChange(user.optString("username") + " <" + user.optString("email") + ">", "deleted"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete a group (DESIGN.md section 12.5): explicit, typed, and only when it
+    ** has no members and no child groups (remove them first, so nobody loses
+    ** access by surprise).
+    *******************************************************************************/
+   private AdminPlan planDeleteGroup(AdminPlan plan, AdminRequest request) throws QException
+   {
+      JSONObject group = targetGroup(plan, request.targetKey());
+      if(group == null)
+      {
+         return (plan);
+      }
+      String name = group.optString("name");
+      if(!request.str("confirmText").equals(name) && !request.bool("approved"))
+      {
+         return (plan.refuse("Type the group name (" + name + ") to confirm."));
+      }
+      JSONArray users = group.optJSONArray("users");
+      if(users != null && !users.isEmpty())
+      {
+         return (plan.refuse("The group has " + users.length() + " member(s). Remove them first."));
+      }
+      List<String> children = new ArrayList<>();
+      for(GroupGraph.Node node : graph().nodes())
+      {
+         if(node.parentPks().contains(request.targetKey()))
+         {
+            children.add(node.name());
+         }
+      }
+      if(!children.isEmpty())
+      {
+         return (plan.refuse("The group has child groups (" + String.join(", ", children) + "). Change their parents first."));
+      }
+      plan.getNotes().add("Deleting cannot be undone. Its permissions, app access and policy go with it.");
+      return (plan.withChange(name, "deleted"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Why the submitted other-attributes JSON cannot be applied, or null. It must
+    ** be a JSON object without reserved keys (qqq.io/ and goauthentik.io/ are
+    ** set elsewhere), and editing attributes needs authentik.audit.read
+    ** (attributes are sensitive, DESIGN.md section 5.3).
+    *******************************************************************************/
+   private String otherAttributesProblem(AdminRequest request, JSONObject current) throws QException
+   {
+      if(!StringUtils.hasContent(request.str(OTHER_ATTRIBUTES)))
+      {
+         return (null);
+      }
+      try
+      {
+         JSONObject submitted = parseOtherAttributes(request.str(OTHER_ATTRIBUTES));
+         for(String key : submitted.keySet())
+         {
+            if(isReservedAttribute(key))
+            {
+               return ("The attribute " + key + " is reserved; it is set by Edit Permissions, Edit Policy or Authentik itself.");
+            }
+         }
+      }
+      catch(QUserFacingException e)
+      {
+         return (e.getMessage());
+      }
+      if(changedAttributeKeys(request, current) != null && !operator().permissions().contains(IdentityPermission.AUDIT_READ.getSessionPermission()) && !operator().bootstrap())
+      {
+         return ("Editing attributes needs " + IdentityPermission.AUDIT_READ.getShortName() + ".");
+      }
+      return (null);
+   }
+
+
+
+   /*******************************************************************************
+    ** The keys whose values the submitted attributes change (added, changed or
+    ** removed), or null for no change. Blank means "leave them as they are"
+    ** ({} removes them all). A null current compares against nothing.
+    *******************************************************************************/
+   private static String changedAttributeKeys(AdminRequest request, JSONObject current) throws QUserFacingException
+   {
+      if(!StringUtils.hasContent(request.str(OTHER_ATTRIBUTES)))
+      {
+         return (null);
+      }
+      JSONObject submitted = parseOtherAttributes(request.str(OTHER_ATTRIBUTES));
+      JSONObject others    = otherAttributes(current);
+      Set<String> changed  = new TreeSet<>();
+      for(String key : submitted.keySet())
+      {
+         if(!others.has(key) || !String.valueOf(others.get(key)).equals(String.valueOf(submitted.get(key))))
+         {
+            changed.add(key);
+         }
+      }
+      for(String key : others.keySet())
+      {
+         if(!submitted.has(key))
+         {
+            changed.add(key);
+         }
+      }
+      return (changed.isEmpty() ? null : String.join(", ", changed));
+   }
+
+
+
+   /*******************************************************************************
+    ** The current attributes with the non-reserved part replaced by the
+    ** submitted object (reserved keys are kept as they are).
+    *******************************************************************************/
+   static JSONObject mergeOtherAttributes(JSONObject current, String submittedText) throws QUserFacingException
+   {
+      JSONObject rs = new JSONObject();
+      if(current != null)
+      {
+         for(String key : current.keySet())
+         {
+            if(isReservedAttribute(key))
+            {
+               rs.put(key, current.get(key));
+            }
+         }
+      }
+      JSONObject submitted = parseOtherAttributes(submittedText);
+      for(String key : submitted.keySet())
+      {
+         if(!isReservedAttribute(key))
+         {
+            rs.put(key, submitted.get(key));
+         }
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** The non-reserved attributes, as shown on Edit User and Edit Group.
+    *******************************************************************************/
+   public static JSONObject otherAttributes(JSONObject attributes)
+   {
+      JSONObject rs = new JSONObject();
+      if(attributes != null)
+      {
+         for(String key : attributes.keySet())
+         {
+            if(!isReservedAttribute(key))
+            {
+               rs.put(key, attributes.get(key));
+            }
+         }
+      }
+      return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** Keys QQQ manages elsewhere (qqq.io/) or Authentik owns (goauthentik.io/).
+    *******************************************************************************/
+   static boolean isReservedAttribute(String key)
+   {
+      return (key.startsWith(AuthentikJson.QQQ_ATTRIBUTE_PREFIX) || key.startsWith("goauthentik.io/"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A submitted attributes text as a JSON object (blank means none).
+    *******************************************************************************/
+   private static JSONObject parseOtherAttributes(String text) throws QUserFacingException
+   {
+      if(!StringUtils.hasContent(text))
+      {
+         return (new JSONObject());
+      }
+      try
+      {
+         return (new JSONObject(text));
+      }
+      catch(Exception e)
+      {
+         throw (new QUserFacingException("Other attributes must be a JSON object, e.g. {\"department\": \"sales\"}."));
+      }
    }
 
 
@@ -1489,12 +1753,17 @@ public class AuthentikAdmin
          case EDIT_USER:
          {
             JSONObject body = new JSONObject();
-            for(String key : List.of("name", "email", "path"))
+            for(String key : List.of("username", "name", "email", "path"))
             {
-               if(request.params().containsKey(key))
+               if(request.params().containsKey(key) && (!key.equals("username") || StringUtils.hasContent(request.str(key))))
                {
                   body.put(key, request.str(key));
                }
+            }
+            if(changedAttributeKeys(request, null) != null)
+            {
+               JSONObject fresh = util.getObject(AuthentikTables.get(AuthentikTables.USER), request.targetKey());
+               body.put("attributes", mergeOtherAttributes(fresh == null ? null : fresh.optJSONObject("attributes"), request.str(OTHER_ATTRIBUTES)));
             }
             util.write(auth, "PATCH", "/core/users/" + safeKey(request.targetKey()) + "/", body);
             return ("User updated.");
@@ -1545,6 +1814,12 @@ public class AuthentikAdmin
             {
                body.put("name", request.str("name"));
             }
+            if(changedAttributeKeys(request, null) != null)
+            {
+               runtime.invalidateCache();
+               JSONObject fresh = util.getApiJsonOrNull("/core/groups/" + safeKey(request.targetKey()) + "/?include_users=false&include_parents=false&include_children=false");
+               body.put("attributes", mergeOtherAttributes(fresh == null ? null : fresh.optJSONObject("attributes"), request.str(OTHER_ATTRIBUTES)));
+            }
             if(request.params().containsKey("resolvedParentPks"))
             {
                JSONArray parents = new JSONArray();
@@ -1578,6 +1853,22 @@ public class AuthentikAdmin
          }
          case SAVE_POLICY:
             return (performSavePolicy(plan, auth));
+         case DELETE_USER:
+            util.write(auth, "DELETE", "/core/users/" + safeKey(request.targetKey()) + "/", null);
+            return ("User deleted in Authentik.");
+         case DELETE_GROUP:
+         {
+            util.write(auth, "DELETE", "/core/groups/" + safeKey(request.targetKey()) + "/", null);
+            try
+            {
+               PolicyStore.delete(config, request.targetKey());
+            }
+            catch(Exception e)
+            {
+               LOG.warn("The group was deleted but its policy record could not be removed", logPair("group", request.targetKey()), logPair("error", e.getMessage()));
+            }
+            return ("Group deleted in Authentik.");
+         }
          case SEND_RECOVERY_EMAIL:
             sendRecovery(auth, request.targetKey());
             return ("Password reset email sent by Authentik.");
