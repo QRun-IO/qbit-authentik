@@ -52,12 +52,22 @@ public final class PolicyPermissions
     *******************************************************************************/
    public static Set<String> fromClaims(JSONObject claims, PolicyFormat format)
    {
+      return (fromClaims(claims, format, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Read a policy claim with the catalog of registered table features.
+    *******************************************************************************/
+   public static Set<String> fromClaims(JSONObject claims, PolicyFormat format, PolicyCatalog catalog)
+   {
       PolicyFormat f = format == null ? PolicyFormat.DEFAULT : format;
       if(claims == null || !claims.has(f.claim()))
       {
          return (Collections.emptySet());
       }
-      return (PolicyParser.parse(claims.opt(f.claim()), f));
+      return (PolicyParser.parse(claims.opt(f.claim()), f, catalog));
    }
 
 

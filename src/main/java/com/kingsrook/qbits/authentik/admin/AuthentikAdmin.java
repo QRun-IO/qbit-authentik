@@ -1092,8 +1092,8 @@ public class AuthentikAdmin
       try
       {
          String submitted = request.str(POLICY_DOCUMENT);
-         newPermissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format).permissions() : new TreeSet<>();
-         canonical = PolicyGenerator.generate(newPermissions, format);
+         newPermissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format, runtime.getPolicyCatalog()).permissions() : new TreeSet<>();
+         canonical = PolicyGenerator.generate(newPermissions, format, runtime.getPolicyCatalog());
       }
       catch(PolicyParseException e)
       {
@@ -1107,7 +1107,7 @@ public class AuthentikAdmin
       {
          try
          {
-            oldPermissions.addAll(PolicyParser.parseStrict(stored, format).permissions());
+            oldPermissions.addAll(PolicyParser.parseStrict(stored, format, runtime.getPolicyCatalog()).permissions());
          }
          catch(PolicyParseException e)
          {
@@ -1213,7 +1213,7 @@ public class AuthentikAdmin
       PolicyFormat format    = config.getPolicyFormat();
       Set<String>  policy    = new TreeSet<>();
       Object       stored    = group.optJSONObject("attributes") == null ? null : group.getJSONObject("attributes").opt(format.attribute());
-      policy.addAll(PolicyParser.parse(stored, format));
+      policy.addAll(PolicyParser.parse(stored, format, runtime.getPolicyCatalog()));
 
       Set<String> expressible = runtime.getPolicyCatalog().permissionNames();
       Set<String> extras      = new TreeSet<>();
@@ -1235,7 +1235,7 @@ public class AuthentikAdmin
       }
       try
       {
-         request.with(POLICY_DOCUMENT, PolicyGenerator.toCompact(PolicyGenerator.generate(policy, format)));
+         request.with(POLICY_DOCUMENT, PolicyGenerator.toCompact(PolicyGenerator.generate(policy, format, runtime.getPolicyCatalog())));
       }
       catch(PolicyParseException e)
       {
@@ -2011,8 +2011,8 @@ public class AuthentikAdmin
       try
       {
          String submitted = request.str(POLICY_DOCUMENT);
-         permissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format).permissions() : new TreeSet<>();
-         canonical = PolicyGenerator.generate(permissions, format);
+         permissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format, runtime.getPolicyCatalog()).permissions() : new TreeSet<>();
+         canonical = PolicyGenerator.generate(permissions, format, runtime.getPolicyCatalog());
       }
       catch(PolicyParseException e)
       {
@@ -2047,7 +2047,7 @@ public class AuthentikAdmin
       try
       {
          PolicyStore.save(config, request.targetKey(), fresh.optString("name"), canonical, permissions.size(), guard.operatorEmail(),
-            permissions.isEmpty() ? null : PolicyStore.fingerprint(compact, format));
+            permissions.isEmpty() ? null : PolicyStore.fingerprint(compact, format, runtime.getPolicyCatalog()));
       }
       catch(Exception e)
       {

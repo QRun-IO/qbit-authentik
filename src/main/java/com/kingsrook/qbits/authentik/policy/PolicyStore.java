@@ -69,6 +69,16 @@ public final class PolicyStore
     *******************************************************************************/
    public static String fingerprint(Object attributeValue, PolicyFormat format)
    {
+      return (fingerprint(attributeValue, format, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Fingerprint including registered table features in the canonical form.
+    *******************************************************************************/
+   public static String fingerprint(Object attributeValue, PolicyFormat format, PolicyCatalog catalog)
+   {
       if(attributeValue == null || JSONObject.NULL.equals(attributeValue) || "".equals(attributeValue))
       {
          return (null);
@@ -76,7 +86,7 @@ public final class PolicyStore
       String text;
       try
       {
-         text = PolicyGenerator.toCompact(PolicyGenerator.canonical(attributeValue, format));
+         text = PolicyGenerator.toCompact(PolicyGenerator.canonical(attributeValue, format, catalog));
       }
       catch(PolicyParseException e)
       {

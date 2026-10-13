@@ -18,7 +18,6 @@ package com.kingsrook.qbits.authentik.policy;
 
 
 import java.util.Collections;
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.Map;
 import java.util.Set;
@@ -81,13 +80,24 @@ public final class PolicyParser
     *******************************************************************************/
    public static Set<String> parse(Object document, PolicyFormat format)
    {
+      return (parse(document, format, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Parse with the catalog of explicitly grantable table features; an invalid
+    ** document still grants nothing.
+    *******************************************************************************/
+   public static Set<String> parse(Object document, PolicyFormat format, PolicyCatalog catalog)
+   {
       if(document == null || JSONObject.NULL.equals(document))
       {
          return (Collections.emptySet());
       }
       try
       {
-         return (parseStrict(document, format).permissions());
+         return (parseStrict(document, format, catalog).permissions());
       }
       catch(PolicyParseException e)
       {
@@ -102,6 +112,17 @@ public final class PolicyParser
     ** Parse, throwing a PolicyParseException that names the first problem.
     *******************************************************************************/
    public static Parsed parseStrict(Object document, PolicyFormat format) throws PolicyParseException
+   {
+      return (parseStrict(document, format, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Parse standard actions and features registered for every listed resource.
+    ** Without a catalog only the five standard actions are accepted.
+    *******************************************************************************/
+   public static Parsed parseStrict(Object document, PolicyFormat format, PolicyCatalog catalog) throws PolicyParseException
    {
       JSONObject json = asObject(document);
       PolicyFormat f = format == null ? PolicyFormat.DEFAULT : format;
@@ -131,7 +152,6 @@ public final class PolicyParser
 
       for(int i = 0; i < array.length(); i++)
       {
-         final int number = i + 1;
          if(!(array.opt(i) instanceof JSONObject statement))
          {
             throw (new PolicyParseException("Statement " + (i + 1) + " must be an object"));
@@ -142,29 +162,38 @@ public final class PolicyParser
             throw (new PolicyParseException("Statement " + (i + 1) + ": Effect must be \"Allow\" (found " + describe(effect) + "); Deny is not supported yet"));
          }
 
-         Set<PolicyAction> actions = EnumSet.noneOf(PolicyAction.class);
+         Set<String> statementResources = strings(statement.opt("Resource"), "Statement " + (i + 1) + ": Resource");
+         Set<String> actions = new LinkedHashSet<>();
          for(String name : strings(statement.opt("Action"), "Statement " + (i + 1) + ": Action"))
          {
             if(PolicyAction.WILDCARD.equals(name))
             {
-               actions.addAll(EnumSet.allOf(PolicyAction.class));
+               for(PolicyAction action : PolicyAction.values())
+               {
+                  actions.add(action.getJsonName());
+               }
             }
             else
             {
-               actions.add(PolicyAction.fromJsonName(name).orElseThrow(() -> new PolicyParseException("Statement " + number + ": unknown action \"" + name + "\"")));
+               if(PolicyAction.fromJsonName(name).isEmpty()
+                  && (catalog == null || statementResources.isEmpty() || !statementResources.stream().allMatch(resource -> catalog.hasFeature(resource, name))))
+               {
+                  throw (new PolicyParseException("Statement " + (i + 1) + ": unknown action \"" + name + "\""));
+               }
+               actions.add(name);
             }
          }
 
-         for(String resource : strings(statement.opt("Resource"), "Statement " + (i + 1) + ": Resource"))
+         for(String resource : statementResources)
          {
             if(!RESOURCE_PATTERN.matcher(resource).matches())
             {
                throw (new PolicyParseException("Statement " + (i + 1) + ": resource \"" + resource + "\" must match [A-Za-z0-9_]+"));
             }
             resources.add(resource);
-            for(PolicyAction action : actions)
+            for(String action : actions)
             {
-               permissions.add(action.permission(resource));
+               permissions.add(resource + "." + action);
             }
          }
       }

@@ -21,6 +21,7 @@ import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,7 +30,8 @@ import org.json.JSONObject;
 /*******************************************************************************
  ** Builds the canonical policy document for a set of QQQ permissions
  ** (docs/POLICY-FORMAT.md, "Canonical form"): one Allow statement per granted
- ** action in the order hasAccess, read, insert, edit, delete; resources sorted;
+ ** action in the order hasAccess, read, insert, edit, delete, then features
+ ** sorted by name; resources sorted;
  ** no "*". Every generated document is checked to round-trip through
  ** PolicyParser to exactly the permissions it came from; one that does not is
  ** never returned.
@@ -55,12 +57,23 @@ public final class PolicyGenerator
     *******************************************************************************/
    public static JSONObject generate(Collection<String> permissions, PolicyFormat format) throws PolicyParseException
    {
+      return (generate(permissions, format, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Generate with the catalog of explicitly grantable table features.
+    *******************************************************************************/
+   public static JSONObject generate(Collection<String> permissions, PolicyFormat format, PolicyCatalog catalog) throws PolicyParseException
+   {
       PolicyFormat f = format == null ? PolicyFormat.DEFAULT : format;
 
-      Map<PolicyAction, Set<String>> byAction = new LinkedHashMap<>();
+      Map<String, Set<String>> byAction = new LinkedHashMap<>();
+      Map<String, Set<String>> byFeature = new TreeMap<>();
       for(PolicyAction action : PolicyAction.values())
       {
-         byAction.put(action, new TreeSet<>());
+         byAction.put(action.getJsonName(), new TreeSet<>());
       }
 
       Set<String> expected = new TreeSet<>();
@@ -73,23 +86,28 @@ public final class PolicyGenerator
          }
          String resource = permission.substring(0, dot);
          String name     = permission.substring(dot + 1);
-         PolicyAction action = PolicyAction.fromJsonName(name).orElseThrow(() -> new PolicyParseException("\"" + permission + "\": unknown action \"" + name + "\""));
+         if(PolicyAction.fromJsonName(name).isEmpty() && (catalog == null || !catalog.hasFeature(resource, name)))
+         {
+            throw (new PolicyParseException("\"" + permission + "\": unknown action \"" + name + "\""));
+         }
          if(!PolicyParser.RESOURCE_PATTERN.matcher(resource).matches())
          {
             throw (new PolicyParseException("\"" + permission + "\": resource must match [A-Za-z0-9_]+"));
          }
-         byAction.get(action).add(resource);
+         Map<String, Set<String>> target = byAction.containsKey(name) ? byAction : byFeature;
+         target.computeIfAbsent(name, key -> new TreeSet<>()).add(resource);
          expected.add(permission);
       }
 
       JSONArray statements = new JSONArray();
-      for(Map.Entry<PolicyAction, Set<String>> entry : byAction.entrySet())
+      byAction.putAll(byFeature);
+      for(Map.Entry<String, Set<String>> entry : byAction.entrySet())
       {
          if(!entry.getValue().isEmpty())
          {
             statements.put(new JSONObject()
                .put("Effect", PolicyParser.ALLOW)
-               .put("Action", new JSONArray().put(entry.getKey().getJsonName()))
+               .put("Action", new JSONArray().put(entry.getKey()))
                .put("Resource", new JSONArray(entry.getValue())));
          }
       }
@@ -99,7 +117,7 @@ public final class PolicyGenerator
          .put("PolicyVersion", f.version())
          .put("Statement", statements);
 
-      Set<String> parsed = PolicyParser.parseStrict(toCompact(document), f).permissions();
+      Set<String> parsed = PolicyParser.parseStrict(toCompact(document), f, catalog).permissions();
       if(!parsed.equals(expected))
       {
          Set<String> missing = new TreeSet<>(expected);
@@ -118,7 +136,17 @@ public final class PolicyGenerator
     *******************************************************************************/
    public static JSONObject canonical(Object document, PolicyFormat format) throws PolicyParseException
    {
-      return (generate(PolicyParser.parseStrict(document, format).permissions(), format));
+      return (canonical(document, format, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Canonicalize a document using the registered table features.
+    *******************************************************************************/
+   public static JSONObject canonical(Object document, PolicyFormat format, PolicyCatalog catalog) throws PolicyParseException
+   {
+      return (generate(PolicyParser.parseStrict(document, format, catalog).permissions(), format, catalog));
    }
 
 

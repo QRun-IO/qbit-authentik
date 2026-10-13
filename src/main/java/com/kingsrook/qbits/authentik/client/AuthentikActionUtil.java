@@ -765,7 +765,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       {
          throw (new QUserFacingException("More than " + MAX_SWEEP_OBJECTS + " Authentik groups; the group graph is not supported at this size."));
       }
-      GroupGraph graph = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat());
+      GroupGraph graph = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat(), runtime.getPolicyCatalog());
       if(cache)
       {
          runtime.getGroupGraphCache().storeResult("all", graph);
@@ -814,7 +814,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
       }
       List<JSONObject> groups = getAllPages("/core/groups/?include_users=true&include_parents=false&include_children=false&ordering=name", MAX_SWEEP_OBJECTS);
-      GroupGraph       graph  = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat());
+      GroupGraph       graph  = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat(), runtime.getPolicyCatalog());
       if(cache)
       {
          runtime.getGroupGraphCache().storeResult("members", graph);

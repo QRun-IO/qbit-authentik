@@ -1057,7 +1057,9 @@ A **policy** is a JSON document on an Authentik group that grants QQQ permission
 }
 ```
 
-Each `Allow` statement grants `{resource}.{action}` for every listed resource and action (`*` = all five actions). Those are QQQ permission names, so a QQQ session that holds them passes QQQ's own permission checks. Policies cover the instance's tables, processes, apps, reports and widgets. Named permissions that are not `{resource}.{action}` (for example `authentik.users.manage`) stay in `qqq.io/permissions` (§5.6); a policy cannot grant them, because a resource cannot contain a dot.
+Each `Allow` statement grants `{resource}.{action}` for every listed resource and action (`*` = only the five standard actions: `hasAccess`, `read`, `insert`, `edit`, `delete`). Those are QQQ permission names, so a QQQ session that holds them passes QQQ's own permission checks. Policies cover the instance's tables, processes, apps, reports and widgets. Named permissions that are not `{resource}.{action}` (for example `authentik.users.manage`) stay in `qqq.io/permissions` (§5.6); a policy cannot grant them, because a resource cannot contain a dot.
+
+Table feature actions are generic strings registered in the table's permission catalog: for example `analyze` (qbit-data-analysis), or `comment`, `attach`, `tag`, `share`, `task`, `assign` (qbit-collaboration). `{"Effect":"Allow","Action":["analyze"],"Resource":["person"]}` grants `person.analyze`, checked with `session.hasPermission("person.analyze")`. A feature must exist for every resource in its statement. Unknown features reject the document. `"*"` never includes features, so existing policies do not acquire new grants when a feature is registered.
 
 **Fail closed.** Any of these grants **zero** permissions from that document and logs a warning:
 - an unknown `PolicySpec` or an unsupported `PolicyVersion`
@@ -1113,11 +1115,14 @@ The feature `POLICIES` turns on the editor, the `authentik_policy` table and the
 The **catalog** lists every app, table, process, report and protected widget in the QInstance. Each entry has its permission base name, label, kind, app, and the actions QQQ actually checks for it:
 - `hasAccess` for apps, processes, reports and widgets
 - `read`, `insert`, `edit` and `delete` for tables, limited by the table's capabilities and permission level
+- Table features from `PermissionsHelper.getAllAvailablePermissions(qInstance)`, matched by the table's effective permission base name plus `.`. Their labels come from `AvailablePermission.permissionType`; no dependency on the unreleased `TableFeaturePermissionsMetaData` hook is required. The five standard suffixes are excluded.
+
+The widget JSON keeps `actions` unchanged and adds a `features` array to each table resource, for example `"actions":["read","insert","edit","delete"],"features":[{"name":"analyze","label":"Analyze"},{"name":"comment","label":"Comment"}]`. Tables without features have `"features":[]`. Features also appear for `HAS_ACCESS` and `READ_WRITE` tables. Shared permission base names merge their features. Feature checkboxes must emit explicit action names.
 
 The catalog also follows these rules:
 - Hidden processes are included. Record actions are hidden from the nav but are still permission-checked.
 - Objects that are in no app are listed under "Other".
-- Tables that use `READ_WRITE` permissions are shown with `read` only, and a note, because `write` is not in the action set yet.
+- Tables that use `READ_WRITE` permissions are shown with the standard action `read` and any registered features, and a note about their single write permission. The generic matching rule also exposes their available `write` permission as an explicit named action; `*` does not grant it.
 - Objects with a custom permission checker, or `NOT_PROTECTED`, are left out because a policy cannot grant them.
 
 The **current document** is read live from the group in Authentik, the source of truth, together with the group's fingerprint for the stale check. If it differs from the last QQQ save, a notice says it was changed in Authentik.
@@ -1145,7 +1150,7 @@ Refusals name the reason.
 - clears the caches
 
 Saving an empty matrix removes the attribute. The canonical form is the reference generator's:
-- one statement per action, in the order `hasAccess`, `read`, `insert`, `edit`, `delete`
+- one statement per action, in the order `hasAccess`, `read`, `insert`, `edit`, `delete`, followed by feature names sorted alphabetically
 - resources sorted
 - a resource with every action is still written as five statements, not `*`, so diffs stay readable
 

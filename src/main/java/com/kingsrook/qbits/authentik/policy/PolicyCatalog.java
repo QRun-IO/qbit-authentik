@@ -18,6 +18,7 @@ package com.kingsrook.qbits.authentik.policy;
 
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
@@ -25,7 +26,9 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.TreeSet;
+import com.kingsrook.qqq.backend.core.actions.permissions.AvailablePermission;
 import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -74,9 +77,26 @@ public final class PolicyCatalog
     ** @param label   what operators see
     ** @param kind    app, table, process, report or widget
     ** @param actions the actions QQQ checks, in canonical order
+    ** @param features explicitly grantable table features, sorted by name
     ** @param note    a plain note (e.g. why an action is missing), or null
     *******************************************************************************/
-   public record Resource(String name, String label, Kind kind, List<PolicyAction> actions, String note)
+   public record Resource(String name, String label, Kind kind, List<PolicyAction> actions, List<Feature> features, String note)
+   {
+      /*******************************************************************************
+       ** A resource with only standard actions.
+       *******************************************************************************/
+      public Resource(String name, String label, Kind kind, List<PolicyAction> actions, String note)
+      {
+         this(name, label, kind, actions, List.of(), note);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A table feature's permission suffix and display label from QQQ.
+    *******************************************************************************/
+   public record Feature(String name, String label)
    {
    }
 
@@ -119,6 +139,17 @@ public final class PolicyCatalog
     *******************************************************************************/
    public static PolicyCatalog of(QInstance qInstance)
    {
+      return (of(qInstance, PermissionsHelper.getAllAvailablePermissions(qInstance)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Build using an explicit permission source, including features registered
+    ** by core. This needs no dependency on the feature metadata hook itself.
+    *******************************************************************************/
+   public static PolicyCatalog of(QInstance qInstance, Collection<AvailablePermission> availablePermissions)
+   {
       Map<String, String>                     appOfObject = appsOfObjects(qInstance);
       Map<String, Map<String, ResourceDraft>> byApp       = new LinkedHashMap<>();
 
@@ -155,7 +186,7 @@ public final class PolicyCatalog
             }
             if(rules.getLevel() == PermissionLevel.READ_WRITE_PERMISSIONS)
             {
-               note = "This table uses one write permission, which policies cannot grant yet; only read is offered.";
+               note = "This table uses one write permission instead of separate insert, edit and delete actions.";
             }
             else
             {
@@ -173,7 +204,20 @@ public final class PolicyCatalog
                }
             }
          }
-         add(byApp, appOfObject.get("table:" + table.getName()), qInstance, table, Kind.TABLE, label(table.getLabel(), table.getName()), actions, note);
+         String baseName = StringUtils.hasContent(rules.getPermissionBaseName()) ? rules.getPermissionBaseName() : table.getName();
+         Map<String, Feature> features = new TreeMap<>();
+         for(AvailablePermission permission : availablePermissions)
+         {
+            if(permission.getName().startsWith(baseName + "."))
+            {
+               String suffix = permission.getName().substring(baseName.length() + 1);
+               if(!suffix.isEmpty() && PolicyAction.fromJsonName(suffix).isEmpty())
+               {
+                  features.putIfAbsent(suffix, new Feature(suffix, permission.getPermissionType()));
+               }
+            }
+         }
+         add(byApp, appOfObject.get("table:" + table.getName()), qInstance, table, Kind.TABLE, label(table.getLabel(), table.getName()), actions, features, note);
       }
 
       List<QProcessMetaData> processes = new ArrayList<>(qInstance.getProcesses().values());
@@ -218,7 +262,7 @@ public final class PolicyCatalog
          List<Resource> resources = new ArrayList<>();
          for(ResourceDraft draft : entry.getValue().values())
          {
-            resources.add(new Resource(draft.name, String.join(" / ", draft.labels), draft.kind, new ArrayList<>(draft.actions), draft.note));
+            resources.add(new Resource(draft.name, String.join(" / ", draft.labels), draft.kind, new ArrayList<>(draft.actions), List.copyOf(draft.features.values()), draft.note));
          }
          groups.add(new Group(entry.getKey(), groupLabel, resources));
       }
@@ -237,6 +281,7 @@ public final class PolicyCatalog
       private final Kind              kind;
       private final Set<String>       labels  = new LinkedHashSet<>();
       private final Set<PolicyAction> actions = new TreeSet<>();
+      private final Map<String, Feature> features = new TreeMap<>();
       private String                  note;
 
 
@@ -259,8 +304,19 @@ public final class PolicyCatalog
    private static void add(Map<String, Map<String, ResourceDraft>> byApp, String app, QInstance qInstance, MetaDataWithPermissionRules object, Kind kind, String label,
       Set<PolicyAction> actions, String note)
    {
+      add(byApp, app, qInstance, object, kind, label, actions, Map.of(), note);
+   }
+
+
+
+   /*******************************************************************************
+    ** Add standard and feature actions, merging shared permission base names.
+    *******************************************************************************/
+   private static void add(Map<String, Map<String, ResourceDraft>> byApp, String app, QInstance qInstance, MetaDataWithPermissionRules object, Kind kind, String label,
+      Set<PolicyAction> actions, Map<String, Feature> features, String note)
+   {
       QPermissionRules rules = PermissionsHelper.getEffectivePermissionRules(object, qInstance);
-      if(rules == null || rules.getLevel() == null || rules.getLevel() == PermissionLevel.NOT_PROTECTED || rules.getCustomPermissionChecker() != null || actions.isEmpty())
+      if(rules == null || rules.getLevel() == null || rules.getLevel() == PermissionLevel.NOT_PROTECTED || rules.getCustomPermissionChecker() != null || (actions.isEmpty() && features.isEmpty()))
       {
          return;
       }
@@ -281,6 +337,7 @@ public final class PolicyCatalog
          {
             existing.labels.add(label);
             existing.actions.addAll(actions);
+            existing.features.putAll(features);
             return;
          }
       }
@@ -288,6 +345,7 @@ public final class PolicyCatalog
       ResourceDraft draft = new ResourceDraft(name, kind);
       draft.labels.add(label);
       draft.actions.addAll(actions);
+      draft.features.putAll(features);
       draft.note = note;
       byApp.computeIfAbsent(byApp.containsKey(app) ? app : null, k -> new LinkedHashMap<>()).put(name, draft);
    }
@@ -399,6 +457,7 @@ public final class PolicyCatalog
          {
             rs.add(action.permission(resource.name()));
          }
+         resource.features().forEach(feature -> rs.add(resource.name() + "." + feature.name()));
       }
       return (rs);
    }
@@ -426,6 +485,17 @@ public final class PolicyCatalog
 
 
    /*******************************************************************************
+    ** Whether this resource has an explicitly registered feature action.
+    *******************************************************************************/
+   public boolean hasFeature(String resourceName, String actionName)
+   {
+      Resource resource = get(resourceName);
+      return (resource != null && resource.features().stream().anyMatch(feature -> feature.name().equals(actionName)));
+   }
+
+
+
+   /*******************************************************************************
     ** As JSON for the editor widget.
     *******************************************************************************/
    public JSONArray toJson()
@@ -443,6 +513,12 @@ public final class PolicyCatalog
                .put("label", resource.label())
                .put("kind", resource.kind().name())
                .put("actions", actions);
+            if(resource.kind() == Kind.TABLE || !resource.features().isEmpty())
+            {
+               JSONArray features = new JSONArray();
+               resource.features().forEach(feature -> features.put(new JSONObject().put("name", feature.name()).put("label", feature.label())));
+               json.put("features", features);
+            }
             if(resource.note() != null)
             {
                json.put("note", resource.note());

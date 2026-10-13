@@ -65,6 +65,10 @@ QQQ permissions, held as `<name>.hasAccess`, granted through the group attribute
 
 `authentik.*` grants all of them.
 
+Policies also grant table feature permissions registered through core `TableFeaturePermissionsMetaData`: `analyze` (qbit-data-analysis) and `comment`, `attach`, `tag`, `share`, `task`, `assign` (qbit-collaboration), or any future registered feature. For example, `{"Effect":"Allow","Action":["analyze","comment"],"Resource":["person"]}` grants `person.analyze` and `person.comment`. The resource is the table's effective permission base name. Features must be granted explicitly: policy action `"*"` still means only `hasAccess`, `read`, `insert`, `edit`, `delete`.
+
+The editor discovers features and labels through `PermissionsHelper.getAllAvailablePermissions`; they appear when the host's core version exposes them. This qbit does not compile against the unreleased metadata hook. See [the policy format](docs/POLICY-FORMAT.md) for validation and host customizer usage.
+
 ### Authentik side
 
 The qbit's API token belongs to a dedicated Authentik service account whose role holds only the permissions it needs (DESIGN.md section 5.1), created by a bootstrap blueprint in the host's GitOps repository. It is never a superuser and never holds `enable_group_superuser`, token-key or impersonate permissions, and holds delete permissions only when the `DELETE` feature is on. [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml) is one host's worked example.
