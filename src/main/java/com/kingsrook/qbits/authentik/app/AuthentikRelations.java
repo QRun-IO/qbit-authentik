@@ -86,15 +86,41 @@ public final class AuthentikRelations
       groupSections.add(new QFieldSection("permissions", "Permissions and app access", new QIcon("admin_panel_settings"), Tier.T2,
          List.of("permissions", "effectivePermissions", "appAccess")));
       relate(qInstance, groupSections, "members", "Members", "group", group, membership, "pk", "groupPk");
+      enforcement(qInstance, config, groupSections);
       relate(qInstance, groupSections, "policy", "Policy", "policy", group, config.applyTablePrefix(AuthentikLocalTables.POLICY), "pk", "groupPk");
       groupSections.add(new QFieldSection("attributes", "Attributes", new QIcon("data_object"), Tier.T3, List.of("attributes")));
       applySections(qInstance, group, groupSections);
+
+      String policyTable = config.applyTablePrefix(AuthentikLocalTables.POLICY);
+      if(qInstance.getTable(policyTable) != null)
+      {
+         List<QFieldSection> policySections = new ArrayList<>();
+         enforcement(qInstance, config, policySections);
+         policySections.add(new QFieldSection("policy", "Policy", new QIcon("policy"), Tier.T1,
+            List.of("groupName", "statementCount", "permissionCount", "savedBy", "savedDate", "policyJson")));
+         policySections.add(new QFieldSection("system", "System", new QIcon("settings"), Tier.T3, List.of("id", "groupPk", "authentikFingerprint", "createDate", "modifyDate")));
+         applySections(qInstance, policyTable, policySections);
+      }
 
       List<QFieldSection> appSections = new ArrayList<>();
       appSections.add(new QFieldSection("details", "Details", new QIcon("apps"), Tier.T1,
          List.of("name", "slug", "group", "providerName", "policyEngineMode", "launchUrl", "publisher", "hiddenFromLibrary")));
       relate(qInstance, appSections, "bindings", "Who can open it (policy bindings)", "rule", application, binding, "bindingTarget", "target");
       applySections(qInstance, application, appSections);
+   }
+
+
+
+   /*******************************************************************************
+    ** The policy enforcement banner as the first section (when produced).
+    *******************************************************************************/
+   private static void enforcement(QInstance qInstance, AuthentikQBitConfig config, List<QFieldSection> sections)
+   {
+      String widget = config.applyPrefix(com.kingsrook.qbits.authentik.policy.PolicyCutoverWidgets.ENFORCEMENT);
+      if(qInstance.getWidget(widget) != null)
+      {
+         sections.add(0, new QFieldSection("enforcement", new QIcon("verified_user"), Tier.T2).withLabel("Policy enforcement").withWidgetName(widget));
+      }
    }
 
 

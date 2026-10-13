@@ -1178,6 +1178,54 @@ Deactivate stays the default for people, and *Delete User* says so in its help t
 
 The token needs these only when writes are on. A read-only deployment (`readOnly`, or no write features) keeps the phase 1 read set.
 
+### 12.8 Cut-over: making policies take effect safely
+
+Saved policies do nothing until the host signs people in through the qbit mapper. The qbit makes that state visible, helps seed policies from today's access, and refuses to switch over in a way that would lock administrators out.
+
+**Host SPI.** `AuthentikHostPermissionSource` returns what a user (or a group's members) gets *today* from the host, typically a hard-coded grant such as "admins get `adminPermissions()`". The host sets it with `withHostPermissionSource(...)`.
+
+**Config.**
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `mapperEnabled` | `false` | The host's own switch (kof22: `AUTHENTIK_QBIT_MAPPER`). Off means "policies are saved but not enforced". A host that calls the mapper without setting it is treated as on. |
+| `cutoverGuardGroups` | none | Groups whose members must lose no permission at the cut-over (kof22: `kof22-admins`) |
+| `mapperOverride` | `false` | The owner's explicit override of a failing guard |
+| `staticGroupPermissions` | none | Permissions always granted to a group's members (the floor), e.g. today's admin grant |
+
+**Status** (`AccessComparison.state`, cached 60 s):
+- `OFF`: the mapper is not in use.
+- `ACTIVE`: the guard passed, or nothing is guarded.
+- `OVERRIDDEN`: the owner overrode a failing guard.
+- `BLOCKED`: the guard failed or could not reach Authentik.
+
+The status is shown in three places:
+- the *Policy enforcement* banner, first on group and policy records and on the Edit Policy step. When off it reads "Policies are saved but NOT enforced at sign-in on this instance (mapper off)".
+- the home's Connection card ("Policies at sign-in")
+- **Compare Access**
+
+**Compare Access** is a read-only `TABLE` widget on the app home (`authentik.admin`). For every active person it compares two sets:
+- **today**: the host source
+- **with the mapper**: the person's groups' policies and `qqq.io/permissions` including ancestors, the static fallback of their direct groups, and all `authentik.*` for a bootstrap subject
+
+It shows what is added and removed, and the unchanged count. Guarded people are marked, and the footer says whether the guard passes.
+
+**Guard.** While the status is `BLOCKED`, the mapper does not apply policies. A sign-in gets:
+- today's access from the host source
+- the static fallbacks
+- the bootstrap subjects
+
+So switching the mapper on can never take access away from a guarded admin until Compare Access shows no removal for them, or the owner sets `mapperOverride`. The static fallback and the bootstrap subject (the owner's immutable Authentik pk) stay in force in every state, so a lockout is impossible.
+
+**Generate Policy From Current Access** is a record action on groups that saves a policy. It takes what the group's members get today (`groupPermissions`):
+- Permissions a policy can express are joined with the group's current policy, so nothing is removed, and become the document.
+- Named permissions the app defines but a policy cannot express (dotted names, `write`) are merged into `qqq.io/permissions`.
+- Anything else is listed as skipped.
+
+Review shows the generated document, the diff and the subset rule before anything is saved. For the subset rule, the operator's own access today (host source plus static fallback) counts.
+
+**Rollback** is one switch: set the host flag off (kof22: `AUTHENTIK_QBIT_MAPPER=false`). Sign-in returns to the host's own grant immediately. Saved policies stay in Authentik and in `authentik_policy`, unused.
+
 ### 12.6 Tests
 
 - **Parser:** every fail-closed case (null, blank, not JSON, unknown spec, unsupported version, `Deny`, unknown action, bad resource, non-array fields), `*` expansion, and merging several statements.

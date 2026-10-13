@@ -23,6 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import com.kingsrook.qbits.authentik.client.AuthentikFilterMapper;
 import com.kingsrook.qbits.authentik.client.AuthentikTableSpec;
 import com.kingsrook.qbits.authentik.client.TokenBucketThrottle;
+import com.kingsrook.qbits.authentik.permissions.AccessComparison;
 import com.kingsrook.qbits.authentik.permissions.GroupGraph;
 import com.kingsrook.qbits.authentik.policy.PolicyCatalog;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
@@ -47,6 +48,8 @@ public class AuthentikRuntime
    private final Memoization<String, GroupGraph> groupGraphCache;
    private volatile java.util.Set<String>        permissionCatalog;
    private volatile PolicyCatalog                policyCatalog;
+   private volatile AccessComparison.State       mapperState;
+   private volatile boolean                      mapperInvoked;
    private final Map<String, AuthentikTableSpec> specsByTableName = new ConcurrentHashMap<>();
 
 
@@ -233,4 +236,48 @@ public class AuthentikRuntime
       return (responseCache);
    }
 
+
+
+   /*******************************************************************************
+    ** The cached mapper state (DESIGN.md section 12.8), or null.
+    *******************************************************************************/
+   public AccessComparison.State getMapperState()
+   {
+      return (mapperState);
+   }
+
+
+
+   /*******************************************************************************
+    ** Cache a mapper state.
+    *******************************************************************************/
+   public void setMapperState(AccessComparison.State mapperState)
+   {
+      this.mapperState = mapperState;
+   }
+
+
+
+   /*******************************************************************************
+    ** Whether the host has run the qbit mapper at sign-in (counts as "enabled"
+    ** for hosts that call the mapper without setting mapperEnabled).
+    *******************************************************************************/
+   public boolean isMapperInvoked()
+   {
+      return (mapperInvoked);
+   }
+
+
+
+   /*******************************************************************************
+    ** Record that the mapper ran.
+    *******************************************************************************/
+   public void markMapperInvoked()
+   {
+      if(!mapperInvoked)
+      {
+         mapperInvoked = true;
+         mapperState = null;
+      }
+   }
 }

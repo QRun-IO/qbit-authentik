@@ -201,6 +201,9 @@ public final class AuthentikProcesses
          + "You can only grant permissions you hold yourself.";
       List<QFieldMetaData> policyFields = List.of(hidden("groupPk"), hidden("expectedFingerprint"), reason);
       defs.add(new Def("editPolicy", "Edit Policy", AdminAction.SAVE_POLICY, Kind.GROUPS, groups, "policy", true, policyFields, policyHelp));
+      defs.add(new Def("generatePolicy", "Generate Policy From Current Access", AdminAction.SAVE_POLICY, Kind.GROUPS, groups, "auto_fix_high", false, List.of(reason),
+         "Builds this group's policy from what its members get today from the app (joined with its current policy, so nothing is removed). "
+            + "Review shows the generated document and what changes before anything is saved."));
       defs.add(new Def("editPolicyRecord", "Edit Policy", AdminAction.SAVE_POLICY, Kind.POLICIES, AuthentikLocalTables.POLICY, "policy", true, policyFields, policyHelp));
       defs.add(new Def("addMembers", "Add Members", AdminAction.ADD_MEMBER, Kind.GROUP_USERNAMES, groups, "person_add", false, List.of(
          new QFieldMetaData("usernames", QFieldType.TEXT).withLabel("Usernames (one per line)").withIsRequired(true),
@@ -311,6 +314,10 @@ public final class AuthentikProcesses
             details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.HELP_TEXT).withValue("text", def.help()));
          }
          if(def.action() == AdminAction.SAVE_POLICY)
+         {
+            details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.WIDGET).withValue("widgetName", config.applyPrefix(com.kingsrook.qbits.authentik.policy.PolicyCutoverWidgets.ENFORCEMENT)));
+         }
+         if(def.action() == AdminAction.SAVE_POLICY && !def.key().equals("generatePolicy"))
          {
             details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.WIDGET).withValue("widgetName", config.applyPrefix(PolicyEditorWidget.NAME)));
          }
@@ -435,7 +442,11 @@ public final class AuthentikProcesses
                rs.add(request);
             }
          }
-         case GROUPS, INVITATIONS -> rs.add(withParams(AdminRequest.of(def.action(), String.valueOf(record.getValue("pk") != null ? record.getValue("pk") : record.getValue("uuid")), reason), def, input));
+         case GROUPS, INVITATIONS ->
+         {
+            AdminRequest request = withParams(AdminRequest.of(def.action(), String.valueOf(record.getValue("pk") != null ? record.getValue("pk") : record.getValue("uuid")), reason), def, input);
+            rs.add("generatePolicy".equals(def.key()) ? admin.withGeneratedPolicy(request) : request);
+         }
          case POLICIES -> rs.add(withParams(AdminRequest.of(def.action(), record.getValueString("groupPk"), reason), def, input));
          default ->
          {
@@ -455,7 +466,7 @@ public final class AuthentikProcesses
       // the policy editor widget writes the document as a process value //
       // (not a form field), as does an API client                       //
       //////////////////////////////////////////////////////////////////////
-      if(def.action() == AdminAction.SAVE_POLICY && input.getValue(AuthentikAdmin.POLICY_DOCUMENT) != null)
+      if(def.action() == AdminAction.SAVE_POLICY && !"generatePolicy".equals(def.key()) && input.getValue(AuthentikAdmin.POLICY_DOCUMENT) != null)
       {
          request.with(AuthentikAdmin.POLICY_DOCUMENT, input.getValueString(AuthentikAdmin.POLICY_DOCUMENT));
       }
