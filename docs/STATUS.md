@@ -11,13 +11,14 @@ The Authentik qbit's progress through DESIGN.md section 11, with links. Updated 
 | 2. Memberships and permission editing | done, except the webhook route, ESB trigger, inbox and session re-evaluation marking |
 | 3. Full user lifecycle | done, except the optional snapshot export |
 | 4. RBAC role management | post-v1, not started |
+| 5. Policies and full CRUD (DESIGN.md section 12) | 5a policy model (#14), 5b policy editor (#15), 5c user and group CRUD additions; the Next UI widget is a separate qqq-frontend-next PR |
 
 ### Built in this line (0.1)
 
 | Area | What |
 |---|---|
-| People | Create, invite, edit, deactivate, reactivate, password reset email, reset MFA, revoke app passwords, revoke sessions, cancel invitations |
-| Groups | Create, edit (parents), add and remove members (bulk), edit permissions and app access |
+| People | Create, invite, edit (username, name, email, path, other attributes), deactivate, reactivate, delete (feature `DELETE`), password reset email, reset MFA, revoke app passwords, revoke sessions, cancel invitations |
+| Groups | Create, edit (parents, other attributes), delete (feature `DELETE`), add and remove members (bulk), edit permissions and app access, edit the group policy (feature `POLICIES`) |
 | Safety | Subset rule on live groups, protected accounts and superuser groups, no self-edits, last-admin protection, reasons, typed confirmations, bulk caps, stale checks, two-person approval for `authentik.*` |
 | Audit | `authentik_admin_action` (before the call), Authentik `custom_qqq_admin_action` events, approval requests |
 | Screens | Home dashboard, main tables in the nav, child lists on parents, every action as a table or record action |

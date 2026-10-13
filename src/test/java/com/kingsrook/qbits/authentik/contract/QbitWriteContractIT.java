@@ -73,9 +73,12 @@ class QbitWriteContractIT
 {
    private static final String OPERATOR_EMAIL = "wr.operator@example.test";
 
+   /** The operator's own policy: they may grant read and edit on wr_page. */
+   private static final String WR_POLICY = "{\"PolicySpec\":\"qqq-iam\",\"PolicyVersion\":\"1.0.0\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"read\",\"edit\"],\"Resource\":[\"wr_page\"]}]}";
+
    /** The phase 2/3 permissions of DESIGN.md section 5.1 (plus view_flow to resolve the invitation flow by slug). */
    private static final List<String> ROLE_PERMISSIONS = List.of(
-      "authentik_core.add_user", "authentik_core.change_user", "authentik_core.reset_user_password",
+      "authentik_core.add_user", "authentik_core.change_user", "authentik_core.reset_user_password", "authentik_core.delete_user", "authentik_core.delete_group",
       "authentik_core.add_group", "authentik_core.change_group", "authentik_core.add_user_to_group", "authentik_core.remove_user_from_group",
       "authentik_core.view_token", "authentik_core.delete_token", "authentik_core.delete_authenticatedsession",
       "authentik_stages_invitation.view_invitation", "authentik_stages_invitation.add_invitation", "authentik_stages_invitation.delete_invitation",
@@ -110,7 +113,8 @@ class QbitWriteContractIT
       admin.post("/rbac/permissions/assigned_by_roles/" + roleUuid + "/assign/", new JSONObject().put("permissions", new JSONArray(ROLE_PERMISSIONS)));
 
       admin.post("/core/groups/", new JSONObject().put("name", "wr-admins").put("attributes",
-         new JSONObject().put("qqq.io/permissions", new JSONArray(List.of("authentik.*"))).put("qqq.io/app-access", new JSONArray(List.of(AuthentikTestStack.APP_SLUG)))));
+         new JSONObject().put("qqq.io/permissions", new JSONArray(List.of("authentik.*"))).put("qqq.io/app-access", new JSONArray(List.of(AuthentikTestStack.APP_SLUG)))
+            .put("qqq.io/policy", WR_POLICY)));
       admin.post("/core/groups/", new JSONObject().put("name", "wr-readers").put("attributes",
          new JSONObject().put("qqq.io/permissions", new JSONArray(List.of("authentik.users.read")))));
       admin.post("/core/users/", new JSONObject().put("username", "wr.operator").put("name", "WR Operator").put("email", OPERATOR_EMAIL).put("type", "internal").put("path", "users"));
@@ -162,11 +166,15 @@ class QbitWriteContractIT
          .withRecoveryEmailStage("kof22-recovery-email")
          .withInvitationFlow("wr-enrollment")
          .withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-            AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS));
+            AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE));
 
       qInstance = new QInstance();
       qInstance.withInstanceDefaultAuthentication(new QAuthenticationMetaData().withName("mock").withType(QAuthenticationType.MOCK));
       qInstance.addBackend(new QBackendMetaData().withName("memory").withBackendType(MemoryBackendModule.class));
+      qInstance.addTable(new com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData().withName("wr_page").withBackendName("memory").withPrimaryKeyField("id")
+         .withField(new com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData("id", com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType.INTEGER))
+         .withPermissionRules(new com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules()
+            .withLevel(com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS)));
       new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance);
 
       Set<String> permissions = new HashSet<>();
@@ -301,6 +309,67 @@ class QbitWriteContractIT
       assertThat(attributes.getString("owner-note")).isEqualTo("set in the Authentik UI");
       assertThat(attributes.getJSONArray("qqq.io/permissions").toList()).containsExactly("authentik.users.read");
       assertThat(attributes.getJSONArray("qqq.io/app-access").toList()).containsExactly(AuthentikTestStack.APP_SLUG);
+   }
+
+
+
+   /*******************************************************************************
+    ** Save a policy on a real Authentik: the canonical compact string lands in
+    ** the group's attributes next to the others, the qbit reads it back, and a
+    ** grant the operator does not hold is refused.
+    *******************************************************************************/
+   @Test
+   void savePolicy() throws Exception
+   {
+      admin.post("/core/groups/", new JSONObject().put("name", "wr-policy").put("attributes", new JSONObject().put("owner-note", "set in the Authentik UI")));
+      String pk = admin.groupPk("wr-policy");
+      String document = "{\"PolicySpec\":\"qqq-iam\",\"PolicyVersion\":\"1.0.0\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"read\",\"delete\"],\"Resource\":[\"wr_page\"]}]}";
+
+      AuthentikAdmin.AdminResult escalation = run(AdminRequest.of(AdminAction.SAVE_POLICY, pk, "contract test").with(AuthentikAdmin.POLICY_DOCUMENT, document));
+      assertThat(escalation.ok()).isFalse();
+      assertThat(escalation.message()).contains("wr_page.delete");
+
+      String allowed = document.replace(",\"delete\"", "");
+      AuthentikAdmin.AdminResult saved = run(AdminRequest.of(AdminAction.SAVE_POLICY, pk, "contract test").with(AuthentikAdmin.POLICY_DOCUMENT, allowed));
+      assertThat(saved.ok()).as(saved.message()).isTrue();
+
+      JSONObject attributes = admin.get("/core/groups/" + pk + "/").json().getJSONObject("attributes");
+      assertThat(attributes.getString("owner-note")).isEqualTo("set in the Authentik UI");
+      assertThat(attributes.getString("qqq.io/policy")).isEqualTo("{\"PolicySpec\":\"qqq-iam\",\"PolicyVersion\":\"1.0.0\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"read\"],\"Resource\":[\"wr_page\"]}]}");
+      assertThat(AuthentikActionUtil.forBackend(config.getApiBackendName()).groupGraph().byPk(pk).policyPermissions()).containsExactly("wr_page.read");
+
+      AuthentikAdmin.AdminResult cleared = run(AdminRequest.of(AdminAction.SAVE_POLICY, pk, "contract test").with(AuthentikAdmin.POLICY_DOCUMENT, ""));
+      assertThat(cleared.ok()).as(cleared.message()).isTrue();
+      assertThat(admin.get("/core/groups/" + pk + "/").json().getJSONObject("attributes").has("qqq.io/policy")).isFalse();
+   }
+
+
+
+   /*******************************************************************************
+    ** Delete user and delete group on a real Authentik (delete_user and
+    ** delete_group granted only for the DELETE feature); a group with members is
+    ** refused by the qbit before any call.
+    *******************************************************************************/
+   @Test
+   void deleteUserAndGroup() throws Exception
+   {
+      admin.post("/core/users/", new JSONObject().put("username", "wr.leaver").put("name", "WR Leaver").put("email", "wr.leaver@example.test").put("type", "internal").put("path", "users"));
+      int leaver = admin.userPk("wr.leaver");
+      admin.post("/core/groups/", new JSONObject().put("name", "wr-doomed"));
+      String doomed = admin.groupPk("wr-doomed");
+      admin.post("/core/groups/" + doomed + "/add_user/", new JSONObject().put("pk", leaver));
+
+      AuthentikAdmin.AdminResult notEmpty = run(AdminRequest.of(AdminAction.DELETE_GROUP, doomed, "contract test").with("confirmText", "wr-doomed"));
+      assertThat(notEmpty.ok()).isFalse();
+      assertThat(notEmpty.message()).contains("member(s)");
+
+      AuthentikAdmin.AdminResult user = run(AdminRequest.of(AdminAction.DELETE_USER, String.valueOf(leaver), "contract test").with("confirmText", "wr.leaver"));
+      assertThat(user.ok()).as(user.message()).isTrue();
+      assertThat(admin.get("/core/users/" + leaver + "/").status()).isEqualTo(404);
+
+      AuthentikAdmin.AdminResult group = run(AdminRequest.of(AdminAction.DELETE_GROUP, doomed, "contract test").with("confirmText", "wr-doomed"));
+      assertThat(group.ok()).as(group.message()).isTrue();
+      assertThat(admin.get("/core/groups/" + doomed + "/").status()).isEqualTo(404);
    }
 
 

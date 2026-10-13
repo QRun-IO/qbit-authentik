@@ -38,6 +38,7 @@ public enum IdentityPermission
    GROUPS_MANAGE("authentik.groups.manage"),
    MEMBERSHIPS_MANAGE("authentik.memberships.manage"),
    PERMISSIONS_MANAGE("authentik.permissions.manage"),
+   POLICIES_MANAGE("authentik.policies.manage"),
    ROLES_MANAGE("authentik.roles.manage"),
    CREDENTIALS_RESET("authentik.credentials.reset"),
    SESSIONS_REVOKE("authentik.sessions.revoke"),

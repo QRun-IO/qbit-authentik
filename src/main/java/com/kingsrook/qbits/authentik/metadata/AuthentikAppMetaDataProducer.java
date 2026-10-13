@@ -70,7 +70,7 @@ public class AuthentikAppMetaDataProducer extends QBitComponentMetaDataProducer<
          // records as child lists                                               //
          ///////////////////////////////////////////////////////////////////////////
          addSection(app, produced, config, "people", "People", "person", AuthentikTables.USER, AuthentikTables.INVITATION);
-         addSection(app, produced, config, "access", "Access", "admin_panel_settings", AuthentikTables.GROUP, AuthentikTables.APPLICATION);
+         addSection(app, produced, config, "access", "Access", "admin_panel_settings", AuthentikTables.GROUP, AuthentikLocalTables.POLICY, AuthentikTables.APPLICATION);
          addSection(app, produced, config, "activity", "Activity", "history", AuthentikLocalTables.APPROVAL_REQUEST, AuthentikLocalTables.ADMIN_ACTION);
 
          List<String> widgets = new ArrayList<>();

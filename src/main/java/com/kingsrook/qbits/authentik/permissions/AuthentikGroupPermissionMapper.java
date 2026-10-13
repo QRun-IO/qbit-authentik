@@ -27,6 +27,8 @@ import java.util.TreeSet;
 import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
 import com.kingsrook.qbits.authentik.client.AuthentikRedactor;
+import com.kingsrook.qbits.authentik.policy.PolicyFormat;
+import com.kingsrook.qbits.authentik.policy.PolicyPermissions;
 import com.kingsrook.qbits.authentik.security.BootstrapOperators;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
@@ -107,6 +109,14 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       boolean      verified = claims.optBoolean("email_verified", false);
 
       Set<String> permissions = new TreeSet<>(resolve(qInstance, groups, sub, email, verified));
+
+      //////////////////////////////////////////////////////////////////////////
+      // the policy claim (docs/POLICY-FORMAT.md) carries the same group data //
+      // as the graph read above; the union also covers an unreachable API    //
+      //////////////////////////////////////////////////////////////////////////
+      AuthentikRuntime runtime = runtime();
+      PolicyFormat     format  = runtime == null ? PolicyFormat.DEFAULT : runtime.getConfig().getPolicyFormat();
+      permissions.addAll(PolicyPermissions.fromClaims(PolicyPermissions.claimsWithPolicy(context, format), format));
       if(qSession.getPermissions() != null)
       {
          permissions.addAll(qSession.getPermissions());

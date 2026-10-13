@@ -27,6 +27,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qbits.authentik.client.AuthentikJson;
+import com.kingsrook.qbits.authentik.policy.PolicyFormat;
+import com.kingsrook.qbits.authentik.policy.PolicyParseException;
+import com.kingsrook.qbits.authentik.policy.PolicyParser;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -42,8 +45,16 @@ public class GroupGraph
    /*******************************************************************************
     ** One group.
     *******************************************************************************/
-   public record Node(String pk, String name, boolean ownSuperuser, List<String> parentPks, List<String> permissions, List<String> appAccess, List<Integer> memberPks, List<String> malformed)
+   public record Node(String pk, String name, boolean ownSuperuser, List<String> parentPks, List<String> permissions, List<String> appAccess, List<Integer> memberPks, List<String> malformed,
+                      List<String> policyPermissions)
    {
+      /*******************************************************************************
+       ** A group without a policy document.
+       *******************************************************************************/
+      public Node(String pk, String name, boolean ownSuperuser, List<String> parentPks, List<String> permissions, List<String> appAccess, List<Integer> memberPks, List<String> malformed)
+      {
+         this(pk, name, ownSuperuser, parentPks, permissions, appAccess, memberPks, malformed, List.of());
+      }
    }
 
 
@@ -59,9 +70,25 @@ public class GroupGraph
     *******************************************************************************/
    public static GroupGraph fromGroups(Collection<JSONObject> groups)
    {
-      GroupGraph graph = new GroupGraph();
+      return (fromGroups(groups, PolicyFormat.DEFAULT));
+   }
+
+
+
+   /*******************************************************************************
+    ** Build from Authentik group objects, reading each group's policy document
+    ** (docs/POLICY-FORMAT.md) from the format's attribute. A document that does
+    ** not parse grants nothing and is listed in the node's malformed entries.
+    *******************************************************************************/
+   public static GroupGraph fromGroups(Collection<JSONObject> groups, PolicyFormat format)
+   {
+      PolicyFormat f     = format == null ? PolicyFormat.DEFAULT : format;
+      GroupGraph   graph = new GroupGraph();
       for(JSONObject group : groups)
       {
+         JSONObject   attributes = group.optJSONObject("attributes");
+         List<String> malformed  = malformed(attributes);
+         List<String> policy     = policyPermissions(attributes, f, malformed);
          graph.add(new Node(
             group.getString("pk"),
             group.optString("name", ""),
@@ -70,7 +97,8 @@ public class GroupGraph
             nonNull(AuthentikJson.stringList(group.optJSONObject("attributes"), AuthentikJson.ATTR_PERMISSIONS)),
             nonNull(AuthentikJson.stringList(group.optJSONObject("attributes"), AuthentikJson.ATTR_APP_ACCESS)),
             ints(group.optJSONArray("users")),
-            malformed(group.optJSONObject("attributes"))));
+            malformed,
+            policy));
       }
       return (graph);
    }
@@ -253,6 +281,30 @@ public class GroupGraph
          }
       }
       return (rs);
+   }
+
+
+
+   /*******************************************************************************
+    ** The permissions of a group's policy document; none (and a malformed entry)
+    ** when it does not parse.
+    *******************************************************************************/
+   private static List<String> policyPermissions(JSONObject attributes, PolicyFormat format, List<String> malformed)
+   {
+      Object document = attributes == null ? null : attributes.opt(format.attribute());
+      if(document == null || JSONObject.NULL.equals(document) || "".equals(document))
+      {
+         return (List.of());
+      }
+      try
+      {
+         return (List.copyOf(PolicyParser.parseStrict(document, format).permissions()));
+      }
+      catch(PolicyParseException e)
+      {
+         malformed.add(format.attribute() + ": " + e.getMessage());
+         return (List.of());
+      }
    }
 
 

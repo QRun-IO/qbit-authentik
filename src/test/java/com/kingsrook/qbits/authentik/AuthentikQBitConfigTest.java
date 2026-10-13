@@ -59,6 +59,24 @@ class AuthentikQBitConfigTest
     **
     *******************************************************************************/
    @Test
+   void policyNames()
+   {
+      assertThat(AuthentikTestSupport.unitConfig().getPolicyFormat()).isEqualTo(com.kingsrook.qbits.authentik.policy.PolicyFormat.DEFAULT);
+      assertThat(AuthentikTestSupport.unitConfig().getPolicyTwoPersonApproval()).isFalse();
+      assertThat(errors(AuthentikTestSupport.unitConfig().withPolicySpec("acme-iam").withPolicyVersion("2.0.0").withPolicyAttribute("policies").withPolicyClaim("policies"))).isEmpty();
+      assertThat(errors(AuthentikTestSupport.unitConfig().withPolicyVersion("1"))).anyMatch(e -> e.contains("policyVersion"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withPolicySpec(""))).anyMatch(e -> e.contains("policySpec"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withPolicyClaim("a b"))).anyMatch(e -> e.contains("policyClaim"));
+      assertThat(errors(AuthentikTestSupport.unitConfig().withPolicyAttribute(null))).anyMatch(e -> e.contains("policyAttribute"));
+      assertThat(AuthentikTestSupport.unitConfig().withPolicyTwoPersonApproval(true).getPolicyTwoPersonApproval()).isTrue();
+   }
+
+
+
+   /*******************************************************************************
+    **
+    *******************************************************************************/
+   @Test
    void requiredSettings()
    {
       List<String> errors = errors(new AuthentikQBitConfig());

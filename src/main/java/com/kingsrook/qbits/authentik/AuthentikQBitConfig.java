@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.kingsrook.qbits.authentik.policy.PolicyFormat;
 import com.kingsrook.qqq.backend.core.instances.QMetaDataVariableInterpreter;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitConfig;
@@ -45,11 +46,11 @@ public class AuthentikQBitConfig implements QBitConfig
 {
    /** Features implemented in this release. Others are refused by validate(). */
    public static final Set<AuthentikFeature> AVAILABLE_FEATURES = EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS);
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE);
 
    /** Features that change Authentik data; they need a local backend for the audit trail. */
    public static final Set<AuthentikFeature> WRITE_FEATURES = EnumSet.of(AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS);
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE);
 
    private static final Pattern APP_KEY_PATTERN = Pattern.compile("[a-z0-9][a-z0-9-]{0,48}[a-z0-9]");
    private static final Pattern PREFIX_PATTERN  = Pattern.compile("[a-zA-Z][a-zA-Z0-9]{0,30}");
@@ -84,6 +85,11 @@ public class AuthentikQBitConfig implements QBitConfig
    private Integer               socketTimeoutMillis      = 30_000;
    private String                expectedServerVersion    = "2026.8";
    private Boolean               allowInsecureHttp        = false;
+   private String                policySpec               = PolicyFormat.DEFAULT_SPEC;
+   private String                policyVersion            = PolicyFormat.DEFAULT_VERSION;
+   private String                policyAttribute          = PolicyFormat.DEFAULT_ATTRIBUTE;
+   private String                policyClaim              = PolicyFormat.DEFAULT_CLAIM;
+   private Boolean               policyTwoPersonApproval  = false;
 
 
 
@@ -173,6 +179,16 @@ public class AuthentikQBitConfig implements QBitConfig
          errors.add("features USERS and CREDENTIALS need recoveryEmailStage");
       }
 
+      if(requested.contains(AuthentikFeature.DELETE) && !requested.contains(AuthentikFeature.USERS) && !requested.contains(AuthentikFeature.GROUPS))
+      {
+         errors.add("feature DELETE needs USERS or GROUPS");
+      }
+
+      if(requested.contains(AuthentikFeature.POLICIES) && !requested.contains(AuthentikFeature.GROUPS))
+      {
+         errors.add("feature POLICIES needs GROUPS");
+      }
+
       if(requested.contains(AuthentikFeature.WEBHOOK) && !StringUtils.hasContent(getResolvedWebhookSecret()))
       {
          errors.add("feature WEBHOOK needs webhookSecret");
@@ -195,6 +211,12 @@ public class AuthentikQBitConfig implements QBitConfig
             break;
          }
       }
+      String policyProblem = getPolicyFormat().problem();
+      if(policyProblem != null)
+      {
+         errors.add(policyProblem);
+      }
+
       if(throttleRequestsPerSecond != null && throttleRequestsPerSecond == 0)
       {
          errors.add("throttleRequestsPerSecond must be at least 1");
@@ -1103,6 +1125,122 @@ public class AuthentikQBitConfig implements QBitConfig
    {
       this.expectedServerVersion = expectedServerVersion;
       return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for policySpec: the PolicySpec this app accepts and writes (docs/POLICY-FORMAT.md).
+    *******************************************************************************/
+   public String getPolicySpec()
+   {
+      return (this.policySpec);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for policySpec
+    *******************************************************************************/
+   public AuthentikQBitConfig withPolicySpec(String policySpec)
+   {
+      this.policySpec = policySpec;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for policyVersion: the one supported PolicyVersion (semver).
+    *******************************************************************************/
+   public String getPolicyVersion()
+   {
+      return (this.policyVersion);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for policyVersion
+    *******************************************************************************/
+   public AuthentikQBitConfig withPolicyVersion(String policyVersion)
+   {
+      this.policyVersion = policyVersion;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for policyAttribute: the Authentik group attribute that holds a group's policy document.
+    *******************************************************************************/
+   public String getPolicyAttribute()
+   {
+      return (this.policyAttribute);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for policyAttribute
+    *******************************************************************************/
+   public AuthentikQBitConfig withPolicyAttribute(String policyAttribute)
+   {
+      this.policyAttribute = policyAttribute;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for policyClaim: the token claim that holds the merged policy document.
+    *******************************************************************************/
+   public String getPolicyClaim()
+   {
+      return (this.policyClaim);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for policyClaim
+    *******************************************************************************/
+   public AuthentikQBitConfig withPolicyClaim(String policyClaim)
+   {
+      this.policyClaim = policyClaim;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for policyTwoPersonApproval: whether every policy save needs a second person (authentik.approve).
+    *******************************************************************************/
+   public Boolean getPolicyTwoPersonApproval()
+   {
+      return (this.policyTwoPersonApproval);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for policyTwoPersonApproval
+    *******************************************************************************/
+   public AuthentikQBitConfig withPolicyTwoPersonApproval(Boolean policyTwoPersonApproval)
+   {
+      this.policyTwoPersonApproval = policyTwoPersonApproval;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** The policy names (spec, version, attribute, claim) as one value.
+    *******************************************************************************/
+   @JsonIgnore
+   public PolicyFormat getPolicyFormat()
+   {
+      return (new PolicyFormat(policySpec, policyVersion, policyAttribute, policyClaim));
    }
 
 }

@@ -20,6 +20,7 @@ package com.kingsrook.qbits.authentik.app;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
+import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.ChildRecordListRenderer;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
@@ -85,6 +86,7 @@ public final class AuthentikRelations
       groupSections.add(new QFieldSection("permissions", "Permissions and app access", new QIcon("admin_panel_settings"), Tier.T2,
          List.of("permissions", "effectivePermissions", "appAccess")));
       relate(qInstance, groupSections, "members", "Members", "group", group, membership, "pk", "groupPk");
+      relate(qInstance, groupSections, "policy", "Policy", "policy", group, config.applyTablePrefix(AuthentikLocalTables.POLICY), "pk", "groupPk");
       groupSections.add(new QFieldSection("attributes", "Attributes", new QIcon("data_object"), Tier.T3, List.of("attributes")));
       applySections(qInstance, group, groupSections);
 
