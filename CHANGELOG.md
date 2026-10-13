@@ -4,6 +4,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (policy cut-over, DESIGN.md section 12.8)
+- `AuthentikHostPermissionSource` SPI (today's access) and config `mapperEnabled`, `cutoverGuardGroups`, `mapperOverride`, `staticGroupPermissions`.
+- **Enforcement status**: banner widget `authentikPolicyEnforcement` (first on group and policy records and on the Edit Policy step) and a "Policies at sign-in" row in the home's Connection card: OFF, ACTIVE, OVERRIDDEN or BLOCKED.
+- **Compare Access** widget `authentikCompareAccess` on the app home (`authentik.admin`, read only): per active person, today vs the mapper, with added, removed and unchanged, and the guard result.
+- **Cut-over guard**: while a member of a guarded group would lose a permission (and no override), the mapper grants today's access plus the static fallback and bootstrap subjects instead of the policies.
+- **Generate Policy From Current Access** group action: the expressible part of today's access (joined with the current policy) becomes the policy, named permissions go to `qqq.io/permissions`, the rest is listed; Review shows the document and diff.
+
 ### Added (full user and group CRUD, phase 5c: DESIGN.md section 12.5)
 - **Edit User** also changes the username (validated, unique) and the other attributes (a JSON object; reserved `qqq.io/` and `goauthentik.io/` keys are kept and cannot be set; blank leaves them as they are; editing attributes needs `authentik.audit.read`, which is also what shows them on the form). **Edit Group** edits other attributes the same way.
 - **Delete User** and **Delete Group** record actions behind the new `DELETE` feature (off by default; needs Authentik's `delete_user` / `delete_group`). Typed confirmation; never yourself, a protected account, a superuser group or the last identity administrator; a group must have no members and no child groups first; the group's `authentik_policy` row goes with it. Deactivate stays the default for people.

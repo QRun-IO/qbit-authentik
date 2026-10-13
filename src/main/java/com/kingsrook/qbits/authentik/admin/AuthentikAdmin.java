@@ -93,6 +93,9 @@ public class AuthentikAdmin
    /** Process value / request parameter that carries a submitted policy document. */
    public static final String POLICY_DOCUMENT = "policyDocument";
 
+   /** Request parameter: named permissions (one per line) to merge into qqq.io/permissions with a policy save. */
+   public static final String EXTRA_PERMISSIONS = "extraPermissions";
+
    /** Request parameter with the non-reserved attributes (JSON object text) of Edit User and Edit Group. */
    public static final String OTHER_ATTRIBUTES = "otherAttributes";
 
@@ -210,6 +213,21 @@ public class AuthentikAdmin
          EffectivePermissionResolver.Resolution resolution = resolver().resolveGroups(groupPks);
          permissions.addAll(resolution.sessionPermissions());
          appAccess.addAll(resolution.appAccess());
+
+         //////////////////////////////////////////////////////////////////////
+         // what the operator holds today through the host (and the static   //
+         // fallback) counts for the subset rule too (DESIGN.md 12.8)         //
+         //////////////////////////////////////////////////////////////////////
+         List<String> groupNames = new ArrayList<>();
+         for(int i = 0; groups != null && i < groups.length(); i++)
+         {
+            groupNames.add(groups.getJSONObject(i).optString("name"));
+         }
+         permissions.addAll(com.kingsrook.qbits.authentik.permissions.AccessComparison.staticPermissions(config, groupNames));
+         if(config.getHostPermissionSource() != null)
+         {
+            permissions.addAll(config.getHostPermissionSource().userPermissions(email, groupNames));
+         }
       }
       else if(QContext.getQSession() != null && QContext.getQSession().getPermissions() != null)
       {
@@ -1059,7 +1077,15 @@ public class AuthentikAdmin
       {
          return (plan);
       }
+      if(StringUtils.hasContent(request.str("generateProblem")))
+      {
+         return (plan.refuse(request.str("generateProblem")));
+      }
       PolicyFormat format = config.getPolicyFormat();
+
+      List<String> oldNamed   = nonNull(AuthentikJson.stringList(group.optJSONObject("attributes"), AuthentikJson.ATTR_PERMISSIONS));
+      Set<String>  extrasNew  = new TreeSet<>(AuthentikSafety.parseList(request.str(EXTRA_PERMISSIONS)));
+      extrasNew.removeAll(oldNamed);
 
       Set<String> newPermissions;
       JSONObject  canonical;
@@ -1106,18 +1132,35 @@ public class AuthentikAdmin
          return (plan.refuse("These are not permissions of this app: " + String.join(", ", unknownNew) + ". Pick them in the editor."));
       }
 
-      if(added.isEmpty() && removed.isEmpty() && storedProblem == null)
+      if(added.isEmpty() && removed.isEmpty() && storedProblem == null && extrasNew.isEmpty())
       {
          return (plan.noChange("Nothing to change."));
       }
 
-      Set<String> missing = AuthentikSafety.missing(added, operator().permissions());
+      Set<String> needed = new TreeSet<>(added);
+      for(String extra : extrasNew)
+      {
+         needed.addAll(resolver().expand(extra));
+      }
+      Set<String> missing = AuthentikSafety.missing(needed, operator().permissions());
       if(!missing.isEmpty())
       {
          return (plan.refuse("You cannot grant permissions you do not hold yourself: " + String.join(", ", missing)));
       }
 
       plan.withChange(policySummary(oldPermissions), policySummary(newPermissions));
+      if(request.bool("generated"))
+      {
+         plan.getNotes().add("Generated from current access: " + PolicyGenerator.toCompact(canonical));
+         if(StringUtils.hasContent(request.str("skippedPermissions")))
+         {
+            plan.getNotes().add("Skipped (this app does not define them): " + request.str("skippedPermissions").replace("\n", ", "));
+         }
+      }
+      if(!extrasNew.isEmpty())
+      {
+         plan.getNotes().add("Also added to qqq.io/permissions (not expressible as a policy): " + abbreviate(extrasNew));
+      }
       if(!added.isEmpty())
       {
          plan.getNotes().add("Adds: " + abbreviate(added));
@@ -1144,6 +1187,61 @@ public class AuthentikAdmin
          plan.withState(AdminPlan.State.NEEDS_APPROVAL).withMessage("policy changes need a second person");
       }
       return (plan);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fill a Save Policy request from what members of the group get TODAY from
+    ** the host (DESIGN.md section 12.8): the policy-expressible permissions
+    ** (joined with the group's current policy, so nothing is removed) become
+    ** the document; named permissions this app defines but a policy cannot
+    ** express go to qqq.io/permissions; the rest are listed as skipped.
+    *******************************************************************************/
+   public AdminRequest withGeneratedPolicy(AdminRequest request) throws QException
+   {
+      request.with("generated", true);
+      if(config.getHostPermissionSource() == null)
+      {
+         return (request.with("generateProblem", "This app has no host permission source, so there is no current access to generate from."));
+      }
+      JSONObject group = util.getApiJsonOrNull("/core/groups/" + safeKey(request.targetKey()) + "/?include_users=false&include_parents=false&include_children=false");
+      if(group == null)
+      {
+         return (request.with("generateProblem", "That group no longer exists."));
+      }
+      PolicyFormat format    = config.getPolicyFormat();
+      Set<String>  policy    = new TreeSet<>();
+      Object       stored    = group.optJSONObject("attributes") == null ? null : group.getJSONObject("attributes").opt(format.attribute());
+      policy.addAll(PolicyParser.parse(stored, format));
+
+      Set<String> expressible = runtime.getPolicyCatalog().permissionNames();
+      Set<String> extras      = new TreeSet<>();
+      Set<String> skipped     = new TreeSet<>();
+      for(String permission : config.getHostPermissionSource().groupPermissions(group.optString("name")))
+      {
+         if(expressible.contains(permission))
+         {
+            policy.add(permission);
+         }
+         else if(!resolver().expand(permission).isEmpty())
+         {
+            extras.add(permission);
+         }
+         else
+         {
+            skipped.add(permission);
+         }
+      }
+      try
+      {
+         request.with(POLICY_DOCUMENT, PolicyGenerator.toCompact(PolicyGenerator.generate(policy, format)));
+      }
+      catch(PolicyParseException e)
+      {
+         return (request.with("generateProblem", "The current access cannot be written as a policy: " + e.getMessage()));
+      }
+      return (request.with(EXTRA_PERMISSIONS, String.join("\n", extras)).with("skippedPermissions", String.join("\n", skipped)));
    }
 
 
@@ -1929,6 +2027,13 @@ public class AuthentikAdmin
       }
       JSONObject attributes = fresh.optJSONObject("attributes") == null ? new JSONObject() : new JSONObject(fresh.getJSONObject("attributes").toString());
       String     compact    = PolicyGenerator.toCompact(canonical);
+      List<String> extras   = AuthentikSafety.parseList(request.str(EXTRA_PERMISSIONS));
+      if(!extras.isEmpty())
+      {
+         Set<String> named = new java.util.LinkedHashSet<>(nonNull(AuthentikJson.stringList(attributes, AuthentikJson.ATTR_PERMISSIONS)));
+         named.addAll(extras);
+         putList(attributes, AuthentikJson.ATTR_PERMISSIONS, new ArrayList<>(named));
+      }
       if(permissions.isEmpty())
       {
          attributes.remove(format.attribute());

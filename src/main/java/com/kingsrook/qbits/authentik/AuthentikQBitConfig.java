@@ -90,6 +90,12 @@ public class AuthentikQBitConfig implements QBitConfig
    private String                policyAttribute          = PolicyFormat.DEFAULT_ATTRIBUTE;
    private String                policyClaim              = PolicyFormat.DEFAULT_CLAIM;
    private Boolean               policyTwoPersonApproval  = false;
+   private Boolean               mapperEnabled            = false;
+   private Boolean               mapperOverride           = false;
+   private List<String>          cutoverGuardGroups       = new ArrayList<>();
+   private java.util.Map<String, List<String>> staticGroupPermissions = new java.util.LinkedHashMap<>();
+   @JsonIgnore
+   private com.kingsrook.qbits.authentik.permissions.AuthentikHostPermissionSource hostPermissionSource;
 
 
 
@@ -1241,6 +1247,113 @@ public class AuthentikQBitConfig implements QBitConfig
    public PolicyFormat getPolicyFormat()
    {
       return (new PolicyFormat(policySpec, policyVersion, policyAttribute, policyClaim));
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for mapperEnabled: whether the host uses the qbit mapper for sign-in permissions (its own flag, e.g. AUTHENTIK_QBIT_MAPPER); false shows "policies are not enforced" everywhere.
+    *******************************************************************************/
+   public Boolean getMapperEnabled()
+   {
+      return (this.mapperEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for mapperEnabled
+    *******************************************************************************/
+   public AuthentikQBitConfig withMapperEnabled(Boolean mapperEnabled)
+   {
+      this.mapperEnabled = mapperEnabled;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for mapperOverride: activate the mapper even when the cut-over guard finds removed permissions (explicit owner override).
+    *******************************************************************************/
+   public Boolean getMapperOverride()
+   {
+      return (this.mapperOverride);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for mapperOverride
+    *******************************************************************************/
+   public AuthentikQBitConfig withMapperOverride(Boolean mapperOverride)
+   {
+      this.mapperOverride = mapperOverride;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for cutoverGuardGroups: groups whose members must lose no permission at the cut-over (DESIGN.md section 12.8).
+    *******************************************************************************/
+   public List<String> getCutoverGuardGroups()
+   {
+      return (this.cutoverGuardGroups);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for cutoverGuardGroups
+    *******************************************************************************/
+   public AuthentikQBitConfig withCutoverGuardGroups(List<String> cutoverGuardGroups)
+   {
+      this.cutoverGuardGroups = cutoverGuardGroups;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for staticGroupPermissions: permissions always granted to members of a group (the mapper floor, e.g. today's admin grant), so a cut-over cannot lock admins out.
+    *******************************************************************************/
+   public java.util.Map<String, List<String>> getStaticGroupPermissions()
+   {
+      return (this.staticGroupPermissions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for staticGroupPermissions
+    *******************************************************************************/
+   public AuthentikQBitConfig withStaticGroupPermissions(java.util.Map<String, List<String>> staticGroupPermissions)
+   {
+      this.staticGroupPermissions = staticGroupPermissions;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for hostPermissionSource: the host's current (pre-policy)
+    ** permission source, or null (DESIGN.md section 12.8).
+    *******************************************************************************/
+   @JsonIgnore
+   public com.kingsrook.qbits.authentik.permissions.AuthentikHostPermissionSource getHostPermissionSource()
+   {
+      return (this.hostPermissionSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for hostPermissionSource
+    *******************************************************************************/
+   public AuthentikQBitConfig withHostPermissionSource(com.kingsrook.qbits.authentik.permissions.AuthentikHostPermissionSource hostPermissionSource)
+   {
+      this.hostPermissionSource = hostPermissionSource;
+      return (this);
    }
 
 }
