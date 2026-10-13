@@ -212,6 +212,22 @@ public final class AuthentikHomeView
       row(html, "Version", data.getVersion() == null ? "Not reachable" : data.getVersion());
       row(html, "Service account", data.getConfig().getEffectiveServiceAccountUsername());
       row(html, "Changes", Boolean.TRUE.equals(data.getConfig().getReadOnly()) ? "Off (read-only)" : "On, every change is audited here and in Authentik");
+      if(data.getConfig().hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.POLICIES))
+      {
+         String state;
+         try
+         {
+            com.kingsrook.qbits.authentik.permissions.AccessComparison.State mapper = com.kingsrook.qbits.authentik.permissions.AccessComparison.state(
+               com.kingsrook.qbits.authentik.AuthentikRuntime.forBackend(data.getConfig().getApiBackendName()),
+               com.kingsrook.qbits.authentik.client.AuthentikActionUtil.forBackend(data.getConfig().getApiBackendName()));
+            state = (mapper.enforced() ? "Enforced. " : "Not enforced. ") + mapper.message();
+         }
+         catch(Exception e)
+         {
+            state = "Unknown (" + e.getMessage() + ")";
+         }
+         row(html, "Policies at sign-in", state);
+      }
       html.append("</dl>");
       close(html);
    }

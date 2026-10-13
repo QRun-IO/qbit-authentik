@@ -117,6 +117,49 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       AuthentikRuntime runtime = runtime();
       PolicyFormat     format  = runtime == null ? PolicyFormat.DEFAULT : runtime.getConfig().getPolicyFormat();
       permissions.addAll(PolicyPermissions.fromClaims(PolicyPermissions.claimsWithPolicy(context, format), format));
+
+      if(runtime != null)
+      {
+         permissions.addAll(AccessComparison.staticPermissions(runtime.getConfig(), groups));
+
+         ////////////////////////////////////////////////////////////////////////
+         // the cut-over guard (DESIGN.md section 12.8): while it blocks, the   //
+         // session gets today's access from the host plus the floor (static   //
+         // fallbacks, bootstrap subjects), never the policies alone           //
+         ////////////////////////////////////////////////////////////////////////
+         runtime.markMapperInvoked();
+         AccessComparison.State state;
+         try
+         {
+            state = AccessComparison.state(runtime, client(qInstance));
+         }
+         catch(Exception e)
+         {
+            state = new AccessComparison.State(AccessComparison.Status.BLOCKED, "The cut-over guard could not run", java.time.Instant.now());
+         }
+         if(!state.enforced())
+         {
+            Set<String> floor = new TreeSet<>(AccessComparison.staticPermissions(runtime.getConfig(), groups));
+            for(String group : groups)
+            {
+               floor.addAll(staticGroupPermissions.getOrDefault(group, List.of()));
+            }
+            if(!runtime.getConfig().getResolvedBootstrapSubjects().isEmpty() && isBootstrap(qInstance, runtime, sub, email, verified))
+            {
+               for(IdentityPermission permission : IdentityPermission.values())
+               {
+                  floor.add(permission.getSessionPermission());
+               }
+            }
+            AuthentikHostPermissionSource source = runtime.getConfig().getHostPermissionSource();
+            if(source != null)
+            {
+               floor.addAll(source.userPermissions(email, groups));
+            }
+            LOG.warn("Policies are not enforced at this sign-in; granting today's access", logPair("reason", state.message()));
+            permissions = floor;
+         }
+      }
       if(qSession.getPermissions() != null)
       {
          permissions.addAll(qSession.getPermissions());

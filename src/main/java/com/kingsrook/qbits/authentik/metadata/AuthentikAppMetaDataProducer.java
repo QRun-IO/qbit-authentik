@@ -74,7 +74,8 @@ public class AuthentikAppMetaDataProducer extends QBitComponentMetaDataProducer<
          addSection(app, produced, config, "activity", "Activity", "history", AuthentikLocalTables.APPROVAL_REQUEST, AuthentikLocalTables.ADMIN_ACTION);
 
          List<String> widgets = new ArrayList<>();
-         for(String widgetName : List.of(config.applyPrefix(AuthentikHomeWidgetProducer.NAME), config.applyPrefix(AuthentikDriftReportWidgetProducer.NAME)))
+         for(String widgetName : List.of(config.applyPrefix(AuthentikHomeWidgetProducer.NAME), config.applyPrefix(AuthentikDriftReportWidgetProducer.NAME),
+            config.applyPrefix(com.kingsrook.qbits.authentik.policy.PolicyCutoverWidgets.COMPARE)))
          {
             if(produced.get(QWidgetMetaData.class, widgetName) != null)
             {
