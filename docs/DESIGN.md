@@ -1,6 +1,6 @@
 # Authentik qbit: Design Spec
 
-Status: Approved, revision 4 (phase 0 findings applied; review fixes; owner decisions of 2026-10-12) · 2026-10-12 · Author: James Maes (drafted with Claude)
+Status: Approved, revision 5 (adds §12 policies and full user/group CRUD; owner decisions of 2026-10-13) · 2026-10-13 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x, QQQ Next UI 1.0.x, Authentik 2026.8.x (researched against the live `auth.kof22.com` schema, `info.version: 2026.8.3`), new repo `QRun-IO/qbit-authentik`
 
 ## 0. Summary
@@ -48,6 +48,17 @@ Seven design rules shape everything below:
 | 4 | **Users.** Direct create is allowed, alongside invitations. The user sets their own password through an Authentik email. No hard delete; deactivate only. |
 | 5–16 | The recommendations in the first revision are accepted: recovery email only, MFA view and reset, typed confirmation plus reason with two-person approval for role changes, read-through plus webhook→ESB plus mirror, Authentik-specific with neutral names, the mapper, list-and-revoke for service accounts, new repo, cluster-gitops housekeeping, no Enterprise features, and the retention defaults. Decision 11 (attribute-driven permissions) moves **into v1**, because decision 3 depends on it. |
 | §11.2 | All six smaller questions take the recommended answer: snapshot repo `KofTwentyTwo/identity-snapshots` (private); two-person approval **on** for `authentik.*` grants, with the Authentik UI as break-glass while James is the only identity admin; a new `kof22-breakglass` superuser; all four seed groups; service accounts listed but only deactivate/revoke; `kof-website-drafters` created with **no** app access until the owner decides (one attribute later). |
+
+**Owner decisions (2026-10-13): policies and full CRUD.** The owner asked for create, edit, delete and query of users and groups, and for IAM-style permission statements with a UI to create and edit them (§12). Decided:
+
+| # | Decision |
+|---|---|
+| 17 | **Policies are edited in QQQ and stored on Authentik groups.** The qbit's screens are the editor; each policy is a QQQ record (`authentik_policy`) with change history. Saving writes the policy document into the group's attributes through the Authentik API. The sign-in token carries the merged document as a claim, so Authentik is the source of truth at sign-in. |
+| 18 | **Statement model: the same as the IAM-style documents already used with Authentik in another QQQ app.** `PolicySpec`, `PolicyVersion` (semver), `Statement[]`; `Effect` `Allow`; `Action` from `hasAccess`, `read`, `insert`, `edit`, `delete`, `*`; `Resource` = QQQ table, process, app, report and widget permission names (`[A-Za-z0-9_]+`). Parsing fails closed. No `Deny`, wildcard resources, conditions or field-level rules yet. |
+| 19 | **The format belongs to this qbit** (`docs/POLICY-FORMAT.md`). The spec name and version are config with a generic default (`qqq-iam`, `1.0.0`), so a host app can keep its existing spec name. No host-specific names in this repo. |
+| 20 | **A policy editor** lists the app's apps, tables, processes, reports and widgets from metadata, grouped by app, with search, a per-resource action matrix (select all per row, per column and per app), a live read-only JSON preview, round-trip validation, and opens existing documents back into the matrix. Saving writes to Authentik. |
+| 21 | **Delete is allowed as an explicit action** (supersedes decision 4's "no hard delete"): deactivate stays the default; *Delete User* and *Delete Group* are separate typed-confirmation actions behind the new `DELETE` feature (off by default), which also needs Authentik's `delete_user` / `delete_group`. |
+| 22 | **Write permissions split as read / users / groups / policies**: `authentik.users.read`, `authentik.users.manage`, `authentik.groups.manage` (+ `authentik.memberships.manage`), and the new `authentik.policies.manage`. Two-person approval for policy saves is optional (`policyTwoPersonApproval`, off by default). |
 
 ### 0.2 Phase 0 findings (2026-10-11, verified on Authentik 2026.8.3)
 
@@ -331,7 +342,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 | `baseUrl` | required | Authentik host root, e.g. `https://auth.kof22.com`. `/api/v3` is appended. This is separate from the OAuth2 issuer URL, as MHP learned. |
 | `apiToken` | required | Usually `${env.AUTHENTIK_API_TOKEN}`. Interpolated by the qbit (because `APIBackendMetaData.enrich()` is disabled) and redacted in `toString()` |
 | `tableNamePrefix` / namespace | `authentik` | Prefix for tables (joined with `_`: `authentik_user`), processes and widgets (camel-cased: `authentikResyncMirror`) |
-| `features` | `{READ}` | A subset of `READ`, `USERS` (create, invite, edit, deactivate), `GROUPS` (create, edit, permissions and app-access attributes), `MEMBERSHIP`, `CREDENTIALS` (recovery email, MFA reset, app-password revoke), `SESSIONS`, `RBAC` (phase 4), `ACCESS_MATRIX`, `MIRROR`, `WEBHOOK`, `SNAPSHOT_EXPORT`. A feature that is off produces no metadata. |
+| `features` | `{READ}` | A subset of `READ`, `USERS` (create, invite, edit, deactivate), `GROUPS` (create, edit, permissions and app-access attributes), `POLICIES` (§12), `DELETE` (§12.5), `MEMBERSHIP`, `CREDENTIALS` (recovery email, MFA reset, app-password revoke), `SESSIONS`, `RBAC` (phase 4), `ACCESS_MATRIX`, `MIRROR`, `WEBHOOK`, `SNAPSHOT_EXPORT`. A feature that is off produces no metadata. |
 | `readOnly` | `false` | Hard kill switch. Every write is refused. |
 | `appKey` | required | Identifies this QQQ app in attributes, audit and the app-access attribute, e.g. `kof22-admin` |
 | `userScope` | `internal` + `external` users | Optional `path_startswith` and/or `groups_by_name` filter, to partition a shared Authentik between apps. Out-of-scope users are invisible and cannot be written. |
@@ -598,7 +609,7 @@ The role `qqq-<appKey>-idadmin` is assigned directly to the service account (boo
 **Never granted:**
 - `enable_group_superuser` / `disable_group_superuser`. Authentik then refuses every route into superuser ancestry: membership (direct, bulk, by user or by group), `parents` under a superuser group or any descendant, creating a group under one, and flipping `is_superuser` (verified, §0.2 ii).
 - `view_token_key`, `set_token_key`, `add_token` (MHP APPS-1462)
-- `impersonate`, `delete_user`
+- `impersonate`; `delete_user` and `delete_group` unless the `DELETE` feature is on (§12.5)
 - any `change_*` on flows, stages, providers, applications, policies, bindings, brands or blueprints
 - any change on its own role. Role permissions are object permissions excluding `qqq-*` roles, and the guard also refuses.
 
@@ -626,6 +637,7 @@ This is weaker than revision 1's per-group object permissions. That is the cost 
 | `authentik.groups.manage` | Create groups, rename them, set parents (within `groupScope`), edit non-reserved attributes |
 | `authentik.memberships.manage` | Add and remove members (subject to the escalation rule) |
 | `authentik.permissions.manage` | Edit a group's `qqq.io/permissions` and `qqq.io/app-access` (subject to the escalation rule) |
+| `authentik.policies.manage` | Create and edit group policies (§12) through *Edit Policy*, subject to the escalation rule |
 | `authentik.roles.manage` | Assign and unassign Authentik RBAC roles (phase 4) |
 | `authentik.credentials.reset` | Send recovery email, reset MFA, revoke app passwords |
 | `authentik.sessions.revoke` | Revoke sessions |
@@ -739,6 +751,7 @@ Unsupported criteria (OR across fields, `NOT_EQUALS`, nested filters) are **reje
 | Table | Purpose |
 |---|---|
 | `authentik_admin_action` | **Append-only audit and outbox** of every write the qbit attempts. Columns: id, correlationId, actionName, operator (QQQ user + Authentik username), reason, targetType, targetKey, targetLabel, beforeJson, afterJson, status (`PENDING_APPROVAL`, `RUNNING`, `SUCCEEDED`, `FAILED`, `REFUSED`), errorMessage, authentikEventPk, approver, timestamps. The row is inserted *before* the API call, following the sql-workbench `ExecutionAuditor` pattern; if that insert fails, the call is not made. Insert, update and delete capabilities are removed for everyone. |
+| `authentik_policy` | One row per group with a policy (§12): groupPk (unique), groupName, policyJson (canonical pretty JSON), statementCount, permissionCount, savedBy, savedAt, authentikFingerprint. Field-level QQQ audit is the change history. Changed only by *Edit Policy*; generic insert, edit and delete are off. |
 | `authentik_approval_request` | Two-person requests: action payload, requester, approver, 24 h expiry, approver ≠ requester. Used for RBAC (phase 4) and, by default, for permission edits that add `authentik.*` (§6.3). |
 | `authentik_user_mirror` | `MIRROR` feature: pk, uuid, username, email, name, type, isActive, lastLogin, isSuperuser, isProtected, groupNames, effectivePermissions (text), mfaDeviceCount, failedLogins24h, refreshedAt. Unique on username and email. Web Users joins here (`qqq_user_session.user_id` = email in kof22). The mapper falls back to it. |
 | `authentik_group_mirror` | pk, name, parentPks, attributes `qqq.io/*` only, memberCount, isSuperuser (inherited), refreshedAt. Feeds the resolver and the tree widget. |
@@ -862,6 +875,7 @@ The qbit produces an app `authentikAdmin` (label **"Identity"**, icon `badge`). 
 - Custom widget types `AUTHENTIK_GROUP_TREE`, `AUTHENTIK_ACCESS_MATRIX` and `AUTHENTIK_HEALTH` are added to `WidgetRenderer.tsx` as `React.lazy` cases, following the `SQL_WORKBENCH` and `ESB_OVERVIEW` pattern.
 - `src/lib/api/authentik.ts` calls `/qqq/v1/authentik/{tree,matrix,health,permission-catalog}`, all guarded.
 - A permission-picker field component for the group permissions editor.
+- `AUTHENTIK_POLICY_EDITOR` (§12.4), lazy-loaded and seeded through the standard process widget route, so no qbit route is needed.
 - Mocks in `src/mocks/fixtures/authentik.ts`; e2e in `tests/e2e/authentik.spec.ts`.
 - Everything else uses the generic UI.
 
@@ -1023,6 +1037,165 @@ The decisions taken on 2026-10-11 are in §0.1. The remaining questions are smal
    - (b) Hide them from QQQ.
 6. **Drafters.** `kof-website-drafters` is accepted by the backend but has no app access.
    - **(a) Give it `qqq.io/app-access` only if drafters should sign in to the admin; otherwise leave it for bearer-token publishing only.** *(recommended; needs your call on intent)*
+
+---
+
+## 12. Policies: IAM-style permission statements (revision 5)
+
+### 12.1 What a policy is
+
+A **policy** is a JSON document on an Authentik group that grants QQQ permissions to everyone in the group (and in its child groups). The format is defined in [`POLICY-FORMAT.md`](POLICY-FORMAT.md); in short:
+
+```json
+{
+  "PolicySpec": "qqq-iam",
+  "PolicyVersion": "1.0.0",
+  "Statement": [
+    { "Effect": "Allow", "Action": ["hasAccess"], "Resource": ["contentApp", "publishPage"] },
+    { "Effect": "Allow", "Action": ["read", "edit"], "Resource": ["cms_page"] }
+  ]
+}
+```
+
+Each `Allow` statement grants `{resource}.{action}` for every listed resource and action (`*` = all five actions). Those are QQQ permission names, so a QQQ session that holds them passes QQQ's own permission checks. Policies cover the instance's tables, processes, apps, reports and widgets. Named permissions that are not `{resource}.{action}` (for example `authentik.users.manage`) stay in `qqq.io/permissions` (§5.6); a policy cannot grant them, because a resource cannot contain a dot.
+
+**Fail closed.** Any of these grants **zero** permissions from that document and logs a warning:
+- an unknown `PolicySpec` or an unsupported `PolicyVersion`
+- a document that is not a JSON object, or a `Statement` that is not an array
+- a statement whose `Effect` is not `Allow`
+- an unknown action
+- a resource that does not match `[A-Za-z0-9_]+`
+- any other parse error
+
+This is stricter than the reference implementation in two places. The reference ignores unknown actions, while this qbit rejects the whole document. `Deny` is not supported yet, so a `Deny` statement also rejects the document; ignoring it would grant more than its author intended.
+
+### 12.2 Where it is stored, and how it reaches the session
+
+| Step | Where | Detail |
+|---|---|---|
+| Edit | QQQ, *Edit Policy* on a group (§12.4) | The editor builds the document; the server validates it and checks the round trip |
+| Save | Authentik group attribute `qqq.io/policy` (config `policyAttribute`) | The compact JSON **string** (the reference format; the parser also reads a JSON object). Merge-patch of that one key into the group's current attributes, re-read immediately before the write (§5.4 rule 7). |
+| History | QQQ table `authentik_policy`, one row per group | The canonical pretty JSON, counts, who saved it and when, and the fingerprint of what Authentik held. Field-level QQQ audit gives the change history; `authentik_admin_action` holds before/after of every save. |
+| Sign-in | Authentik scope mapping (blueprint example in `POLICY-FORMAT.md`) | Merges the statements of all the user's groups, **including inherited parents** (`request.user.all_groups()`), into one document in the claim `qqq_policy` (config `policyClaim`) |
+| Session | `AuthentikPolicyClaimMapper`, or `PolicyPermissions.fromClaims` in a host's own customizer | Reads the claim from the ID token, else the access-token payload; parses it fail-closed; adds the permissions to the QQQ session |
+
+`AuthentikGroupPermissionMapper` (§5.6) also reads `qqq.io/policy` from the group graph. So the following all see policy grants:
+- `EffectivePermissionResolver`
+- the subset rule
+- the effective-permissions view
+- the last-admin check
+
+An app that uses the API-backed mapper therefore gets policy grants even before the scope mapping is installed. The claim and the graph hold the same Authentik data, and the session gets their union.
+
+**Record locks (extension point).** Row-level security keys are out of scope for now. `AuthentikPolicyClaimMapper` has a protected `applySecurityKeys(QSession, JSONObject claims)` hook, a no-op by default.
+- A host overrides it to read its own explicit claims and set security key values.
+- It is called after the identity is set and before the permissions.
+- It must trust only explicit claims, never group names.
+
+### 12.3 Config
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `policySpec` | `qqq-iam` | The `PolicySpec` this app accepts and writes. A host that already has documents keeps its own name. |
+| `policyVersion` | `1.0.0` | The one supported `PolicyVersion` (exact match, like the reference) |
+| `policyAttribute` | `qqq.io/policy` | Group attribute holding the document. A host with existing documents may point it at its own key. |
+| `policyClaim` | `qqq_policy` | Token claim holding the merged document |
+| `policyTwoPersonApproval` | `false` | When true, every policy save is queued for a second person (`authentik.approve`) |
+
+The feature `POLICIES` turns on the editor, the `authentik_policy` table and the save action. It needs `GROUPS`. Reading policies at sign-in needs no feature.
+
+### 12.4 The policy editor
+
+*Edit Policy* is a record action on `authentik_group` and on `authentik_policy`, never in the nav. It is a standard streamed-ETL process with three steps.
+
+**1. Edit** (frontend step). The step shows the widget `authentikPolicyEditor`, type `AUTHENTIK_POLICY_EDITOR`, a lazy-loaded Next UI widget. The server sends it two things.
+
+The **catalog** lists every app, table, process, report and protected widget in the QInstance. Each entry has its permission base name, label, kind, app, and the actions QQQ actually checks for it:
+- `hasAccess` for apps, processes, reports and widgets
+- `read`, `insert`, `edit` and `delete` for tables, limited by the table's capabilities and permission level
+
+The catalog also follows these rules:
+- Hidden processes are included. Record actions are hidden from the nav but are still permission-checked.
+- Objects that are in no app are listed under "Other".
+- Tables that use `READ_WRITE` permissions are shown with `read` only, and a note, because `write` is not in the action set yet.
+- Objects with a custom permission checker, or `NOT_PROTECTED`, are left out because a policy cannot grant them.
+
+The **current document** is read live from the group in Authentik, the source of truth, together with the group's fingerprint for the stale check. If it differs from the last QQQ save, a notice says it was changed in Authentik.
+
+The screen works like this:
+- Resources are grouped by app, with a search box.
+- Each row has a checkbox per action, plus *all* for the row. Each action column and each app has *select all*.
+- A read-only JSON preview updates live.
+- Unknown resources in an opened document (for example a table that was removed) are listed, and kept until the operator removes them.
+- The widget writes the generated document into the process value `policyJson`. Clients without the widget post `policyJson` directly.
+
+**2. Review** (dry run). The server:
+- parses the submitted document, failing closed
+- regenerates it in canonical form and checks that parse(generate(x)) = x (the round-trip invariant)
+- flags unknown resources
+- shows the permissions added and removed, and how many members are affected
+- applies the subset rule (§5.4 rule 4): the operator must hold every **added** permission
+
+Refusals name the reason.
+
+**3. Result.** The qbit:
+- writes the attribute (merge-patch)
+- inserts or updates the audited `authentik_policy` row
+- writes the `authentik_admin_action` row and the Authentik event
+- clears the caches
+
+Saving an empty matrix removes the attribute. The canonical form is the reference generator's:
+- one statement per action, in the order `hasAccess`, `read`, `insert`, `edit`, `delete`
+- resources sorted
+- a resource with every action is still written as five statements, not `*`, so diffs stay readable
+
+### 12.5 Full user and group CRUD (revision 5 additions)
+
+| Action | Table / slot | Permission | Feature | Confirmation | Authentik |
+|---|---|---|---|---|---|
+| Edit user (adds username and non-reserved attributes) | `authentik_user` record | `authentik.users.manage` | `USERS` | CONFIRM | `PATCH /core/users/{pk}/` (`username`, `name`, `email`, `path`; attributes merge-patch, `qqq.io/*` keys refused) |
+| Delete user | `authentik_user` record | `authentik.users.manage` | `DELETE` | TYPED (username) | `DELETE /core/users/{pk}/` |
+| Edit group (adds non-reserved attributes) | `authentik_group` record | `authentik.groups.manage` | `GROUPS` | CONFIRM | `PATCH /core/groups/{pk}/` |
+| Delete group | `authentik_group` record | `authentik.groups.manage` | `DELETE` | TYPED (group name) | `DELETE /core/groups/{pk}/`. Refused while it has members or child groups. |
+| Edit policy | `authentik_group`, `authentik_policy` records | `authentik.policies.manage` | `POLICIES` | CONFIRM (TWO_PERSON if configured) | `PATCH /core/groups/{pk}/` attributes |
+
+The existing guardrails apply unchanged:
+- protected accounts and superuser groups
+- no self-edits (an operator cannot delete or rename themselves)
+- last-admin protection (deleting one of the last identity admins is refused)
+- a reason for every change
+- audit before the call
+
+Deactivate stays the default for people, and *Delete User* says so in its help text.
+
+**Authentik permissions** the service account needs for these writes, on top of §5.1. All are global on the qbit's role:
+
+| Permission | For |
+|---|---|
+| `authentik_core.change_group` | Saving a policy (already in §5.1 for phase 3) |
+| `authentik_core.delete_user` | Delete user (only with `DELETE`) |
+| `authentik_core.delete_group` | Delete group (only with `DELETE`) |
+
+The token needs these only when writes are on. A read-only deployment (`readOnly`, or no write features) keeps the phase 1 read set.
+
+### 12.6 Tests
+
+- **Parser:** every fail-closed case (null, blank, not JSON, unknown spec, unsupported version, `Deny`, unknown action, bad resource, non-array fields), `*` expansion, and merging several statements.
+- **Generator:** the canonical form, the round trip over generated permission sets, and rejection of anything that cannot round-trip.
+- **Catalog:** apps, tables (capabilities, levels, custom base names), hidden processes, reports, widgets, and "Other".
+- **Editor process:** review lines, the subset rule, the stale fingerprint, round-trip refusal, and a save that writes both the attribute and the `authentik_policy` row.
+- **Runtime:** the claim from the ID token and from the access token, string and object claims, fail closed, a custom spec name, and the security-key hook.
+- **CRUD:** edit user (username, attributes, reserved keys refused) and delete user and group with their refusals, on the in-memory Authentik.
+- **Contract tests** on Authentik 2026.8.3: policy save, delete, and the scope-mapping example (`propertymappings/all/{uuid}/test/` returns a claim the parser accepts).
+- **Permission gating:** each new action is refused without its permission or feature.
+
+### 12.7 Delivery
+
+| Phase | Scope |
+|---|---|
+| 5a | Policy model, parser, generator, runtime mapper, resolver integration, format doc and blueprint example |
+| 5b | Catalog, `authentik_policy`, *Edit Policy* with save to Authentik; the Next UI widget `AUTHENTIK_POLICY_EDITOR` (separate PR to qqq-frontend-next) |
+| 5c | The user and group CRUD additions (§12.5) |
 
 ---
 
