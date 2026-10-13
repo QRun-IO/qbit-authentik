@@ -141,7 +141,7 @@ public final class AuthentikSafety
    {
       List<Integer> members = new ArrayList<>(node.memberPks());
       members.remove(Integer.valueOf(userPk));
-      return (new GroupGraph.Node(node.pk(), node.name(), node.ownSuperuser(), node.parentPks(), node.permissions(), node.appAccess(), members, node.malformed()));
+      return (new GroupGraph.Node(node.pk(), node.name(), node.ownSuperuser(), node.parentPks(), node.permissions(), node.appAccess(), members, node.malformed(), node.policyPermissions()));
    }
 
 
@@ -151,7 +151,7 @@ public final class AuthentikSafety
     *******************************************************************************/
    public static GroupGraph.Node withPermissions(GroupGraph.Node node, List<String> permissions, List<String> appAccess)
    {
-      return (new GroupGraph.Node(node.pk(), node.name(), node.ownSuperuser(), node.parentPks(), permissions, appAccess, node.memberPks(), node.malformed()));
+      return (new GroupGraph.Node(node.pk(), node.name(), node.ownSuperuser(), node.parentPks(), permissions, appAccess, node.memberPks(), node.malformed(), node.policyPermissions()));
    }
 
 
@@ -161,7 +161,7 @@ public final class AuthentikSafety
     *******************************************************************************/
    public static GroupGraph.Node withParents(GroupGraph.Node node, List<String> parentPks)
    {
-      return (new GroupGraph.Node(node.pk(), node.name(), node.ownSuperuser(), parentPks, node.permissions(), node.appAccess(), node.memberPks(), node.malformed()));
+      return (new GroupGraph.Node(node.pk(), node.name(), node.ownSuperuser(), parentPks, node.permissions(), node.appAccess(), node.memberPks(), node.malformed(), node.policyPermissions()));
    }
 
 

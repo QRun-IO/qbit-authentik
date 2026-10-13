@@ -103,7 +103,7 @@ Authentik puts the merged document into the token through a scope mapping. Steps
 
 The mapping merges the statements of every group in `request.user.all_groups()` (direct groups and their ancestors) whose document has the right spec and version. It always emits a document, with an empty `Statement` array when the user has no policies.
 
-The contract test `PolicyClaimMappingIT` runs this blueprint on Authentik 2026.8.3. It saves policies on a parent and a child group through the qbit, then runs the mapping through Authentik's property-mapping test endpoint for a member of the child group. It checks that the parser turns the claim into the union of both groups' permissions.
+The contract test `PolicyClaimMappingIT` runs this blueprint on Authentik 2026.8.3. It puts generated policies on a parent and a child group (one as a string, one as a JSON object), then runs the mapping through Authentik's property-mapping test endpoint for a member of the child group. It checks that the parser turns the claim into the union of the groups' permissions, that a document with another spec is skipped, and that a user without policies gets a valid empty document.
 
 ### Freshness
 
