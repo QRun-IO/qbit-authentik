@@ -4,6 +4,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (policy editor, phase 5b: DESIGN.md section 12.4)
+- **Edit Policy** record action on groups and on policies (feature `POLICIES`, permission `authentik.policies.manage`): a standard streamed-ETL action whose step shows the `AUTHENTIK_POLICY_EDITOR` widget (Next UI). Review parses the submitted document (fail closed), regenerates it in canonical form with the round-trip check, refuses new resources this app does not define, applies the subset rule to the permissions it adds, and lists what is added and removed. Result merge-patches `qqq.io/policy` into the group's current attributes (removed when empty). Optional second-person approval (`policyTwoPersonApproval`).
+- **`PolicyCatalog`**: every app, table, process (hidden record actions included), report and protected widget a policy can grant, with the actions QQQ checks, grouped by app. Its permission names join the permission catalog.
+- **`authentik_policy`** local table (one row per group; field-level audit is the change history; DDL in `docs/schema.sql`), in the nav under Access and as a child list on the group.
+- Widget `authentikPolicyEditor` (type `AUTHENTIK_POLICY_EDITOR`): the catalog and the group's live document, with a flag when it was changed in Authentik since the last save in QQQ.
+
 ### Added (policies, phase 5a: DESIGN.md section 12, docs/POLICY-FORMAT.md)
 - **Policy documents** (IAM-style statements) on Authentik groups: `PolicyParser` (fails closed: unknown spec or version, non-Allow effect, unknown action, bad resource or malformed JSON grant nothing), `PolicyGenerator` (canonical form with a round-trip check), `PolicyFormat` and the config `policySpec`, `policyVersion`, `policyAttribute`, `policyClaim`, `policyTwoPersonApproval`.
 - **Runtime**: `AuthentikPolicyClaimMapper` (reads the `qqq_policy` claim from the ID token or access token; `applySecurityKeys` hook for record locks) and `PolicyPermissions.fromClaims` for a host's own customizer. `AuthentikGroupPermissionMapper` also adds the claim, and the group graph and `EffectivePermissionResolver` read each group's `qqq.io/policy`, so effective permissions, the subset rule and the last-admin check see policy grants. An invalid policy on a group is listed as malformed.

@@ -32,6 +32,7 @@ import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
 import com.kingsrook.qbits.authentik.admin.AuthentikSafety;
 import com.kingsrook.qbits.authentik.client.AuthentikJson;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
+import com.kingsrook.qbits.authentik.policy.PolicyEditorWidget;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -88,7 +89,9 @@ public final class AuthentikProcesses
       /** Selected invitations. */
       INVITATIONS,
       /** Selected approval requests. */
-      APPROVALS
+      APPROVALS,
+      /** Selected policy records (authentik_policy); the target is the record's group. */
+      POLICIES
    }
 
    /*******************************************************************************
@@ -184,6 +187,11 @@ public final class AuthentikProcesses
          new QFieldMetaData("appAccess", QFieldType.TEXT).withLabel("App access (app keys, one per line)"),
          hidden("expectedFingerprint"), reason),
          "You can only add permissions you hold yourself. Adding authentik.* needs a second person to approve."));
+      String policyHelp = "Tick what members of this group, and of the groups below it, may do. The document is what is saved to Authentik. "
+         + "You can only grant permissions you hold yourself.";
+      List<QFieldMetaData> policyFields = List.of(hidden("groupPk"), hidden("expectedFingerprint"), reason);
+      defs.add(new Def("editPolicy", "Edit Policy", AdminAction.SAVE_POLICY, Kind.GROUPS, groups, "policy", true, policyFields, policyHelp));
+      defs.add(new Def("editPolicyRecord", "Edit Policy", AdminAction.SAVE_POLICY, Kind.POLICIES, AuthentikLocalTables.POLICY, "policy", true, policyFields, policyHelp));
       defs.add(new Def("addMembers", "Add Members", AdminAction.ADD_MEMBER, Kind.GROUP_USERNAMES, groups, "person_add", false, List.of(
          new QFieldMetaData("usernames", QFieldType.TEXT).withLabel("Usernames (one per line)").withIsRequired(true),
          new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason), null));
@@ -272,11 +280,11 @@ public final class AuthentikProcesses
       switch(def.kind())
       {
          case CREATE -> process.setMaxInputRecords(0);
-         case USERS, GROUP_USERNAMES, GROUPS, INVITATIONS, APPROVALS ->
+         case USERS, GROUP_USERNAMES, GROUPS, INVITATIONS, APPROVALS, POLICIES ->
          {
             process.setMinInputRecords(1);
             process.setMaxInputRecords(def.action() == AdminAction.EDIT_USER || def.action() == AdminAction.EDIT_GROUP || def.action() == AdminAction.EDIT_PERMISSIONS
-               ? 1 : AuthentikAdmin.MAX_BULK);
+               || def.action() == AdminAction.SAVE_POLICY ? 1 : AuthentikAdmin.MAX_BULK);
          }
          default ->
          {
@@ -289,6 +297,10 @@ public final class AuthentikProcesses
          if(StringUtils.hasContent(def.help()))
          {
             details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.HELP_TEXT).withValue("text", def.help()));
+         }
+         if(def.action() == AdminAction.SAVE_POLICY)
+         {
+            details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.WIDGET).withValue("widgetName", config.applyPrefix(PolicyEditorWidget.NAME)));
          }
          details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.EDIT_FORM));
          process.withStep(0, details);
@@ -340,6 +352,7 @@ public final class AuthentikProcesses
          case CREATE_GROUP -> w("group will be created", "groups will be created", "group was created", "groups were created");
          case EDIT_GROUP -> w("group will be updated", "groups will be updated", "group was updated", "groups were updated");
          case EDIT_PERMISSIONS -> w("group's permissions will be updated", "groups' permissions will be updated", "group's permissions were updated", "groups' permissions were updated");
+         case SAVE_POLICY -> w("group's policy will be saved to Authentik", "groups' policies will be saved to Authentik", "group's policy was saved to Authentik", "groups' policies were saved to Authentik");
          case SEND_RECOVERY_EMAIL -> w("password reset email will be sent", "password reset emails will be sent", "password reset email was sent", "password reset emails were sent");
          case RESET_MFA -> w("user's MFA will be reset", "users' MFA will be reset", "user's MFA was reset", "users' MFA were reset");
          case REVOKE_APP_PASSWORDS -> w("user's app passwords will be revoked", "users' app passwords will be revoked", "user's app passwords were revoked", "users' app passwords were revoked");
@@ -409,6 +422,7 @@ public final class AuthentikProcesses
             }
          }
          case GROUPS, INVITATIONS -> rs.add(withParams(AdminRequest.of(def.action(), String.valueOf(record.getValue("pk") != null ? record.getValue("pk") : record.getValue("uuid")), reason), def, input));
+         case POLICIES -> rs.add(withParams(AdminRequest.of(def.action(), record.getValueString("groupPk"), reason), def, input));
          default ->
          {
          }
@@ -423,6 +437,14 @@ public final class AuthentikProcesses
     *******************************************************************************/
    private static AdminRequest withParams(AdminRequest request, Def def, RunBackendStepInput input)
    {
+      //////////////////////////////////////////////////////////////////////
+      // the policy editor widget writes the document as a process value //
+      // (not a form field), as does an API client                       //
+      //////////////////////////////////////////////////////////////////////
+      if(def.action() == AdminAction.SAVE_POLICY && input.getValue(AuthentikAdmin.POLICY_DOCUMENT) != null)
+      {
+         request.with(AuthentikAdmin.POLICY_DOCUMENT, input.getValueString(AuthentikAdmin.POLICY_DOCUMENT));
+      }
       for(QFieldMetaData field : def.fields())
       {
          if(field.getName().equals("reason"))
@@ -490,9 +512,18 @@ public final class AuthentikProcesses
          }
          QRecord record = input.getRecords().get(0);
          AuthentikAdmin admin = admin(input);
-         String pk = String.valueOf(record.getValue("pk"));
+         String pk = def.kind() == Kind.POLICIES ? record.getValueString("groupPk") : String.valueOf(record.getValue("pk"));
          switch(def.action())
          {
+            case SAVE_POLICY ->
+            {
+               JSONObject group = admin.getUtil().getApiJsonOrNull("/core/groups/" + AuthentikAdmin.safeKey(pk) + "/?include_users=true&include_parents=true&include_children=true");
+               output.addValue(PolicyEditorWidget.GROUP_PK_PARAM, pk);
+               if(group != null)
+               {
+                  output.addValue("expectedFingerprint", AuthentikSafety.groupFingerprint(group));
+               }
+            }
             case EDIT_USER ->
             {
                JSONObject user = admin.getUtil().getObject(AuthentikTables.get(AuthentikTables.USER), pk);

@@ -38,6 +38,7 @@ public enum AdminAction
    CREATE_GROUP("Create group", "group", IdentityPermission.GROUPS_MANAGE, AuthentikFeature.GROUPS, Confirmation.CONFIRM),
    EDIT_GROUP("Edit group", "group", IdentityPermission.GROUPS_MANAGE, AuthentikFeature.GROUPS, Confirmation.CONFIRM),
    EDIT_PERMISSIONS("Edit permissions and app access", "group", IdentityPermission.PERMISSIONS_MANAGE, AuthentikFeature.GROUPS, Confirmation.CONFIRM),
+   SAVE_POLICY("Save policy", "group", IdentityPermission.POLICIES_MANAGE, AuthentikFeature.POLICIES, Confirmation.CONFIRM),
    SEND_RECOVERY_EMAIL("Send password reset email", "user", IdentityPermission.CREDENTIALS_RESET, AuthentikFeature.CREDENTIALS, Confirmation.CONFIRM),
    RESET_MFA("Reset MFA", "user", IdentityPermission.CREDENTIALS_RESET, AuthentikFeature.CREDENTIALS, Confirmation.TYPED),
    REVOKE_APP_PASSWORDS("Revoke app passwords", "user", IdentityPermission.CREDENTIALS_RESET, AuthentikFeature.CREDENTIALS, Confirmation.TYPED),

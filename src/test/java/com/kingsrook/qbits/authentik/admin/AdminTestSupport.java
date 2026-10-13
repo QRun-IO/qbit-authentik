@@ -28,16 +28,23 @@ import com.kingsrook.qbits.authentik.AuthentikTestSupport;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
 import com.kingsrook.qbits.authentik.client.FixtureActionUtil;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
+import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QAuthenticationType;
 import com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.authentication.QAuthenticationMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
+import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.PermissionLevel;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QBackendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QUser;
@@ -125,6 +132,22 @@ public final class AdminTestSupport
             .withField(new QFieldMetaData("id", QFieldType.INTEGER))
             .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION).withPermissionBaseName(table[1])));
       }
+      if(features.contains(AuthentikFeature.POLICIES))
+      {
+         //////////////////////////////////////////////////////////////////
+         // things a policy can grant: an app with a table (insert, edit, //
+         // delete, read) and a hidden record action on it               //
+         //////////////////////////////////////////////////////////////////
+         QTableMetaData page = new QTableMetaData().withName("cms_page").withLabel("Pages").withBackendName(LOCAL).withPrimaryKeyField("id")
+            .withField(new QFieldMetaData("id", QFieldType.INTEGER))
+            .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.READ_INSERT_EDIT_DELETE_PERMISSIONS));
+         instance.addTable(page);
+         instance.addProcess(new QProcessMetaData().withName("publishPage").withLabel("Publish Page").withTableName("cms_page").withIsHidden(true)
+            .withStep(new QBackendStepMetaData().withName("run").withCode(new QCodeReference(NoopStep.class)))
+            .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)));
+         instance.addApp(new QAppMetaData().withName("content").withLabel("Content").withChild(page)
+            .withPermissionRules(new QPermissionRules().withLevel(PermissionLevel.HAS_ACCESS_PERMISSION)));
+      }
       new AuthentikQBitProducer().withQBitConfig(support.config).produce(instance);
       AuthentikTestSupport.useActionUtil(instance, support.config, FixtureActionUtil.class);
       support.qInstance = instance;
@@ -182,4 +205,22 @@ public final class AdminTestSupport
       return (authentik.writes.stream().filter(w -> !w.contains("/events/events/")).toList());
    }
 
+
+
+   /*******************************************************************************
+    ** A backend step that does nothing (for fixture processes).
+    *******************************************************************************/
+   public static class NoopStep implements BackendStep
+   {
+      /*******************************************************************************
+       **
+       *******************************************************************************/
+      @Override
+      public void run(RunBackendStepInput input, RunBackendStepOutput output)
+      {
+         ///////////////////////////
+         // nothing; fixture only //
+         ///////////////////////////
+      }
+   }
 }

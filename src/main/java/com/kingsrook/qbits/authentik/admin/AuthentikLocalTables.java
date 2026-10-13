@@ -20,6 +20,8 @@ package com.kingsrook.qbits.authentik.admin;
 import java.util.List;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.AuditLevel;
+import com.kingsrook.qqq.backend.core.model.metadata.audits.QAuditRules;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.fields.QFieldType;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QIcon;
@@ -27,6 +29,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.PossibleValu
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.Capability;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
+import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
 
 
 /*******************************************************************************
@@ -41,6 +44,7 @@ public final class AuthentikLocalTables
 {
    public static final String ADMIN_ACTION        = "admin_action";
    public static final String APPROVAL_REQUEST    = "approval_request";
+   public static final String POLICY              = "policy";
    public static final String PVS_ACTION_STATUS   = "authentik_action_status";
    public static final String PVS_APPROVAL_STATUS = "authentik_approval_status";
 
@@ -208,6 +212,30 @@ public final class AuthentikLocalTables
          .withField(ro("expiresDate", QFieldType.DATE_TIME))
          .withField(ro("decidedDate", QFieldType.DATE_TIME))
          .withField(ro("errorMessage", QFieldType.TEXT)));
+   }
+
+
+
+   /*******************************************************************************
+    ** authentik_policy: one row per group with a policy (DESIGN.md section 12).
+    ** Authentik holds the live document; this row is the QQQ record of the last
+    ** save, and field-level audit is its change history. Written only by the
+    ** Edit Policy action.
+    *******************************************************************************/
+   public static QTableMetaData policy(AuthentikQBitConfig config)
+   {
+      return (base(config, POLICY, "Policies", "policy", IdentityPermission.USERS_READ)
+         .withRecordLabelFormatAndFields("%s", "groupName")
+         .withUniqueKey(new UniqueKey("groupPk"))
+         .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.FIELD))
+         .withField(ro("groupPk", QFieldType.STRING).withLabel("Group Id").withMaxLength(64))
+         .withField(ro("groupName", QFieldType.STRING).withLabel("Group").withMaxLength(255))
+         .withField(ro("policyJson", QFieldType.TEXT).withLabel("Policy Document"))
+         .withField(ro("statementCount", QFieldType.INTEGER).withLabel("Statements"))
+         .withField(ro("permissionCount", QFieldType.INTEGER).withLabel("Permissions"))
+         .withField(ro("savedBy", QFieldType.STRING).withLabel("Saved By").withMaxLength(255))
+         .withField(ro("savedDate", QFieldType.DATE_TIME).withLabel("Saved"))
+         .withField(ro("authentikFingerprint", QFieldType.STRING).withLabel("Authentik Fingerprint").withMaxLength(64)));
    }
 
 

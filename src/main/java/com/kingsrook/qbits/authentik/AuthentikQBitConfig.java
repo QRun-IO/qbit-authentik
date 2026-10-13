@@ -46,11 +46,11 @@ public class AuthentikQBitConfig implements QBitConfig
 {
    /** Features implemented in this release. Others are refused by validate(). */
    public static final Set<AuthentikFeature> AVAILABLE_FEATURES = EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS);
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES);
 
    /** Features that change Authentik data; they need a local backend for the audit trail. */
    public static final Set<AuthentikFeature> WRITE_FEATURES = EnumSet.of(AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS);
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES);
 
    private static final Pattern APP_KEY_PATTERN = Pattern.compile("[a-z0-9][a-z0-9-]{0,48}[a-z0-9]");
    private static final Pattern PREFIX_PATTERN  = Pattern.compile("[a-zA-Z][a-zA-Z0-9]{0,30}");
@@ -177,6 +177,11 @@ public class AuthentikQBitConfig implements QBitConfig
       if((requested.contains(AuthentikFeature.USERS) || requested.contains(AuthentikFeature.CREDENTIALS)) && !StringUtils.hasContent(recoveryEmailStage))
       {
          errors.add("features USERS and CREDENTIALS need recoveryEmailStage");
+      }
+
+      if(requested.contains(AuthentikFeature.POLICIES) && !requested.contains(AuthentikFeature.GROUPS))
+      {
+         errors.add("feature POLICIES needs GROUPS");
       }
 
       if(requested.contains(AuthentikFeature.WEBHOOK) && !StringUtils.hasContent(getResolvedWebhookSecret()))

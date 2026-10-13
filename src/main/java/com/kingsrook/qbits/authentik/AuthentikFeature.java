@@ -32,6 +32,12 @@ public enum AuthentikFeature
    /** Create and edit groups, permissions and app-access attributes (phase 2/3). */
    GROUPS,
 
+   /** Edit group policies (IAM-style statements) with the policy editor (DESIGN.md section 12). */
+   POLICIES,
+
+   /** Delete users and groups as an explicit action (DESIGN.md section 12.5). */
+   DELETE,
+
    /** Add and remove members (phase 2). */
    MEMBERSHIP,
 
