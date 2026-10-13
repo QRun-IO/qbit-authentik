@@ -49,3 +49,22 @@ CREATE TABLE authentik_approval_request
 );
 
 CREATE INDEX idx_authentik_approval_request_status ON authentik_approval_request (status);
+
+-- authentik_policy (DESIGN.md section 12): the QQQ record of each group's last policy save.
+-- Authentik holds the live document (group attribute qqq.io/policy); field-level QQQ audit on
+-- this table is the policy's change history.
+CREATE TABLE authentik_policy
+(
+   id                    SERIAL PRIMARY KEY,
+   create_date           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+   modify_date           TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+   group_pk              VARCHAR(64)  NOT NULL,
+   group_name            VARCHAR(255),
+   policy_json           TEXT,
+   statement_count       INTEGER,
+   permission_count      INTEGER,
+   saved_by              VARCHAR(255),
+   saved_date            TIMESTAMP WITH TIME ZONE,
+   authentik_fingerprint VARCHAR(64),
+   CONSTRAINT uk_authentik_policy_group_pk UNIQUE (group_pk)
+);

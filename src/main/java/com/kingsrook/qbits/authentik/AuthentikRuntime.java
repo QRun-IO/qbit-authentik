@@ -24,6 +24,7 @@ import com.kingsrook.qbits.authentik.client.AuthentikFilterMapper;
 import com.kingsrook.qbits.authentik.client.AuthentikTableSpec;
 import com.kingsrook.qbits.authentik.client.TokenBucketThrottle;
 import com.kingsrook.qbits.authentik.permissions.GroupGraph;
+import com.kingsrook.qbits.authentik.policy.PolicyCatalog;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qqq.backend.core.utils.memoization.Memoization;
 
@@ -45,6 +46,7 @@ public class AuthentikRuntime
    private final Memoization<String, String>     responseCache;
    private final Memoization<String, GroupGraph> groupGraphCache;
    private volatile java.util.Set<String>        permissionCatalog;
+   private volatile PolicyCatalog                policyCatalog;
    private final Map<String, AuthentikTableSpec> specsByTableName = new ConcurrentHashMap<>();
 
 
@@ -149,10 +151,35 @@ public class AuthentikRuntime
       if(permissionCatalog == null)
       {
          com.kingsrook.qqq.backend.core.model.metadata.QInstance qInstance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
-         permissionCatalog = qInstance == null ? java.util.Set.of()
-            : new java.util.TreeSet<>(com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper.getAllAvailablePermissionNames(qInstance));
+         if(qInstance == null)
+         {
+            return (java.util.Set.of());
+         }
+         java.util.Set<String> catalog = new java.util.TreeSet<>(com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper.getAllAvailablePermissionNames(qInstance));
+         catalog.addAll(getPolicyCatalog().permissionNames());
+         permissionCatalog = catalog;
       }
       return (permissionCatalog);
+   }
+
+
+
+   /*******************************************************************************
+    ** What a policy can grant in the current instance (built once, lazily: the
+    ** instance is complete by the first request).
+    *******************************************************************************/
+   public PolicyCatalog getPolicyCatalog()
+   {
+      if(policyCatalog == null)
+      {
+         com.kingsrook.qqq.backend.core.model.metadata.QInstance qInstance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
+         if(qInstance == null)
+         {
+            return (PolicyCatalog.of(new com.kingsrook.qqq.backend.core.model.metadata.QInstance()));
+         }
+         policyCatalog = PolicyCatalog.of(qInstance);
+      }
+      return (policyCatalog);
    }
 
 

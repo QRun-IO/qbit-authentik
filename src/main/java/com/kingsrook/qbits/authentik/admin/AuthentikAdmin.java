@@ -39,6 +39,11 @@ import com.kingsrook.qbits.authentik.client.AuthentikRedactor;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qbits.authentik.permissions.EffectivePermissionResolver;
 import com.kingsrook.qbits.authentik.permissions.GroupGraph;
+import com.kingsrook.qbits.authentik.policy.PolicyFormat;
+import com.kingsrook.qbits.authentik.policy.PolicyGenerator;
+import com.kingsrook.qbits.authentik.policy.PolicyParseException;
+import com.kingsrook.qbits.authentik.policy.PolicyParser;
+import com.kingsrook.qbits.authentik.policy.PolicyStore;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qbits.authentik.security.WriteAuthorization;
@@ -84,6 +89,9 @@ public class AuthentikAdmin
    public static final int  MAX_BULK        = 100;
    public static final int  TYPED_ABOVE     = 25;
    public static final int  APPROVAL_HOURS  = 24;
+
+   /** Process value / request parameter that carries a submitted policy document. */
+   public static final String POLICY_DOCUMENT = "policyDocument";
 
    private static final Pattern UUID_PATTERN = Pattern.compile("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}");
    private static final Pattern USERNAME     = Pattern.compile("[A-Za-z0-9][A-Za-z0-9._@+-]{0,149}");
@@ -252,6 +260,7 @@ public class AuthentikAdmin
          case CREATE_GROUP -> planCreateGroup(plan, request);
          case EDIT_GROUP -> planEditGroup(plan, request);
          case EDIT_PERMISSIONS -> planEditPermissions(plan, request);
+         case SAVE_POLICY -> planSavePolicy(plan, request);
          case SEND_RECOVERY_EMAIL -> planRecovery(plan, request);
          case RESET_MFA -> planResetMfa(plan, request);
          case REVOKE_APP_PASSWORDS -> planAppPasswords(plan, request);
@@ -1003,6 +1012,133 @@ public class AuthentikAdmin
 
 
    /*******************************************************************************
+    ** Save a group's policy document (DESIGN.md section 12.4): parse it (fail
+    ** closed), regenerate it in canonical form (round-trip checked), refuse new
+    ** resources this app does not know, and apply the subset rule to the
+    ** permissions it adds.
+    *******************************************************************************/
+   private AdminPlan planSavePolicy(AdminPlan plan, AdminRequest request) throws QException
+   {
+      JSONObject group = targetGroup(plan, request.targetKey());
+      if(group == null)
+      {
+         return (plan);
+      }
+      PolicyFormat format = config.getPolicyFormat();
+
+      Set<String> newPermissions;
+      JSONObject  canonical;
+      try
+      {
+         String submitted = request.str(POLICY_DOCUMENT);
+         newPermissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format).permissions() : new TreeSet<>();
+         canonical = PolicyGenerator.generate(newPermissions, format);
+      }
+      catch(PolicyParseException e)
+      {
+         return (plan.refuse("The policy is not valid: " + e.getMessage()));
+      }
+
+      Object      stored         = group.optJSONObject("attributes") == null ? null : group.getJSONObject("attributes").opt(format.attribute());
+      Set<String> oldPermissions = new TreeSet<>();
+      String      storedProblem  = null;
+      if(stored != null && !JSONObject.NULL.equals(stored) && !"".equals(stored))
+      {
+         try
+         {
+            oldPermissions.addAll(PolicyParser.parseStrict(stored, format).permissions());
+         }
+         catch(PolicyParseException e)
+         {
+            storedProblem = e.getMessage();
+         }
+      }
+
+      String fingerprint = request.str("expectedFingerprint");
+      if(StringUtils.hasContent(fingerprint) && !fingerprint.equals(AuthentikSafety.groupFingerprint(group)))
+      {
+         return (plan.refuse("This group was changed (for example in the Authentik admin UI) since you opened it. Review it again."));
+      }
+
+      Set<String> added = new TreeSet<>(newPermissions);
+      added.removeAll(oldPermissions);
+      Set<String> removed = new TreeSet<>(oldPermissions);
+      removed.removeAll(newPermissions);
+
+      Set<String> unknownNew = runtime.getPolicyCatalog().unknownPermissions(added);
+      if(!unknownNew.isEmpty())
+      {
+         return (plan.refuse("These are not permissions of this app: " + String.join(", ", unknownNew) + ". Pick them in the editor."));
+      }
+
+      if(added.isEmpty() && removed.isEmpty() && storedProblem == null)
+      {
+         return (plan.noChange("Nothing to change."));
+      }
+
+      Set<String> missing = AuthentikSafety.missing(added, operator().permissions());
+      if(!missing.isEmpty())
+      {
+         return (plan.refuse("You cannot grant permissions you do not hold yourself: " + String.join(", ", missing)));
+      }
+
+      plan.withChange(policySummary(oldPermissions), policySummary(newPermissions));
+      if(!added.isEmpty())
+      {
+         plan.getNotes().add("Adds: " + abbreviate(added));
+      }
+      if(!removed.isEmpty())
+      {
+         plan.getNotes().add("Removes: " + abbreviate(removed));
+      }
+      if(storedProblem != null)
+      {
+         plan.getNotes().add("The policy stored in Authentik was not valid (" + storedProblem + "); saving replaces it.");
+      }
+      Set<String> keptUnknown = runtime.getPolicyCatalog().unknownPermissions(newPermissions);
+      if(!keptUnknown.isEmpty())
+      {
+         plan.getNotes().add("Kept although this app does not define them: " + abbreviate(keptUnknown));
+      }
+      JSONArray users = group.optJSONArray("users");
+      plan.getNotes().add((users == null ? 0 : users.length()) + " member(s), and the members of groups below it, get the change at their next sign-in or token refresh.");
+      plan.getNotes().add(canonical.getJSONArray("Statement").length() + " statement(s), " + newPermissions.size() + " permission(s); the document round-trips.");
+
+      if(Boolean.TRUE.equals(config.getPolicyTwoPersonApproval()) && !request.bool("approved"))
+      {
+         plan.withState(AdminPlan.State.NEEDS_APPROVAL).withMessage("policy changes need a second person");
+      }
+      return (plan);
+   }
+
+
+
+   /*******************************************************************************
+    ** "n permission(s): a, b, ..." for the audit before/after.
+    *******************************************************************************/
+   private static String policySummary(Set<String> permissions)
+   {
+      return (permissions.isEmpty() ? "no policy" : permissions.size() + " permission(s): " + abbreviate(permissions));
+   }
+
+
+
+   /*******************************************************************************
+    ** The first 12 names, then "and n more".
+    *******************************************************************************/
+   private static String abbreviate(Set<String> names)
+   {
+      List<String> list = new ArrayList<>(names);
+      if(list.size() <= 12)
+      {
+         return (String.join(", ", list));
+      }
+      return (String.join(", ", list.subList(0, 12)) + " and " + (list.size() - 12) + " more");
+   }
+
+
+
+   /*******************************************************************************
     ** Send the password-reset email (Authentik's own email; no link is shown).
     *******************************************************************************/
    private AdminPlan planRecovery(AdminPlan plan, AdminRequest request) throws QException
@@ -1440,6 +1576,8 @@ public class AuthentikAdmin
             util.write(auth, "PATCH", "/core/groups/" + safeKey(request.targetKey()) + "/", new JSONObject().put("attributes", attributes));
             return ("Permissions and app access updated.");
          }
+         case SAVE_POLICY:
+            return (performSavePolicy(plan, auth));
          case SEND_RECOVERY_EMAIL:
             sendRecovery(auth, request.targetKey());
             return ("Password reset email sent by Authentik.");
@@ -1465,6 +1603,62 @@ public class AuthentikAdmin
          default:
             throw (new QException("Unsupported action " + request.action()));
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Write the canonical policy into the group's CURRENT attributes (re-read
+    ** right before, so other attributes and UI edits survive), then record the
+    ** save in authentik_policy. Authentik is the source of truth: if only the
+    ** QQQ record fails, the result says so but the save stands.
+    *******************************************************************************/
+   private String performSavePolicy(AdminPlan plan, WriteAuthorization auth) throws QException
+   {
+      AdminRequest request = plan.getRequest();
+      PolicyFormat format  = config.getPolicyFormat();
+      Set<String>  permissions;
+      JSONObject   canonical;
+      try
+      {
+         String submitted = request.str(POLICY_DOCUMENT);
+         permissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format).permissions() : new TreeSet<>();
+         canonical = PolicyGenerator.generate(permissions, format);
+      }
+      catch(PolicyParseException e)
+      {
+         throw (new QUserFacingException("The policy is not valid: " + e.getMessage()));
+      }
+
+      runtime.invalidateCache();
+      JSONObject fresh = util.getApiJsonOrNull("/core/groups/" + safeKey(request.targetKey()) + "/?include_users=false&include_parents=false&include_children=false");
+      if(fresh == null)
+      {
+         throw (new QUserFacingException("That group no longer exists."));
+      }
+      JSONObject attributes = fresh.optJSONObject("attributes") == null ? new JSONObject() : new JSONObject(fresh.getJSONObject("attributes").toString());
+      String     compact    = PolicyGenerator.toCompact(canonical);
+      if(permissions.isEmpty())
+      {
+         attributes.remove(format.attribute());
+      }
+      else
+      {
+         attributes.put(format.attribute(), compact);
+      }
+      util.write(auth, "PATCH", "/core/groups/" + safeKey(request.targetKey()) + "/", new JSONObject().put("attributes", attributes));
+
+      try
+      {
+         PolicyStore.save(config, request.targetKey(), fresh.optString("name"), canonical, permissions.size(), guard.operatorEmail(),
+            permissions.isEmpty() ? null : PolicyStore.fingerprint(compact, format));
+      }
+      catch(Exception e)
+      {
+         LOG.warn("The policy was saved to Authentik but its QQQ record could not be written", logPair("group", request.targetKey()), logPair("error", e.getMessage()));
+         return ("Policy saved to Authentik, but its QQQ record could not be written: " + e.getMessage());
+      }
+      return (permissions.isEmpty() ? "Policy removed from the group in Authentik." : "Policy saved to Authentik.");
    }
 
 
@@ -1834,7 +2028,7 @@ public class AuthentikAdmin
    /*******************************************************************************
     ** A path segment that is a plain key (digits, letters, dashes, dots, colons).
     *******************************************************************************/
-   static String safeKey(String key) throws QUserFacingException
+   public static String safeKey(String key) throws QUserFacingException
    {
       if(key == null || !key.matches("[A-Za-z0-9._-]{1,150}"))
       {
