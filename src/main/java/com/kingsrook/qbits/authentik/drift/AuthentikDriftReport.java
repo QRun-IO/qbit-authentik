@@ -304,7 +304,7 @@ public class AuthentikDriftReport
    void checkIdentityAdmins(List<DriftFinding> findings) throws QException
    {
       List<JSONObject> groups = client.getAllPages("/core/groups/?include_users=true&ordering=name", AuthentikActionUtil.MAX_SWEEP_OBJECTS);
-      GroupGraph       graph  = GroupGraph.fromGroups(groups, config.getPolicyFormat());
+      GroupGraph       graph  = GroupGraph.fromGroups(groups, config.getPolicyFormat(), client.getRuntime().getPolicyCatalog());
       EffectivePermissionResolver resolver = new EffectivePermissionResolver(graph, null);
 
       List<IdentityPermission> required = List.of(IdentityPermission.MEMBERSHIPS_MANAGE, IdentityPermission.PERMISSIONS_MANAGE);

@@ -4,6 +4,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (table feature permissions)
+- Policies can grant table feature permissions (e.g. analyze, comment) registered through core TableFeaturePermissionsMetaData
+
 ### Added (policy cut-over, DESIGN.md section 12.8)
 - `AuthentikHostPermissionSource` SPI (today's access) and config `mapperEnabled`, `cutoverGuardGroups`, `mapperOverride`, `staticGroupPermissions`.
 - **Enforcement status**: banner widget `authentikPolicyEnforcement` (first on group and policy records and on the Edit Policy step) and a "Policies at sign-in" row in the home's Connection card: OFF, ACTIVE, OVERRIDDEN or BLOCKED.

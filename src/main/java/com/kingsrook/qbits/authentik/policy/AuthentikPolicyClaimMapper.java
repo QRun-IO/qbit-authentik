@@ -95,7 +95,7 @@ public class AuthentikPolicyClaimMapper implements QAuthenticationModuleCustomiz
          return;
       }
 
-      Set<String> permissions = new TreeSet<>(PolicyPermissions.fromClaims(claims, format));
+      Set<String> permissions = new TreeSet<>(PolicyPermissions.fromClaims(claims, format, qInstance == null ? null : PolicyCatalog.of(qInstance)));
       if(qSession.getPermissions() != null)
       {
          permissions.addAll(qSession.getPermissions());

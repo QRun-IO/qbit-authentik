@@ -27,6 +27,7 @@ import java.util.TreeSet;
 import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
 import com.kingsrook.qbits.authentik.client.AuthentikRedactor;
+import com.kingsrook.qbits.authentik.policy.PolicyCatalog;
 import com.kingsrook.qbits.authentik.policy.PolicyFormat;
 import com.kingsrook.qbits.authentik.policy.PolicyPermissions;
 import com.kingsrook.qbits.authentik.security.BootstrapOperators;
@@ -116,7 +117,8 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       //////////////////////////////////////////////////////////////////////////
       AuthentikRuntime runtime = runtime();
       PolicyFormat     format  = runtime == null ? PolicyFormat.DEFAULT : runtime.getConfig().getPolicyFormat();
-      permissions.addAll(PolicyPermissions.fromClaims(PolicyPermissions.claimsWithPolicy(context, format), format));
+      permissions.addAll(PolicyPermissions.fromClaims(PolicyPermissions.claimsWithPolicy(context, format), format,
+         runtime == null ? (qInstance == null ? null : PolicyCatalog.of(qInstance)) : runtime.getPolicyCatalog()));
 
       if(runtime != null)
       {

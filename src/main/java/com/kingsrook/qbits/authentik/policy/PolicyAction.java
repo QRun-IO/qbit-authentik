@@ -21,7 +21,8 @@ import java.util.Optional;
 
 
 /*******************************************************************************
- ** The actions a policy statement can grant, in canonical statement order. Each
+ ** The five standard actions, in canonical statement order. Table features use
+ ** their registered string names separately. Each standard action
  ** maps to the QQQ permission suffix of the same name ({resource}.{action}).
  *******************************************************************************/
 public enum PolicyAction

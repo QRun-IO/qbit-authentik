@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import com.kingsrook.qbits.authentik.client.AuthentikJson;
+import com.kingsrook.qbits.authentik.policy.PolicyCatalog;
 import com.kingsrook.qbits.authentik.policy.PolicyFormat;
 import com.kingsrook.qbits.authentik.policy.PolicyParseException;
 import com.kingsrook.qbits.authentik.policy.PolicyParser;
@@ -82,13 +83,23 @@ public class GroupGraph
     *******************************************************************************/
    public static GroupGraph fromGroups(Collection<JSONObject> groups, PolicyFormat format)
    {
+      return (fromGroups(groups, format, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Read group policies with the catalog of registered table features.
+    *******************************************************************************/
+   public static GroupGraph fromGroups(Collection<JSONObject> groups, PolicyFormat format, PolicyCatalog catalog)
+   {
       PolicyFormat f     = format == null ? PolicyFormat.DEFAULT : format;
       GroupGraph   graph = new GroupGraph();
       for(JSONObject group : groups)
       {
          JSONObject   attributes = group.optJSONObject("attributes");
          List<String> malformed  = malformed(attributes);
-         List<String> policy     = policyPermissions(attributes, f, malformed);
+         List<String> policy     = policyPermissions(attributes, f, malformed, catalog);
          graph.add(new Node(
             group.getString("pk"),
             group.optString("name", ""),
@@ -289,7 +300,7 @@ public class GroupGraph
     ** The permissions of a group's policy document; none (and a malformed entry)
     ** when it does not parse.
     *******************************************************************************/
-   private static List<String> policyPermissions(JSONObject attributes, PolicyFormat format, List<String> malformed)
+   private static List<String> policyPermissions(JSONObject attributes, PolicyFormat format, List<String> malformed, PolicyCatalog catalog)
    {
       Object document = attributes == null ? null : attributes.opt(format.attribute());
       if(document == null || JSONObject.NULL.equals(document) || "".equals(document))
@@ -298,7 +309,7 @@ public class GroupGraph
       }
       try
       {
-         return (List.copyOf(PolicyParser.parseStrict(document, format).permissions()));
+         return (List.copyOf(PolicyParser.parseStrict(document, format, catalog).permissions()));
       }
       catch(PolicyParseException e)
       {
