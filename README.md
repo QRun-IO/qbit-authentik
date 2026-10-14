@@ -45,6 +45,15 @@ Read-only is the default (`features` = `READ`). `readOnly=true` is a hard kill s
 | App and home | `authentikAdmin` (label "Identity", hosts may nest it) with the `authentikHome` widget and the drift report |
 | Actions | Create User, Invite User, Edit User, Deactivate User, Reactivate User, Add To Group, Remove From Group, Send Password Reset Email, Reset MFA, Revoke App Passwords, Revoke Sessions, Create Group, Edit Group, Edit Permissions And App Access, Add Members, Remove Members, Cancel Invitation, Approve And Apply, Reject; with `POLICIES`: Edit Policy (on groups and policies); with `DELETE`: Delete User, Delete Group |
 
+### Tables, starter data and empty screens
+
+Nothing is seeded: there are no starter defaults to include in a changelog. Setup comes from `AuthentikQBitConfig` (URL, API token, features, read-only mode), and the Identity home's "Needs attention" card lists what is left. The tables are of two kinds:
+
+- **API-backed (live):** `authentik_user`, `_group`, `_group_member` (virtual), `_session`, `_event`, `_application`, `_policy_binding`, `_blueprint`, `_role`, `_token`, `_invitation`. Every row is read from Authentik on each view and nothing is stored locally. An empty list means Authentik returned nothing to you: your role lacks the permission, the qbit's feature or invitation flow is not enabled, or Authentik has no such records. Read-only mode only blocks changes.
+- **Local (the qbit's own records):** `authentik_admin_action` (audit trail), `authentik_approval_request`, `authentik_policy` and `authentik_token_scope`. They fill as people run actions, and are written only by the qbit.
+
+Every table, and the app, ships help (`help/qbit-authentik.yaml`, the QQQ help-bundle format) that says what the table is for, how its rows get created and, for the live tables, what an empty list means. The Next UI shows it as the empty state. A host's own help on a table is never replaced, and a host's `tableNamePrefix` is applied to the bundle's table names. `AuthentikTablesGuardrailTest` fails when a table is added without runtime use, a documented reason it starts empty, and this help.
+
 ### Permissions
 
 QQQ permissions, held as `<name>.hasAccess`, granted through the group attribute `qqq.io/permissions` and read by `AuthentikGroupPermissionMapper`:
