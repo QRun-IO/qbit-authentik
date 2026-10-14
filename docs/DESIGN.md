@@ -703,6 +703,10 @@ The mapper is a `QAuthenticationModuleCustomizerInterface` component. It replace
 
 **Fallback.** If Authentik is unreachable at sign-in, the mapper uses the mirror. If the mirror is empty, it grants only what the static config provides. It never grants everything.
 
+#### Automated sessions
+
+Server-created sessions (scheduled reports and SSH-key users of the SFTP gateway) have no token. `customizeAutomatedSessionForUser` treats `userId` as the email idReference used by `user_email` mode and requires exactly one Authentik user with that email (trimmed, case-insensitive), who must be active. It resolves the API user's direct groups and their ancestors through the same permission resolver, static fallbacks and cut-over guard as sign-in, including the host permission source while the guard blocks. Service accounts follow the same rule. Bootstrap grants match only the resolved user's immutable pk or uuid; email verification is never assumed. Unknown, duplicate, inactive, unreadable or truncated lookups grant only empty-group static fallbacks. Existing session permissions are always preserved; an API failure never grants all permissions.
+
 ---
 ## 6. Data model
 
