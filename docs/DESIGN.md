@@ -1,6 +1,6 @@
 # Authentik qbit: Design Spec
 
-Status: Approved, revision 5 (adds §12 policies and full user/group CRUD; owner decisions of 2026-10-13) · 2026-10-13 · Author: James Maes (drafted with Claude)
+Status: Approved, revision 6 (adds §13 access tokens; revision 5 added §12 policies and full user/group CRUD; owner decisions of 2026-10-13) · 2026-10-13 · Author: James Maes (drafted with Claude)
 Targets: QQQ 4.1.x, QQQ Next UI 1.0.x, Authentik 2026.8.x (researched against the live `auth.kof22.com` schema, `info.version: 2026.8.3`), new repo `QRun-IO/qbit-authentik`
 
 ## 0. Summary
@@ -33,7 +33,8 @@ Seven design rules shape everything below:
    - Authentik also enforces a hard floor: the service account cannot touch superuser groups, token keys or impersonation.
 6. **Credentials never pass through QQQ.**
    - New users and password resets go through Authentik's own emails (enrollment or recovery).
-   - QQQ never sets passwords, never shows recovery links and never displays token keys.
+   - QQQ never sets passwords and never shows recovery links.
+   - Token keys are the one exception (§13): a new or rotated access-token key is shown **once**, in the response that created it, and is never stored, logged or audited in QQQ.
 7. **Every change is audited on both sides.** QQQ writes a local append-only `authentik_admin_action` row. Authentik receives a `custom_qqq_admin_action` event naming the human operator.
 
 ### 0.1 Owner decisions (2026-10-11)
@@ -59,6 +60,19 @@ Seven design rules shape everything below:
 | 20 | **A policy editor** lists the app's apps, tables, processes, reports and widgets from metadata, grouped by app, with search, a per-resource action matrix (select all per row, per column and per app), a live read-only JSON preview, round-trip validation, and opens existing documents back into the matrix. Saving writes to Authentik. |
 | 21 | **Delete is allowed as an explicit action** (supersedes decision 4's "no hard delete"): deactivate stays the default; *Delete User* and *Delete Group* are separate typed-confirmation actions behind the new `DELETE` feature (off by default), which also needs Authentik's `delete_user` / `delete_group`. |
 | 22 | **Write permissions split as read / users / groups / policies**: `authentik.users.read`, `authentik.users.manage`, `authentik.groups.manage` (+ `authentik.memberships.manage`), and the new `authentik.policies.manage`. Two-person approval for policy saves is optional (`policyTwoPersonApproval`, off by default). |
+
+**Owner decisions (2026-10-13): access tokens (revision 6).** The owner asked: "I want to manage tokens in app, like we want to do with users and groups and permissions - all through authentik still, but exposed in app to make it easier", then: "it should be on by default. if this is gonna be our PAT solution, it needs to be first class." Authentik tokens, through this qbit, are **the** personal access token (PAT) solution for QQQ apps that sign in with Authentik. Full design in §13.
+
+| # | Decision |
+|---|---|
+| 23 | **Tokens are managed in QQQ, stored in Authentik.** The `authentik_token` table lists them (owner, identifier, intent, expiry, last used, description, scope). Record actions: *Create Token*, *Rotate Token*, *Revoke Token*, *Extend Expiry*, and *Create Service Account*. |
+| 24 | **The key is shown exactly once**, in the response of the create or rotate, with copy and usage examples, and is never stored in QQQ: not in a table, the audit, logs, process state, ESB, notifications or the assistant (core `OneTimeSecret`, §13.6). |
+| 25 | **Self-service.** Every signed-in user manages their **own** tokens in the Preferences section "Access tokens" (core Preferences contract, QRun-IO/qqq#1162), also reachable from the user menu. |
+| 26 | **On by default** whenever the qbit runs with writes enabled (feature `TOKENS`). A host can opt out (`tokensEnabled=false`, kof22 env `AUTHENTIK_QBIT_TOKENS=false`). No opt-in flag. |
+| 27 | **Guardrails** (§13.4): (a) no minting or rotating for privileged accounts, in the qbit and again in Authentik; (b) self-service is self-only, admins may also target service accounts, never another human; (c) expiry is required, at most 90 days for people and 365 for service accounts (configurable); (d) optional two-person approval for service-account tokens (off by default); (e) an Authentik notification rule fires if the qbit's service account ever touches a protected user's token; (f) everything audited with the client channel. |
+| 28 | **Optional per-token scopes** (read only; specific apps and tables), narrower than the user, stored in `authentik_token_scope` and enforced by core scoped credentials (QRun-IO/qqq#1153, `QCredentialScope`) through a signed `qqq_token` claim (§13.5). |
+| 29 | **First class:** usage instructions generated from the instance's real URLs; expiry reminders 7 days and 1 day before (bell and email); last used; an unused-token cleanup suggestion; admin views by user and by age with bulk revoke; the doc page [`ACCESS-TOKENS.md`](ACCESS-TOKENS.md). |
+| 30 | **Owner-approved revision of the mechanism (2026-10-13, coordinator-approved under the owner's direction).** Authentik 2026.8.3 always creates a token for the *caller* unless the caller is a superuser (`TokenViewSet.perform_create`), so `add_token` cannot mint for anyone else (§13.2). The qbit therefore creates a person's token **as that person**, through RFC 8693 token exchange with a 2-minute API token from the `qqq-<appKey>-token-broker` provider (with a deny policy for protected users). Service accounts use `POST /core/users/service_account/` (create), `set_key` (rotate) and `PATCH` (extend). The qbit role gains `change_token` and `set_token_key`, keeps `delete_token` and `add_user`, and **never** holds `add_token` or `view_token_key`. Limitation: one app password per service account. |
 
 ### 0.2 Phase 0 findings (2026-10-11, verified on Authentik 2026.8.3)
 
@@ -602,13 +616,15 @@ The role `qqq-<appKey>-idadmin` is assigned directly to the service account (boo
 | `authentik_core.add_user_to_group`, `remove_user_from_group` | Membership | 2 |
 | `authentik_core.delete_authenticatedsession` | Revoke sessions | 3 |
 | `authentik_core.delete_token` | Revoke app passwords | 3 |
+| `authentik_core.change_token` | Extend a token's expiry (§13); `PATCH` always sends `intent`, `user` and `expires` | 6 |
+| `authentik_core.set_token_key` | Rotate a **service account's** app password with a key the qbit generates (§13). Guarded by §13.4 (a) and the detective rule (e) | 6 |
 | Device `delete_*` for TOTP, WebAuthn, static, email, SMS | MFA reset | 3 |
 | `authentik_stages_invitation.add_invitation`, `change_invitation`, `delete_invitation` | Invites | 3 |
 | `authentik_rbac.change_role`, `assign` (object, on non-qbit roles) | Role management | 4 |
 
 **Never granted:**
 - `enable_group_superuser` / `disable_group_superuser`. Authentik then refuses every route into superuser ancestry: membership (direct, bulk, by user or by group), `parents` under a superuser group or any descendant, creating a group under one, and flipping `is_superuser` (verified, §0.2 ii).
-- `view_token_key`, `set_token_key`, `add_token` (MHP APPS-1462)
+- `view_token_key` and `add_token` (MHP APPS-1462). `set_token_key` is granted since revision 6 for service-account rotation only, behind §13.4 (§13.2 explains why `add_token` would not help anyway)
 - `impersonate`; `delete_user` and `delete_group` unless the `DELETE` feature is on (§12.5)
 - any `change_*` on flows, stages, providers, applications, policies, bindings, brands or blueprints
 - any change on its own role. Role permissions are object permissions excluding `qqq-*` roles, and the guard also refuses.
@@ -685,7 +701,8 @@ This is weaker than revision 1's per-group object permissions. That is the cost 
 | Invite user | Yes (`USERS`) | Invitation (`fixed_data` email and name, `single_use`, expires in 7 days) + `send_email`, through the `kof22-enrollment` flow. Groups are applied by QQQ when the `invitation_used` webhook arrives. |
 | Send password-reset email | Yes (`CREDENTIALS`) | `recovery_email` with `recoveryEmailStage`, `token_duration` 30 minutes |
 | Show or copy recovery link, set password, set hash | **No** | Never called. A link given to the operator amounts to account takeover. |
-| View or set token keys; create tokens | **No** | Not permitted for the service account; not exposed |
+| Create, rotate, extend, revoke access tokens | Yes (`TOKENS`, §13) | A person's own tokens: as that person, through the token broker. Service accounts: `service_account`, `set_key`, `PATCH`. The key is shown once and never stored |
+| Read token keys (`view_key`) as the service account | **No** | Never granted; a key is read only by its owner, in the owner's own exchange |
 | Revoke sessions | Yes (`SESSIONS`) | `bulk_delete?user_pks=` / per-session `DELETE` |
 | Reset MFA | Yes (`CREDENTIALS`) | Device list, then per-type `DELETE`, with typed confirmation and a reason |
 | Revoke app passwords | Yes (`CREDENTIALS`) | `DELETE /core/tokens/{identifier}/`, intent `app_password` only |
@@ -726,7 +743,7 @@ Server-created sessions (scheduled reports and SSH-key users of the SFTP gateway
 | `authentik_policy_binding` | `/policies/bindings/?target=` | uuid | Query | Read only. Shows the policy, group or user, plus negate, order and expiry. |
 | `authentik_session` | `/core/authenticated_sessions/` | uuid | Query, delete (revoke) | Sensitive |
 | `authentik_mfa_device` | `/authenticators/admin/all/?user=` | `type:id` | Query, delete (reset) | Metadata only. Query requires a `user` criterion. |
-| `authentik_token` | `/core/tokens/?user__username=` | identifier | Query, delete (revoke) | **No key field.** Only `intent`, `expires`, `description`. |
+| `authentik_token` | `/core/tokens/?user__username=` | identifier | Query; changed only by the token actions (§13) | **No key field.** Owner, intent, expires, description, managed, plus computed `lastUsed`, `scopeSummary`, `ownerType`, `isProtectedOwner`. |
 | `authentik_event` | `/events/events/` | uuid | Query, get | Sensitive. Ordered `-created`. `context` is rendered as JSON. |
 | `authentik_invitation` | `/stages/invitation/invitations/` | uuid | Query; insert via *Invite*; delete (cancel) | |
 | `authentik_blueprint` | `/managed/blueprints/` | uuid | Query | Read only. Used by the drift report. |
@@ -931,7 +948,8 @@ Authenticated API calls are not throttled by Authentik, and kof22's Authentik sh
 
 | Threat | Control |
 |---|---|
-| A compromised QQQ backend escalates in Authentik | The service account can't create superusers, touch superuser groups, read or mint tokens, impersonate, delete users, or change flows and policies (§5.1) |
+| A compromised QQQ backend escalates in Authentik | The service account can't create superusers, touch superuser groups, read token keys, create tokens for others, impersonate, delete users, or change flows and policies (§5.1). Since revision 6 it can set a token's key (`set_token_key`, for service-account rotation): guard §13.4 (a) plus the detective rule (e) |
+| A person's token is minted by someone else | Tokens for people are created only as that person, through token exchange (§13.3.1); Authentik enforces it |
 | A QQQ operator escalates themselves or a friend | Subset rule, no self-edits, two-person approval for `authentik.*` grants, protected accounts |
 | Lockout (last admin removed or deactivated) | Last-admin guard; break-glass superuser outside QQQ; `bootstrapOperatorSubjects` |
 | A blueprint re-apply reverts QQQ edits | No `present` identity entries, no member lists (CI lint); bootstrap as `created` (verified, §4.2); reversion detector |
@@ -1253,6 +1271,234 @@ Review shows the generated document, the diff and the subset rule before anythin
 | 5a | Policy model, parser, generator, runtime mapper, resolver integration, format doc and blueprint example |
 | 5b | Catalog, `authentik_policy`, *Edit Policy* with save to Authentik; the Next UI widget `AUTHENTIK_POLICY_EDITOR` (separate PR to qqq-frontend-next) |
 | 5c | The user and group CRUD additions (§12.5) |
+
+---
+
+## 13. Access tokens: QQQ's personal access tokens (revision 6)
+
+Decisions 23–30 (§0.1). Authentik stays the source of truth: every token is an Authentik `Token` row. QQQ keeps only non-secret metadata about the tokens it created: the scope, who created it and when.
+
+### 13.1 What a QQQ access token is
+
+A QQQ access token is an Authentik **app password** (`intent: app_password`) owned by a person or a service account. A client uses it in two steps:
+
+1. **Exchange it for a short-lived JWT** at the app's Authentik token endpoint: `POST {authentikPublicUrl}/application/o/token/` with:
+   - `grant_type=client_credentials`
+   - `client_id={app client id}`
+   - `username={owner username}`
+   - `password={token}`
+   - `scope=openid profile email`
+
+   Authentik checks that the owner is active, that the token exists with intent `app_password`, and that the app's policies let the owner in. It records a `login` event with `method: token` and the token's identifier.
+2. **Call the app** (`/qqq/v1/...` and the published APIs) with `Authorization: Bearer {jwt}`. When the JWT expires (the provider's access-token validity), exchange the token again.
+
+The qbit generates these instructions from the instance's real URLs (§13.7).
+
+API-intent tokens (`intent: api`) call Authentik's own API, not the app. QQQ lists them and can revoke them, but does not create them, because an API token acts with all of its owner's Authentik permissions.
+
+### 13.2 Why the qbit can't just call `POST /core/tokens/` (verified in the 2026.8.3 source)
+
+- **Create belongs to the caller.** `TokenViewSet.perform_create` saves every new token with `user = request.user` unless the caller is a superuser, and `add_token` changes nothing. The qbit's service account is not a superuser and never will be (§5.1), so it **can't** create a token for anyone else.
+- **PATCH has dangerous defaults.** `TokenSerializer.validate` runs `attrs.setdefault("intent", "api")` and `attrs.setdefault("user", request.user)`, and forces `expires` to the default for API tokens.
+  - A `PATCH` without `intent` turns an app password into an API token with the default expiry.
+  - A `PATCH` without `user` moves the token to the caller.
+  - So **every `PATCH` the qbit sends carries `intent`, `user` (the current owner's pk) and `expires`**, and the qbit re-reads the token afterwards (the race guard in §13.3).
+- **Expiry is capped.** An app password's expiry is capped by `goauthentik.io/user/token-maximum-lifetime` (for example `days=90`) from `User.group_attributes`, which merges the **brand's** attributes, then the user's groups, then the user. Without it the cap is the tenant's default token duration, which is short. The blueprint sets the attribute on the brands (§13.9); the qbit sets `days=365` on each service account it creates.
+- **Expired tokens linger.** They stay in the database until Authentik's cleanup task removes them, and the token-endpoint lookup (`Token.objects.filter(key=...)`) doesn't check `expires`. So the qbit never relies on an expired token being unusable. Revoke deletes the token.
+
+### 13.3 How each action works
+
+| Action | Where | Who | Authentik calls |
+|---|---|---|---|
+| *Create Token* (own) | Preferences "Access tokens"; `authentik_token` table action | Any signed-in user, for themselves | As the user, through token exchange (§13.3.1): `POST /core/tokens/` (`intent: app_password`, identifier `qqq-pat-{username}-{yyyymmdd}-{6 random}`, `description`, `expires`, `expiring: true`), then `GET /core/tokens/{id}/view_key/` (the owner may read their own new key) |
+| *Rotate Token* (own) | same | The owner | As the user: create a new token with the same description, expiry and scope, read its key, then `DELETE` the old one. The new identifier replaces the old one in `authentik_token_scope`. If the delete fails, the result says so and the old token stays listed. |
+| *Revoke Token* | Preferences (own); table record and bulk action (`authentik.tokens.manage`) | The owner, or an admin for any owner who isn't protected | `DELETE /core/tokens/{identifier}/`. Own tokens: as the user. Admin: as the service account, with `delete_token`. |
+| *Extend Expiry* | Preferences (own); table record action | The owner; an admin for service accounts | Own tokens: as the user. Service accounts: as the qbit's service account, with `change_token`. Always `PATCH {intent, user, expires}`, then a re-read. |
+| *Create Service Account* | `authentik_user` table action | `authentik.tokens.manage` + `authentik.users.manage` | `POST /core/users/service_account/` (`name`, `create_group: false`, `expiring: true`, `expires`). The response's `token` is the one-time key. Then set `goauthentik.io/user/token-maximum-lifetime: days=365` on the new account (its expiry cap, §13.9) and add it to the groups chosen in the policy editor, subject to the subset rule (§5.4). |
+| *Rotate Token* (service account) | `authentik_token` record action | `authentik.tokens.manage` | The qbit generates a key (48 random bytes, URL-safe base64) and calls `POST /core/tokens/{identifier}/set_key/`. The identifier, expiry and scope don't change. |
+
+**Limitation (decision 30).** A service account has exactly one app password: the one `service_account` creates. Only a superuser could add a second. To run two credentials side by side, create a second service account.
+
+**Race guard.** Before an extend or a rotate, the qbit reads the token (owner pk and intent), and it reads the token again after the `PATCH` or `set_key`. If the owner or the intent changed:
+- the run fails;
+- the audit row is `FAILED` with "token moved";
+- an alert is raised (§13.8).
+
+Authentik's `validate_user` refuses a different user, and sending `user` explicitly closes the `setdefault` path.
+
+#### 13.3.1 Acting as the user: token exchange
+
+**The broker.** The blueprint adds a confidential OAuth2 provider and application, `qqq-{appKey}-token-broker`:
+- access-token validity `minutes=2`;
+- property mappings: only the default `goauthentik.io/api` scope;
+- `jwt_federation_providers`: the app's own sign-in provider;
+- a **deny policy** bound to the application for superusers, members of `authentik Admins` and `identity-admins`, users with `qqq.io/protected`, and the qbit's own service account (§13.4 a).
+
+**The exchange.** The qbit takes the signed-in user's current access JWT for the app. In kof22 this is the token the OAuth2 module stores in `qqq_user_session`; a host can supply another source with `withSubjectTokenSource(...)`. The qbit posts:
+- `grant_type=urn:ietf:params:oauth:grant-type:token-exchange`
+- `client_id` and `client_secret` of the broker
+- `subject_token={jwt}`
+- `subject_token_type=urn:ietf:params:oauth:token-type:jwt`
+- `scope=goauthentik.io/api`
+
+**What Authentik does.** It verifies the JWT against the federated provider and applies the broker app's policies, so the deny policy runs inside Authentik. It then returns a 2-minute access token **for that user**. The qbit uses it for the token calls of that one action, then drops it; it is never stored or logged.
+
+**Why this is safe.** The calls are made as the user, so Authentik itself enforces "own tokens only": a user can create, and read the key of, only their own tokens.
+
+**Config.**
+- `tokenBrokerClientId`: `${env.AUTHENTIK_TOKEN_BROKER_CLIENT_ID}`
+- `tokenBrokerClientSecret`: `${env.AUTHENTIK_TOKEN_BROKER_CLIENT_SECRET}`
+- `tokenEndpointUrl`: default `{baseUrl}/application/o/token/`
+
+Without a broker, the self-service actions are hidden, and Review says why.
+
+### 13.4 Guardrails (checked at Review and again at execute)
+
+| | Rule | Where enforced |
+|---|---|---|
+| (a) | **No minting or rotating for privileged accounts.** Refused for: superusers, including by inheritance; members of `authentik Admins`, `identity-admins` and the configurable `tokenProtectedGroups`; the break-glass account and anything with `qqq.io/protected`; `protectedUsernames`; and the qbit's own service account. Hard-coded for the built-in classes, plus the configurable list. | The `AuthentikTokens` guard; the broker app's deny policy (self-service); for protected owners, `set_key` is refused before the call |
+| (b) | **Self-service is self-only.** A person without `authentik.tokens.manage` may target only themselves. An admin may also target service accounts, but **never another human**; this covers create, rotate and extend. Revoke is the exception: for incident response, an admin may revoke any token whose owner isn't protected. | The qbit guard; Authentik itself for the as-user calls |
+| (c) | **Expiry is required.** There's no non-expiring option. The maximum is `tokenMaxDaysUser` (default 90) for people and `tokenMaxDaysServiceAccount` (default 365) for service accounts. Extend counts from now. Authentik's group attribute is a second cap. | The qbit (Review refuses); Authentik (`token-maximum-lifetime`) |
+| (d) | **Two-person approval** for service-account tokens (create service account, rotate): `tokenTwoPersonApproval`, default **off** while the team is one person. When on, the change is queued in `authentik_approval_request`, and the key is shown to the approver who applies it. | The qbit |
+| (e) | **Detective control.** An Authentik notification rule and an expression policy fire whenever the qbit's service account creates or updates a token whose owner is protected, reads its key, or sets its key (`model_created`, `model_updated`, `secret_view` or `secret_rotate` on `authentik_core.token`). They notify `identity-admins` through Authentik notifications. The rule should never fire; if it does, guard (a) was bypassed. | The Authentik blueprint (§13.9). The qbit also raises an `authentik_token_guard_bypass` alert through the Alerts producer when its own re-read finds a protected owner. |
+| (f) | **Everything is audited.** Before each call, every action writes an `authentik_admin_action` row with the client channel (`audit.clientChannel`, for example `web`, `api` or `token:{identifier}`), plus an Authentik `custom_qqq_admin_action` event. The assistant can't reach these tables or actions, because the assistant wall denies `authentik_*`. | The qbit; core audit |
+
+### 13.5 Scopes
+
+**What a scope is.** A token may be narrower than its owner: **read only**, and/or limited to a list of **apps** and **tables**. Advanced scopes can also list processes, reports, widgets and operationIds. No scope means the token can do everything its owner can.
+
+**Where scopes are stored.** In the local table `authentik_token_scope`, one row per token the qbit created:
+- `id`
+- `tokenIdentifier` (unique)
+- `ownerUsername`, `ownerPk`
+- `readOnly`
+- `apps`, `tables`, `processes`, `reports`, `widgets`, `operationIds` (TEXT, one per line)
+- `createdBy`, `createdAt`, `rotatedAt`
+- `lastReminder7d`, `lastReminder1d`
+
+There is no key, and no hash of a key. Generic insert, edit and delete are off; only the token actions change the table. Record-level audit is on.
+
+**Binding the JWT to its token.** A scope mapping on the app's provider (scope name `profile`) adds `qqq_token: {identifier}` to JWTs minted by `client_credentials` with an app password. It finds the app password the request presented, owned by the same user. Authentik signs the claim. It is bound to `profile` because the app needs the `groups` claim (also `profile`) to accept a token at all, so a client can't drop the claim and keep access.
+
+**Enforcement.** The mapper reads `qqq_token`, loads the scope row (cached 60 s) and sets core's `QCredentialScope` (QRun-IO/qqq#1153) on the session. Core then:
+- intersects the scope with the owner's live permissions in `PermissionsHelper`;
+- checks `operationIds` in the UI API;
+- records the channel `token:{identifier}`.
+
+STAND-IN(core=QRun-IO/qqq#1153, removeBy=the RC that ships #1153, RC.7 at the earliest). Until then the mapper narrows the session's permission set itself:
+- read only keeps only `.read` and `.hasAccess`;
+- apps and tables keep only permissions whose base name belongs to a listed app or table.
+
+**Fail closed.**
+- Scoped tokens are offered only when the host declares the claim mapping installed (`tokenScopesEnabled`; kof22 sets it to `true` once the blueprint is applied).
+- A JWT whose `qqq_token` names a token with no scope row is unscoped (the token was created outside the qbit).
+- A `qqq_token` naming a token that no longer exists gets **no** permissions.
+
+### 13.6 The key is shown once
+
+**The type.** Core's `com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret` (`label`, `value`, `masked`, `usageText`) from QRun-IO/qqq#1162. Its `toString()` never includes the value.
+
+**Preferences.**
+- The provider's `runAction` returns the secret in `UserPreferenceActionResult.secrets`.
+- The endpoint responds with `Cache-Control: no-store`.
+- Next shows it in a show-once dialog with *Copy* and the usage text.
+
+**Record actions.** These use core's one-time process output values: `RunBackendStepOutput.addOneTimeSecret(...)`, in the QRun-IO/qqq PR `feature/process-one-time-values`.
+- The value travels only in the step's HTTP response.
+- `ProcessState`, traces and lifecycle listeners (ESB) see only the masked form: `••••` plus the last 4 characters.
+- If the run finishes asynchronously, the key is lost by design, and the result says "Rotate the token to get a new key".
+
+**Where the key never goes.** The qbit never passes it to the audit row, the Authentik event context, `AdminResult.message`, notifications, logs or exceptions. `AuthentikRedactor` also masks any `key` or `token` JSON value in error text.
+
+**The test.** A test runs every action, then searches for the key in every QQQ table, the captured log output, the stored process state and the published events (§13.11).
+
+### 13.7 How to use it (generated)
+
+The result screen, the Preferences dialog and `docs/ACCESS-TOKENS.md` show:
+- the token endpoint (`{authentikPublicUrl}/application/o/token/`), the app's client id and the owner's username;
+- a `curl` that gets a JWT;
+- a `curl` to `{appBaseUrl}/qqq/v1/metaData`, and one to a published API (`{appBaseUrl}/api/{version}/...`) when the instance publishes one;
+- the token's expiry and scope.
+
+The URLs come from config (`appPublicUrl`, `authentikPublicUrl`, `appClientId`), defaulting to the OAuth2 module's metadata. The key appears in the usage text only inside the one-time response.
+
+### 13.8 Reminders, last used and cleanup
+
+**Last used.** Read from Authentik `login` events with `method: token` (`context.method_args.identifier`), through `/events/events/?action=login`, over a 90-day window, cached for 5 minutes. API tokens show "not tracked".
+
+**Expiry reminders.** A daily scheduled job finds tokens expiring within 7 days and within 1 day, and notifies each owner (bell and email):
+- through the Alerts producer SPI when qbit-alerts is installed;
+- otherwise through core notifications, if present;
+- otherwise not at all.
+
+Reminders are deduplicated through `lastReminder7d` and `lastReminder1d`. Tokens created outside the qbit have no scope row, so they are reminded by owner and identifier.
+
+**Cleanup suggestion.** The app home lists tokens not used for 60 days (`tokenUnusedDays`, configurable) and tokens of deactivated users. It links to the filtered list and the bulk *Revoke Token* action.
+
+### 13.9 Authentik changes (cluster-gitops, kof22)
+
+**The qbit role** `qqq-kof22-admin-idadmin`:
+- add `authentik_core.change_token` and `authentik_core.set_token_key`;
+- it already has `delete_token`, `view_token` and `add_user`;
+- **not** `add_token` or `view_token_key`.
+
+**New Authentik objects:**
+- the broker provider and application, with the deny policy (§13.3.1);
+- the `qqq_token` scope mapping on the kof22 admin provider (§13.5);
+- `goauthentik.io/user/token-maximum-lifetime: days=90` on the brands (people). Groups are `state: created` and can't take new attributes from a blueprint; the qbit sets `days=365` on service accounts it creates;
+- the broker in its own blueprint file (`kof22-qqq-tokens.yaml`), so a problem there can't affect sign-in;
+- the notification rule and policy (§13.4 e).
+
+**Rollout (kof22).** Seed the Infisical key `/kof22-website-authentik-api/token-broker-client-secret` first, then merge the role-permissions gitops PR, then deploy the backend. `TOKENS` is on by default, so there is no flag PR. The ESO secrets are `AUTHENTIK_TOKEN_BROKER_CLIENT_ID` and `AUTHENTIK_TOKEN_BROKER_CLIENT_SECRET` (Infisical `/kof22-website-authentik-api/`).
+
+### 13.10 Permissions, tables and config
+
+| QQQ permission | Grants |
+|---|---|
+| (none beyond signing in) | The "Access tokens" Preferences section, for one's own tokens |
+| `authentik.tokens.manage` | The `authentik_token` table (all tokens); revoking any token whose owner isn't protected (single and bulk); service-account create, rotate and extend; the admin widgets |
+| `authentik.audit.read` | Still reads `authentik_token` (unchanged) |
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `tokensEnabled` | `true` when any write feature is on | Opt-out (`AUTHENTIK_QBIT_TOKENS=false`) |
+| `tokenMaxDaysUser` / `tokenMaxDaysServiceAccount` | 90 / 365 | Guardrail (c) |
+| `tokenProtectedGroups` | `authentik Admins`, `identity-admins` | Added to the hard-coded classes of guardrail (a) |
+| `tokenTwoPersonApproval` | `false` | Guardrail (d) |
+| `tokenScopesEnabled` | `false` | Offer scopes once the claim mapping is installed |
+| `tokenBrokerClientId` / `tokenBrokerClientSecret` / `tokenEndpointUrl` | env / env / `{baseUrl}/application/o/token/` | §13.3.1 |
+| `appPublicUrl`, `authentikPublicUrl`, `appClientId` | from the OAuth2 module | §13.7 |
+| `serviceAccountTokenLifetime` | `days=365` | Set on service accounts the qbit creates |
+| `tokenUnusedDays` | 60 | The cleanup suggestion |
+
+### 13.11 Tests
+
+**In-memory Authentik.** `FakeAuthentik` is extended to model the 2026.8.3 behaviour of §13.2: caller-owned create, `setdefault` on `PATCH`, the lifetime cap, `service_account`, `set_key` and token exchange. Tests cover:
+- create, rotate, revoke and extend, both for self and for service accounts;
+- every guardrail refusal: the protected classes, another human, a missing or too-long expiry, no broker;
+- the race guard;
+- approval when (d) is on;
+- scope rows, reminders and last used.
+
+**The key is never persisted or logged.** After each action, the key is absent from every local table, the audit rows, the captured log, the stored `ProcessState`, the published ESB events and the Authentik event body the qbit posted.
+
+**Contract tests on Authentik 2026.8.3** (Testcontainers):
+- the §13.2 facts: a non-superuser create belongs to the caller, a `PATCH` without `intent` changes the token, and the lifetime cap applies;
+- token exchange as a user through the broker;
+- the deny policy refuses a protected user;
+- `service_account`, `set_key` and `PATCH` for a service account;
+- the `qqq_token` claim on a `client_credentials` JWT;
+- the detective notification rule fires for a protected owner.
+
+### 13.12 Delivery
+
+| Phase | Scope |
+|---|---|
+| 6a | This spec and `docs/ACCESS-TOKENS.md` |
+| 6b | The `TOKENS` feature, the `authentik_token` columns, `authentik_token_scope`, the token actions with guardrails, service accounts, the one-time key (core PR), tests and contract tests |
+| 6c | Scopes and the `qqq_token` claim, last used, reminders, admin widgets and bulk revoke |
+| 6d | The "Access tokens" Preferences provider (core #1162) and the user-menu entry (Next, by the Preferences agent) |
+| 6e | The cluster-gitops role permissions and blueprint objects; kof22 adoption (draft) |
 
 ---
 
