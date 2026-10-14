@@ -53,7 +53,7 @@ public final class PolicyParser
    /*******************************************************************************
     ** The result of a successful parse.
     **
-    ** @param permissions QQQ permission names ({resource}.{action}), sorted
+    ** @param permissions QQQ permission names, or the symbolic FULL_ACCESS marker
     ** @param resources   every resource named, in document order
     *******************************************************************************/
    public record Parsed(Set<String> permissions, Set<String> resources)
@@ -120,7 +120,7 @@ public final class PolicyParser
 
    /*******************************************************************************
     ** Parse standard actions and features registered for every listed resource.
-    ** Without a catalog only the five standard actions are accepted.
+    ** Without a catalog only standard actions and full access are accepted.
     *******************************************************************************/
    public static Parsed parseStrict(Object document, PolicyFormat format, PolicyCatalog catalog) throws PolicyParseException
    {
@@ -163,8 +163,13 @@ public final class PolicyParser
          }
 
          Set<String> statementResources = strings(statement.opt("Resource"), "Statement " + (i + 1) + ": Resource");
+         Set<String> statementActions = strings(statement.opt("Action"), "Statement " + (i + 1) + ": Action");
+         if(statementResources.contains("*") && !statementActions.equals(Set.of("*")))
+         {
+            throw (new PolicyParseException("Statement " + (i + 1) + ": Resource \"*\" requires Action [\"*\"] (full access)"));
+         }
          Set<String> actions = new LinkedHashSet<>();
-         for(String name : strings(statement.opt("Action"), "Statement " + (i + 1) + ": Action"))
+         for(String name : statementActions)
          {
             if(PolicyAction.WILDCARD.equals(name))
             {
@@ -186,6 +191,12 @@ public final class PolicyParser
 
          for(String resource : statementResources)
          {
+            if(resource.equals("*"))
+            {
+               permissions.add(PolicyPermissions.FULL_ACCESS);
+               resources.add(resource);
+               continue;
+            }
             if(!RESOURCE_PATTERN.matcher(resource).matches())
             {
                throw (new PolicyParseException("Statement " + (i + 1) + ": resource \"" + resource + "\" must match [A-Za-z0-9_]+"));
@@ -197,7 +208,7 @@ public final class PolicyParser
             }
          }
       }
-      return (new Parsed(permissions, resources));
+      return (new Parsed(permissions.contains(PolicyPermissions.FULL_ACCESS) ? Set.of(PolicyPermissions.FULL_ACCESS) : permissions, resources));
    }
 
 

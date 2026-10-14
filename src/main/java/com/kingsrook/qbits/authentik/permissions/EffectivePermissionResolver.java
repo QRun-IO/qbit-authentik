@@ -25,14 +25,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.TreeSet;
+import com.kingsrook.qbits.authentik.policy.PolicyPermissions;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 
 
 /*******************************************************************************
  ** Turns groups (and their ancestors) into QQQ permissions (DESIGN.md
- ** section 5.6). Pure: give it a GroupGraph and a permission catalog.
+ ** section 5.6). Full access uses the explicit instance or current QContext.
  **
  ** Rules:
+ ** - A full-access policy marker expands to all current instance/catalog names.
  ** - A group confers the union of qqq.io/permissions on itself and every
  **   ancestor ("inherited parents").
  ** - "authentik.*" expands to every identity permission; an identity short
@@ -47,6 +51,7 @@ public class EffectivePermissionResolver
 {
    private final GroupGraph  graph;
    private final Set<String> catalog;
+   private final QInstance qInstance;
 
 
 
@@ -69,7 +74,18 @@ public class EffectivePermissionResolver
     *******************************************************************************/
    public EffectivePermissionResolver(GroupGraph graph, Collection<String> catalog)
    {
+      this(graph, catalog, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve against an explicit sign-in instance, or the current QContext.
+    *******************************************************************************/
+   public EffectivePermissionResolver(GroupGraph graph, Collection<String> catalog, QInstance qInstance)
+   {
       this.graph = graph;
+      this.qInstance = qInstance;
       this.catalog = catalog == null ? null : new TreeSet<>(catalog);
       if(this.catalog != null)
       {
@@ -160,6 +176,10 @@ public class EffectivePermissionResolver
          return (rs);
       }
       String name = raw.trim();
+      if(name.equals(PolicyPermissions.FULL_ACCESS))
+      {
+         return (PolicyPermissions.allPermissions(qInstance == null ? QContext.getQInstance() : qInstance, catalog));
+      }
 
       if(name.equals(IdentityPermission.WILDCARD))
       {

@@ -126,6 +126,7 @@ public final class PolicyEditorWidget
             // canonical form of what is stored (unknown resources survive) //
             /////////////////////////////////////////////////////////////////
             data.withDocument(PolicyGenerator.toPretty(PolicyGenerator.canonical(stored, format, runtime.getPolicyCatalog())));
+            data.withFullAccess(PolicyParser.parseStrict(stored, format, runtime.getPolicyCatalog()).permissions().contains(PolicyPermissions.FULL_ACCESS));
          }
          catch(PolicyParseException e)
          {
@@ -230,6 +231,28 @@ public final class PolicyEditorWidget
       private List<Map<String, Object>> members = List.of();
       private Boolean                   membersTruncated = false;
       private Boolean                   mapperEnabled;
+      private Boolean                   fullAccess = false;
+
+
+
+      /*******************************************************************************
+       ** Whether the current valid document grants all current and future resources.
+       *******************************************************************************/
+      public Boolean getFullAccess()
+      {
+         return (fullAccess);
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for fullAccess.
+       *******************************************************************************/
+      public Data withFullAccess(Boolean fullAccess)
+      {
+         this.fullAccess = fullAccess;
+         return (this);
+      }
 
 
 

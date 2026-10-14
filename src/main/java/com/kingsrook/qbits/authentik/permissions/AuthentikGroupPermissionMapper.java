@@ -121,7 +121,7 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       AuthentikRuntime runtime = runtime();
       PolicyFormat     format  = runtime == null ? PolicyFormat.DEFAULT : runtime.getConfig().getPolicyFormat();
       permissions.addAll(PolicyPermissions.fromClaims(PolicyPermissions.claimsWithPolicy(context, format), format,
-         runtime == null ? (qInstance == null ? null : PolicyCatalog.of(qInstance)) : runtime.getPolicyCatalog()));
+         qInstance == null ? (runtime == null ? null : runtime.getPolicyCatalog()) : PolicyCatalog.of(qInstance)));
 
       if(runtime != null)
       {
@@ -327,7 +327,7 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       {
          AuthentikActionUtil         client   = client(qInstance);
          GroupGraph                  graph    = client.groupGraph();
-         EffectivePermissionResolver resolver = new EffectivePermissionResolver(graph, runtime == null ? null : runtime.getPermissionCatalog());
+         EffectivePermissionResolver resolver = new EffectivePermissionResolver(graph, runtime == null ? null : runtime.getPermissionCatalog(), qInstance);
          List<String>                pks      = new ArrayList<>();
          for(String name : groupNames)
          {

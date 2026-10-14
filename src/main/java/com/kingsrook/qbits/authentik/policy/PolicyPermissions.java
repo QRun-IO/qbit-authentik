@@ -17,9 +17,15 @@
 package com.kingsrook.qbits.authentik.policy;
 
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;
+import java.util.TreeSet;
+import com.kingsrook.qbits.authentik.security.IdentityPermission;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
+import com.kingsrook.qqq.backend.core.context.QContext;
+import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import org.json.JSONObject;
 
 
@@ -29,6 +35,12 @@ import org.json.JSONObject;
  *******************************************************************************/
 public final class PolicyPermissions
 {
+   /** Internal parse marker, never a session permission or persisted permission list. */
+   public static final String FULL_ACCESS = "<full-access>";
+
+   /** Operator-facing description of the wildcard statement. */
+   public static final String FULL_ACCESS_LABEL = "Full access (all current and future resources)";
+
    /** Customizer context key of the ID token claims (QQQ OAuth2 module). */
    public static final String ID_TOKEN_CONTEXT_KEY = "idToken";
 
@@ -67,7 +79,61 @@ public final class PolicyPermissions
       {
          return (Collections.emptySet());
       }
-      return (PolicyParser.parse(claims.opt(f.claim()), f, catalog));
+      Set<String> parsed = PolicyParser.parse(claims.opt(f.claim()), f, catalog);
+      return (parsed.contains(FULL_ACCESS)
+         ? allPermissions(catalog == null ? QContext.getQInstance() : catalog.getQInstance(), Set.of()) : parsed);
+   }
+
+
+
+   /*******************************************************************************
+    ** Expand full access at use time, including core names, the qbit catalog
+    ** (hidden record actions included), and every identity session permission.
+    ** No expanded set is cached, so instance additions and reloads are visible.
+    *******************************************************************************/
+   public static Set<String> allPermissions(QInstance qInstance, Collection<String> additional)
+   {
+      Set<String> permissions = new TreeSet<>();
+      if(additional != null)
+      {
+         permissions.addAll(additional);
+      }
+      if(qInstance != null)
+      {
+         PermissionsHelper.getAllAvailablePermissions(qInstance).forEach(permission -> permissions.add(permission.getName()));
+         permissions.addAll(PolicyCatalog.of(qInstance).permissionNames());
+         permissions.addAll(hostPermissions(qInstance));
+      }
+      for(IdentityPermission permission : IdentityPermission.values())
+      {
+         permissions.add(permission.getSessionPermission());
+      }
+      permissions.remove(FULL_ACCESS);
+      return (permissions);
+   }
+
+
+
+   /*******************************************************************************
+    ** The host-declared permission names (config fullAccessHostPermissions) of
+    ** every Authentik runtime whose API backend is in this instance.
+    *******************************************************************************/
+   static Set<String> hostPermissions(QInstance qInstance)
+   {
+      Set<String> rs = new TreeSet<>();
+      for(com.kingsrook.qbits.authentik.AuthentikRuntime runtime : com.kingsrook.qbits.authentik.AuthentikRuntime.all())
+      {
+         com.kingsrook.qbits.authentik.AuthentikQBitConfig config = runtime.getConfig();
+         if(config.getFullAccessHostPermissions() != null && config.getApiBackendName() != null && qInstance.getBackend(config.getApiBackendName()) != null)
+         {
+            java.util.Collection<String> names = config.getFullAccessHostPermissions().apply(qInstance);
+            if(names != null)
+            {
+               names.stream().filter(n -> n != null && !n.isBlank()).forEach(rs::add);
+            }
+         }
+      }
+      return (rs);
    }
 
 

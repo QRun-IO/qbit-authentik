@@ -32,7 +32,7 @@ import org.json.JSONObject;
  ** (docs/POLICY-FORMAT.md, "Canonical form"): one Allow statement per granted
  ** action in the order hasAccess, read, insert, edit, delete, then features
  ** sorted by name; resources sorted;
- ** no "*". Every generated document is checked to round-trip through
+ ** full access is a single Action/Resource "*" statement. Every document is checked to round-trip through
  ** PolicyParser to exactly the permissions it came from; one that does not is
  ** never returned.
  *******************************************************************************/
@@ -68,6 +68,17 @@ public final class PolicyGenerator
    public static JSONObject generate(Collection<String> permissions, PolicyFormat format, PolicyCatalog catalog) throws PolicyParseException
    {
       PolicyFormat f = format == null ? PolicyFormat.DEFAULT : format;
+      if(permissions.contains(PolicyPermissions.FULL_ACCESS))
+      {
+         JSONObject document = new JSONObject().put("PolicySpec", f.spec()).put("PolicyVersion", f.version())
+            .put("Statement", new JSONArray().put(new JSONObject().put("Effect", PolicyParser.ALLOW)
+               .put("Action", new JSONArray().put("*")).put("Resource", new JSONArray().put("*"))));
+         if(!PolicyParser.parseStrict(toCompact(document), f, catalog).permissions().equals(Set.of(PolicyPermissions.FULL_ACCESS)))
+         {
+            throw (new PolicyParseException("The full-access document does not round-trip"));
+         }
+         return (document);
+      }
 
       Map<String, Set<String>> byAction = new LinkedHashMap<>();
       Map<String, Set<String>> byFeature = new TreeMap<>();

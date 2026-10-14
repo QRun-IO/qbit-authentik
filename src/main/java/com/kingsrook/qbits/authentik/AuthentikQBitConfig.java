@@ -114,6 +114,7 @@ public class AuthentikQBitConfig implements QBitConfig
    private java.util.Map<String, List<String>> staticGroupPermissions = new java.util.LinkedHashMap<>();
    @JsonIgnore
    private com.kingsrook.qbits.authentik.permissions.AuthentikHostPermissionSource hostPermissionSource;
+   private java.util.function.Function<QInstance, java.util.Collection<String>> fullAccessHostPermissions;
 
 
 
@@ -1426,6 +1427,30 @@ public class AuthentikQBitConfig implements QBitConfig
    public AuthentikQBitConfig withHostPermissionSource(com.kingsrook.qbits.authentik.permissions.AuthentikHostPermissionSource hostPermissionSource)
    {
       this.hostPermissionSource = hostPermissionSource;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for fullAccessHostPermissions: the host's own permission names
+    ** (custom checkers, named permissions such as "cdn.purge") that QQQ
+    ** metadata cannot list. Full access expands to these as well, computed at
+    ** use time from the current instance. Null means none.
+    *******************************************************************************/
+   public java.util.function.Function<QInstance, java.util.Collection<String>> getFullAccessHostPermissions()
+   {
+      return (this.fullAccessHostPermissions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for fullAccessHostPermissions.
+    *******************************************************************************/
+   public AuthentikQBitConfig withFullAccessHostPermissions(java.util.function.Function<QInstance, java.util.Collection<String>> fullAccessHostPermissions)
+   {
+      this.fullAccessHostPermissions = fullAccessHostPermissions;
       return (this);
    }
 

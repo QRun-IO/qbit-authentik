@@ -22,6 +22,8 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
 import com.kingsrook.qbits.authentik.AuthentikFeature;
 import com.kingsrook.qbits.authentik.AuthentikTestSupport;
 import com.kingsrook.qbits.authentik.client.FixtureActionUtil;
@@ -30,6 +32,7 @@ import com.kingsrook.qbits.authentik.policy.PolicyEditorWidget;
 import com.kingsrook.qbits.authentik.policy.PolicyFormat;
 import com.kingsrook.qbits.authentik.policy.PolicyGenerator;
 import com.kingsrook.qbits.authentik.policy.PolicyParser;
+import com.kingsrook.qbits.authentik.policy.PolicyPermissions;
 import com.kingsrook.qbits.authentik.permissions.AccessComparison;
 import com.kingsrook.qbits.authentik.permissions.AuthentikGroupPermissionMapper;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
@@ -66,9 +69,94 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  *******************************************************************************/
 class PolicyEditorTest
 {
+   private static final String FULL_ACCESS = "{\"PolicySpec\":\"qqq-iam\",\"PolicyVersion\":\"1.0.0\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"*\"],\"Resource\":[\"*\"]}]}";
    private static final String PAGE_READ_EDIT = "{\"PolicySpec\":\"qqq-iam\",\"PolicyVersion\":\"1.0.0\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"read\",\"edit\"],\"Resource\":[\"cms_page\"]}]}";
 
    private AdminTestSupport t;
+
+
+
+   /*******************************************************************************
+    ** Full access requires every current grant, even when some were already in
+    ** the target policy. An operator holding all grants may save it explicitly.
+    *******************************************************************************/
+   @Test
+   void fullAccessSubsetRuleAndEditorFlag() throws Exception
+   {
+      String group = "kof-website-analysts";
+      assertThat(PolicyEditorWidget.load(t.config, t.authentik.pk(group)).getFullAccess()).isFalse();
+      assertThat(save(group, FULL_ACCESS).message()).contains("do not hold yourself", "cms_page.delete");
+      assertThat(t.changes()).isEmpty();
+      Set<String> all = PolicyPermissions.allPermissions(t.qInstance, t.admin().getUtil().getRuntime().getPermissionCatalog());
+      Set<String> almostAll = new TreeSet<>(all);
+      almostAll.remove("cms_page.delete");
+      t.config.withHostPermissionSource((email, groups) -> almostAll);
+      assertThat(save(group, FULL_ACCESS).message()).contains("do not hold yourself", "cms_page.delete");
+      t.config.withHostPermissionSource((email, groups) -> all);
+      AdminPlan plan = t.admin().plan(AdminRequest.of(AdminAction.SAVE_POLICY, t.authentik.pk(group), "because")
+         .with(AuthentikAdmin.POLICY_DOCUMENT, FULL_ACCESS));
+      assertThat(plan.isRunnable()).as(plan.getMessage()).isTrue();
+      assertThat(plan.getAfter()).isEqualTo(PolicyPermissions.FULL_ACCESS_LABEL);
+      assertThat(save(group, FULL_ACCESS).ok()).isTrue();
+      assertThat(t.authentik.groupByName(group).getJSONObject("attributes").getString("qqq.io/policy")).isEqualTo(FULL_ACCESS);
+      PolicyEditorWidget.Data widget = PolicyEditorWidget.load(t.config, t.authentik.pk(group));
+      assertThat(widget.getFullAccess()).isTrue();
+      assertThat(new JSONObject(widget).getBoolean("fullAccess")).isTrue();
+      assertThat(policyRows().get(0).getValueInteger("permissionCount")).isEqualTo(all.size());
+      assertThat(widget.getDocumentProblem()).isNull();
+      assertThat(widget.getDocument()).doesNotContain(PolicyPermissions.FULL_ACCESS);
+      t.config.withHostPermissionSource((email, groups) -> Set.of());
+      assertThat(save(group, FULL_ACCESS).message()).contains("do not hold yourself");
+      assertThat(save(group, PAGE_READ_EDIT).ok()).isTrue();
+      assertThat(PolicyEditorWidget.load(t.config, t.authentik.pk(group)).getFullAccess()).isFalse();
+   }
+
+
+
+   /*******************************************************************************
+    ** A full-access operator can grant full access. Both mapper paths, comparison
+    ** and preview bases expand it, including grants outside the editor matrix.
+    *******************************************************************************/
+   @Test
+   void fullAccessGraphClaimsComparisonAndMemberPreview() throws Exception
+   {
+      t.authentik.groupByName("identity-admins").getJSONObject("attributes").put("qqq.io/policy", FULL_ACCESS);
+      assertThat(save("kof-website-analysts", FULL_ACCESS).ok()).isTrue();
+      t.authentik.user(10, "full-member", "full@example.test", "internal", true, "kof-website-analysts", "kof-website-publishers");
+      Set<String> all = PolicyPermissions.allPermissions(t.qInstance, t.admin().getUtil().getRuntime().getPermissionCatalog());
+      AuthentikGroupPermissionMapper mapper = new AuthentikGroupPermissionMapper();
+      assertThat(mapper.resolve(t.qInstance, List.of("kof-website-analysts"), "10", "full@example.test", true))
+         .containsAll(all).containsAll(PermissionsHelper.getAllAvailablePermissionNames(t.qInstance)).doesNotContain(PolicyPermissions.FULL_ACCESS);
+      t.config.withMapperEnabled(true).withMapperOverride(true);
+      QSession session = new QSession();
+      JSONObject claims = new JSONObject().put("groups", List.of()).put("sub", "10").put("qqq_policy", new JSONObject(FULL_ACCESS));
+      mapper.customizeSession(t.qInstance, session, Map.of("jwtPayloadJsonObject", claims));
+      assertThat(session.getPermissions()).containsAll(all).doesNotContain(PolicyPermissions.FULL_ACCESS);
+      assertThat(AccessComparison.run(t.config, t.admin().getUtil(), t.admin().getUtil().getRuntime().getPermissionCatalog()))
+         .anyMatch(row -> row.username().equals("full-member") && row.after().containsAll(all));
+      Map<String, Object> member = PolicyEditorWidget.load(t.config, t.authentik.pk("kof-website-publishers")).getMembers().stream()
+         .filter(row -> row.get("username").equals("full-member")).findFirst().orElseThrow();
+      assertThat((List<String>) member.get("basePermissions")).containsAll(all).doesNotContain(PolicyPermissions.FULL_ACCESS);
+      Map<String, Object> excluded = PolicyEditorWidget.load(t.config, t.authentik.pk("kof-website-analysts")).getMembers().stream()
+         .filter(row -> row.get("username").equals("full-member")).findFirst().orElseThrow();
+      assertThat((List<String>) excluded.get("basePermissions")).doesNotContain("cms_page.delete");
+   }
+
+
+
+   /*******************************************************************************
+    ** Removing a full-access policy must not remove the last qualifying admin.
+    *******************************************************************************/
+   @Test
+   void fullAccessPolicyProtectsLastAdmin() throws Exception
+   {
+      JSONObject attributes = t.authentik.groupByName("identity-admins").getJSONObject("attributes");
+      attributes.put("qqq.io/permissions", List.of()).remove("qqq.io/policy");
+      t.authentik.groupByName("kof-website-analysts").getJSONObject("attributes").put("qqq.io/policy", FULL_ACCESS);
+      t.authentik.user(10, "last-admin", "last@example.test", "internal", true, "kof-website-analysts");
+      assertThat(save("kof-website-analysts", "").message()).contains("leave nobody");
+      assertThat(t.changes()).isEmpty();
+   }
 
 
 
@@ -352,6 +440,7 @@ class PolicyEditorTest
       PolicyEditorWidget.Data broken = PolicyEditorWidget.load(t.config, groupPk);
       assertThat(broken.getDocumentProblem()).contains("not a JSON object");
       assertThat(broken.getDocument()).isNull();
+      assertThat(broken.getFullAccess()).isFalse();
 
       assertThat(PolicyEditorWidget.load(t.config, null).getGroupLabel()).isNull();
       assertThatThrownBy(() -> PolicyEditorWidget.load(t.config, "../x")).hasMessageContaining("Not a group id");
