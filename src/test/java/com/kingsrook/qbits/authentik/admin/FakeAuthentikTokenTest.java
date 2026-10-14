@@ -44,7 +44,7 @@ class FakeAuthentikTokenTest
       HttpPost request = new HttpPost("https://example.test/api/v3/core/tokens/");
       request.setHeader("Authorization", "Bearer user-bearer:3");
       request.setEntity(new StringEntity(new JSONObject().put("identifier", "caller-owned").put("user", 6)
-         .put("intent", "app_password").put("expires", Instant.now().plusSeconds(864000).toString()).toString(), ContentType.APPLICATION_JSON));
+         .put("intent", "app_password").put("expires", Instant.now().plusSeconds(600).toString()).toString(), ContentType.APPLICATION_JSON));
       JSONObject token = new JSONObject(fake.handle(request).getContent());
       assertThat(token.getInt("user")).isEqualTo(3);
       assertThat(Instant.parse(token.getString("expires"))).isBefore(Instant.now().plusSeconds(1801));
@@ -70,11 +70,19 @@ class FakeAuthentikTokenTest
       fake.seedToken("app-password", 3, "app_password", Instant.now().plusSeconds(86400).toString());
       HttpPatch patch = new HttpPatch("https://example.test/api/v3/core/tokens/app-password/");
       patch.setEntity(new StringEntity(new JSONObject().put("intent", "app_password").put("user", 3)
-         .put("expires", Instant.now().plusSeconds(100 * 86400L).toString()).toString(), ContentType.APPLICATION_JSON));
+         .put("expires", Instant.now().plusSeconds(30 * 86400L).toString()).toString(), ContentType.APPLICATION_JSON));
       JSONObject updated = new JSONObject(fake.handle(patch).getContent());
       assertThat(updated.getInt("user")).isEqualTo(3);
       assertThat(updated.getString("intent")).isEqualTo("app_password");
       assertThat(Instant.parse(updated.getString("expires"))).isBefore(Instant.now().plusSeconds(90 * 86400L + 1));
+      patch.setEntity(new StringEntity(new JSONObject().put("intent", "app_password").put("user", 3)
+         .put("expires", Instant.now().plusSeconds(100 * 86400L).toString()).toString(), ContentType.APPLICATION_JSON));
+      assertThat(fake.handle(patch).getStatusCode()).isEqualTo(400);
+      fake.brandAttributes.put("goauthentik.io/user/token-maximum-lifetime", "days=10");
+      fake.users.get(3).getJSONObject("attributes").put("goauthentik.io/user/token-maximum-lifetime", "days=365");
+      assertThat(fake.handle(patch).getStatusCode()).isEqualTo(200);
+      fake.users.get(3).getJSONObject("attributes").put("goauthentik.io/user/token-maximum-lifetime", "days=5");
+      assertThat(fake.handle(patch).getStatusCode()).isEqualTo(400);
       patch.setEntity(new StringEntity(new JSONObject().put("user", 6).toString(), ContentType.APPLICATION_JSON));
       assertThat(fake.handle(patch).getContent()).contains("User cannot be changed");
       patch.setEntity(new StringEntity("{}", ContentType.APPLICATION_JSON));

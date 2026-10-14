@@ -4,6 +4,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+- Service-account lifetime caps use the user attribute (`serviceAccountTokenLifetime`, default `days=365`), preserving other attributes and requiring no special group.
+- `TokenContractIT` on Authentik 2026.8.3 (9 tests) with the production token blueprint: token exchange as the user, the broker deny policy, the `qqq_token` claim, PATCH defaults, the expiry cap, service-account create/set_key/extend, the detective alarm, and the qbit lifecycle with the one-time key absent from audit rows and events.
+
 ### Added (access tokens, DESIGN.md section 13)
 - Default-on `TOKENS` with personal create/rotate/revoke/extend, service-account creation and rotation, protected-owner guardrails and optional two-person approval.
 - Action-scoped OAuth2 token exchange, response-only one-time key delivery (fail closed on older QQQ), generated usage instructions and non-secret token scope records.

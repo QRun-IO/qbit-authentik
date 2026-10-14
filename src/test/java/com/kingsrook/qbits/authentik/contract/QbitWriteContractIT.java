@@ -92,7 +92,7 @@ class QbitWriteContractIT
 
    private static AuthentikTestStack stack;
    private static TestApi            admin;
-   private static String             roleUuid;
+   private static List<String>       temporaryPermissions = List.of();
 
    private QInstance           qInstance;
    private AuthentikQBitConfig config;
@@ -109,8 +109,7 @@ class QbitWriteContractIT
    {
       stack = AuthentikTestStack.get();
       admin = stack.admin();
-      roleUuid = admin.first("/rbac/roles/?name=" + AuthentikTestStack.SERVICE_ACCOUNT).getString("pk");
-      admin.post("/rbac/permissions/assigned_by_roles/" + roleUuid + "/assign/", new JSONObject().put("permissions", new JSONArray(ROLE_PERMISSIONS)));
+      temporaryPermissions = stack.grantTemporaryPermissions(ROLE_PERMISSIONS);
 
       admin.post("/core/groups/", new JSONObject().put("name", "wr-admins").put("attributes",
          new JSONObject().put("qqq.io/permissions", new JSONArray(List.of("authentik.*"))).put("qqq.io/app-access", new JSONArray(List.of(AuthentikTestStack.APP_SLUG)))
@@ -139,9 +138,9 @@ class QbitWriteContractIT
    @AfterAll
    static void afterAll()
    {
-      if(admin != null && roleUuid != null)
+      if(stack != null)
       {
-         admin.patch("/rbac/permissions/assigned_by_roles/" + roleUuid + "/unassign/", new JSONObject().put("permissions", new JSONArray(ROLE_PERMISSIONS)));
+         stack.removeTemporaryPermissions(temporaryPermissions);
       }
    }
 

@@ -20,6 +20,7 @@ package com.kingsrook.qbits.authentik.contract;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.function.BooleanSupplier;
 import org.json.JSONObject;
@@ -56,8 +57,10 @@ public final class AuthentikTestStack
    public static final String BOOTSTRAP_BLUEPRINT = "kof22-identity-bootstrap";
    public static final String APP_SLUG           = "kof22-website-prod";
 
+   public static final String TOKEN_BROKER_CLIENT_SECRET = "contract-test-token-broker-secret";
+   public static final String TOKEN_BLUEPRINT = "kof22-qqq-tokens";
    private static final String SECRET_KEY        = "contract-test-secret-key-0123456789abcdefghijklmnop";
-   private static final String SA_TOKEN_ID       = "qqq-contract-test";
+   public static final String SA_TOKEN_ID       = "qqq-contract-test";
 
    private static AuthentikTestStack instance;
 
@@ -126,6 +129,7 @@ public final class AuthentikTestStack
       env.put("AUTHENTIK_DISABLE_UPDATE_CHECK", "true");
       env.put("AUTHENTIK_DISABLE_STARTUP_ANALYTICS", "true");
       env.put("KOF22_OAUTH2_CLIENT_SECRET", "contract-test-oauth2-client-secret");
+      env.put("KOF22_TOKEN_BROKER_CLIENT_SECRET", TOKEN_BROKER_CLIENT_SECRET);
 
       server = authentik(authentikImage, env, "server")
          .withNetworkAliases("authentik")
@@ -148,6 +152,7 @@ public final class AuthentikTestStack
          .withEnv(env)
          .withCommand(command)
          .withCopyFileToContainer(MountableFile.forClasspathResource("blueprints/" + INFRA_BLUEPRINT + ".yaml"), "/blueprints/custom/" + INFRA_BLUEPRINT + ".yaml")
+         .withCopyFileToContainer(MountableFile.forClasspathResource("blueprints/" + TOKEN_BLUEPRINT + ".yaml"), "/blueprints/custom/" + TOKEN_BLUEPRINT + ".yaml")
          .withCopyFileToContainer(MountableFile.forClasspathResource("blueprints/" + BOOTSTRAP_BLUEPRINT + ".yaml"), "/blueprints/custom/" + BOOTSTRAP_BLUEPRINT + ".yaml"));
    }
 
@@ -164,9 +169,26 @@ public final class AuthentikTestStack
       server.start();
 
       TestApi admin = admin();
-      waitFor(Duration.ofMinutes(8), "both kof22 blueprints applied", () ->
-         isSuccessful(admin, INFRA_BLUEPRINT) && isSuccessful(admin, BOOTSTRAP_BLUEPRINT)
-            && admin.first("/core/users/?username=" + SERVICE_ACCOUNT) != null);
+      try
+      {
+         waitFor(Duration.ofMinutes(8), "all three kof22 blueprints applied", () ->
+            isSuccessful(admin, INFRA_BLUEPRINT) && isSuccessful(admin, BOOTSTRAP_BLUEPRINT) && isSuccessful(admin, TOKEN_BLUEPRINT)
+               && admin.first("/core/users/?username=" + SERVICE_ACCOUNT) != null);
+      }
+      catch(IllegalStateException e)
+      {
+         ////////////////////////////////////////////////////////////////
+         // say which blueprint failed and why (the worker logs it)    //
+         ////////////////////////////////////////////////////////////////
+         for(String name : List.of(INFRA_BLUEPRINT, BOOTSTRAP_BLUEPRINT, TOKEN_BLUEPRINT))
+         {
+            JSONObject instance = blueprint(name);
+            System.err.println("blueprint " + name + ": " + (instance == null ? "missing" : instance.optString("status")));
+         }
+         worker.getLogs().lines().filter(line -> line.contains("blueprint") && (line.contains("error") || line.contains("warning") || line.contains("fail")))
+            .limit(60).forEach(line -> System.err.println("worker: " + line));
+         throw (e);
+      }
 
       int              serviceAccountPk = admin.userPk(SERVICE_ACCOUNT);
       TestApi.Response created          = admin.post("/core/tokens/", new JSONObject().put("identifier", SA_TOKEN_ID).put("user", serviceAccountPk).put("intent", "api").put("expiring", false));
@@ -280,6 +302,61 @@ public final class AuthentikTestStack
    public String serviceAccountToken()
    {
       return (serviceAccountToken);
+   }
+
+
+
+   /*******************************************************************************
+    ** Grant only permissions absent from the production fixture. Callers remove
+    ** exactly the returned list, preserving shared baseline role permissions.
+    *******************************************************************************/
+   public java.util.List<String> grantTemporaryPermissions(java.util.List<String> requested)
+   {
+      java.util.Set<String> baseline = new java.util.HashSet<>();
+      try(java.io.InputStream input = AuthentikTestStack.class.getResourceAsStream("/blueprints/" + BOOTSTRAP_BLUEPRINT + ".yaml"))
+      {
+         String yaml = new String(input.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+         java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?m)^        - (authentik_[a-z_]+\\.[a-z_]+)\\s*$").matcher(yaml);
+         while(matcher.find())
+         {
+            baseline.add(matcher.group(1));
+         }
+      }
+      catch(java.io.IOException e)
+      {
+         throw (new IllegalStateException("Cannot read baseline role permissions", e));
+      }
+      java.util.List<String> additional = requested.stream().filter(permission -> !baseline.contains(permission)).toList();
+      if(!additional.isEmpty())
+      {
+         String role = admin().first("/rbac/roles/?name=" + SERVICE_ACCOUNT).getString("pk");
+         TestApi.Response response = admin().post("/rbac/permissions/assigned_by_roles/" + role + "/assign/",
+            new JSONObject().put("permissions", new org.json.JSONArray(additional)));
+         if(response.status() != 200)
+         {
+            throw (new IllegalStateException("Temporary permission grant failed: HTTP " + response.status()));
+         }
+      }
+      return (additional);
+   }
+
+
+
+   /*******************************************************************************
+    ** Remove only the temporary grants, including on assertion failure.
+    *******************************************************************************/
+   public void removeTemporaryPermissions(java.util.List<String> additional)
+   {
+      if(!additional.isEmpty())
+      {
+         String role = admin().first("/rbac/roles/?name=" + SERVICE_ACCOUNT).getString("pk");
+         TestApi.Response response = admin().patch("/rbac/permissions/assigned_by_roles/" + role + "/unassign/",
+            new JSONObject().put("permissions", new org.json.JSONArray(additional)));
+         if(response.status() != 204)
+         {
+            throw (new IllegalStateException("Temporary permission cleanup failed: HTTP " + response.status()));
+         }
+      }
    }
 
 

@@ -44,6 +44,7 @@ import org.json.JSONObject;
  *******************************************************************************/
 public class FakeAuthentik
 {
+   public final JSONObject brandAttributes = new JSONObject();
    public final Map<Integer, JSONObject>        users    = new LinkedHashMap<>();
    public final Map<String, JSONObject>         groups   = new LinkedHashMap<>();
    public final Map<String, List<JSONObject>>   tokens   = new LinkedHashMap<>();
@@ -294,9 +295,10 @@ public class FakeAuthentik
          int pk = nextUserPk++;
          String name = body.getString("name");
          user(pk, name, "", "service_account", true);
+         users.get(pk).getJSONObject("attributes").put("goauthentik.io/user/token-expires", body.optBoolean("expiring", true));
          String identifier = "service-account-" + name + "-password";
-         capExpiry(seedToken(identifier, pk, "app_password", body.getString("expires")));
-         return (ok(201, new JSONObject().put("username", name).put("user_pk", pk).put("user_uid", UUID.randomUUID().toString()).put("token", tokenKeys.get(identifier))));
+         seedToken(identifier, pk, "app_password", body.getString("expires"));
+         return (ok(200, new JSONObject().put("username", name).put("user_pk", pk).put("user_uid", UUID.randomUUID().toString()).put("token", tokenKeys.get(identifier))));
       }
       if(method.equals("GET"))
       {
@@ -581,7 +583,12 @@ public class FakeAuthentik
          int owner = render(users.get(caller)).optBoolean("is_superuser") ? body.optInt("user", caller) : caller;
          JSONObject token = seedToken(body.getString("identifier"), owner, body.optString("intent", "api"), body.optString("expires", java.time.Instant.now().plusSeconds(1800).toString()));
          token.put("description", body.optString("description"));
-         capExpiry(token);
+         if(!capExpiry(token))
+         {
+            tokens.values().forEach(list -> list.remove(token));
+            tokenKeys.remove(token.getString("identifier"));
+            return (ok(400, new JSONObject().put("expires", "Token expires exceeds maximum lifetime")));
+         }
          return (ok(201, renderToken(token)));
       }
       String identifier = path.split("/")[3];
@@ -623,13 +630,18 @@ public class FakeAuthentik
          {
             return (ok(400, new JSONObject().put("user", "User cannot be changed")));
          }
+         JSONObject original = new JSONObject(token.toString());
          token.put("intent", body.optString("intent", "api")).put("user", body.optInt("user", caller));
          if(body.has("expires"))
          {
             token.put("expires", body.getString("expires"));
          }
          token.put("expiring", body.optBoolean("expiring", token.optBoolean("expiring")));
-         capExpiry(token);
+         if(!capExpiry(token))
+         {
+            original.keySet().forEach(key -> token.put(key, original.get(key)));
+            return (ok(400, new JSONObject().put("expires", "Token expires exceeds maximum lifetime")));
+         }
       }
       if(moveTokenAfterUpdate)
       {
@@ -641,30 +653,38 @@ public class FakeAuthentik
 
 
    /*******************************************************************************
-    ** Group ancestry controls app-password lifetime, otherwise thirty minutes.
+    ** Brand attributes, then group attributes, then user attributes set the cap.
     *******************************************************************************/
-   private void capExpiry(JSONObject token)
+   private boolean capExpiry(JSONObject token)
    {
       java.time.Instant now = java.time.Instant.now();
       long seconds = 1800;
       if("app_password".equals(token.optString("intent")))
       {
+         JSONObject attributes = new JSONObject(brandAttributes.toString());
          com.kingsrook.qbits.authentik.permissions.GroupGraph graph = com.kingsrook.qbits.authentik.permissions.GroupGraph.fromGroups(groups.values());
-         for(String pk : graph.groupsOfUser(token.getInt("user")))
-         {
-            for(com.kingsrook.qbits.authentik.permissions.GroupGraph.Node group : graph.selfAndAncestors(pk))
+         graph.groupsOfUser(token.getInt("user")).stream().flatMap(pk -> graph.selfAndAncestors(pk).stream())
+            .distinct().sorted(java.util.Comparator.comparing(com.kingsrook.qbits.authentik.permissions.GroupGraph.Node::name)).forEach(group ->
             {
-               String lifetime = groups.get(group.pk()).getJSONObject("attributes").optString("goauthentik.io/user/token-maximum-lifetime");
-               if(lifetime.matches("days=[0-9]+"))
-               {
-                  seconds = Math.max(seconds, Long.parseLong(lifetime.substring(5)) * 86400);
-               }
-            }
+               JSONObject values = groups.get(group.pk()).getJSONObject("attributes");
+               values.keySet().forEach(key -> attributes.put(key, values.get(key)));
+            });
+         JSONObject values = users.get(token.getInt("user")).getJSONObject("attributes");
+         values.keySet().forEach(key -> attributes.put(key, values.get(key)));
+         String lifetime = attributes.optString("goauthentik.io/user/token-maximum-lifetime");
+         if(lifetime.matches("days=[0-9]+"))
+         {
+            seconds = Long.parseLong(lifetime.substring(5)) * 86400;
          }
       }
       java.time.Instant cap = now.plusSeconds(seconds);
       java.time.Instant requested = java.time.Instant.parse(token.getString("expires"));
-      token.put("expires", "api".equals(token.optString("intent")) || requested.isAfter(cap) ? cap.toString() : requested.toString());
+      if("api".equals(token.optString("intent")))
+      {
+         token.put("expires", cap.toString());
+         return (true);
+      }
+      return (!requested.isAfter(cap));
    }
 
 

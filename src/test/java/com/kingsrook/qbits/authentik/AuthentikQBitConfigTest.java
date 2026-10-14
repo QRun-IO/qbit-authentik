@@ -218,7 +218,10 @@ class AuthentikQBitConfigTest
       assertThat(config.getTokenTwoPersonApproval()).isFalse();
       assertThat(config.getTokenEndpointUrl()).isEqualTo(config.getBaseUrl() + "/application/o/token/");
       assertThat(config.getAuthentikPublicUrl()).isEqualTo(config.getBaseUrl());
-      assertThat(config.getServiceAccountGroup()).isEqualTo("qqq-service-accounts");
+      assertThat(config.getServiceAccountTokenLifetime()).isEqualTo("days=365");
+      config.withServiceAccountTokenLifetime("days=200");
+      assertThat(config.getServiceAccountTokenLifetime()).isEqualTo("days=200");
+      config.setServiceAccountTokenLifetime("days=365");
       config.withTokenBrokerClientSecret("do-not-serialize-this");
       assertThat(config.toString()).doesNotContain("do-not-serialize-this");
       assertThat(com.kingsrook.qqq.backend.core.utils.JsonUtils.toJson(config)).doesNotContain("do-not-serialize-this");

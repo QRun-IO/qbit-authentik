@@ -111,10 +111,6 @@ public class AuthentikTokens
                }
                checkProtectedGroup(group);
             }
-            if(util.groupGraph().byName(config.getServiceAccountGroup()) == null)
-            {
-               plan.getNotes().add("Group " + config.getServiceAccountGroup() + " is missing; add it in Authentik to apply the service-account lifetime cap.");
-            }
             plan.withTargetLabel(request.str("name"));
             return (approval(plan));
          }
@@ -220,10 +216,6 @@ public class AuthentikTokens
    {
       Set<String> names = new LinkedHashSet<>(AuthentikSafety.parseList(request.str("groups")));
       GroupGraph graph = util.groupGraph();
-      if(graph.byName(config.getServiceAccountGroup()) != null)
-      {
-         names.add(config.getServiceAccountGroup());
-      }
       List<GroupGraph.Node> groups = new ArrayList<>();
       for(String name : names)
       {
@@ -562,6 +554,10 @@ public class AuthentikTokens
          {
             throw (new QException("The service account could not be found."));
          }
+         JSONObject current = owner(pk);
+         JSONObject attributes = new JSONObject(current.optJSONObject("attributes") == null ? "{}" : current.getJSONObject("attributes").toString());
+         attributes.put("goauthentik.io/user/token-maximum-lifetime", config.getServiceAccountTokenLifetime());
+         util.write(auth, "PATCH", "/core/users/" + pk + "/", new JSONObject().put("attributes", attributes));
          for(GroupGraph.Node group : serviceGroups(request))
          {
             checkProtectedGroup(group);
@@ -574,12 +570,7 @@ public class AuthentikTokens
          }
          JSONObject owner = owner(pk);
          checkProtected(owner);
-         // Membership establishes Authentik's lifetime cap after account creation.
-         JSONObject before = token(identifier);
-         util.write(auth, "PATCH", path(identifier), new JSONObject().put("intent", before.getString("intent"))
-            .put("user", pk).put("expires", expiry(request, true).toString()).put("expiring", true));
          JSONObject after = token(identifier);
-         raceGuard(before, after);
          scopes.create(identifier, owner, request, admin.operator().email());
          return (success("Service account created. " + String.join(" ", plan.getNotes()))
             .withSecret(oneTime(identifier, created.getString("token"), owner, checkExpiry(after, true), "Owner permissions"),

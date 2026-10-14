@@ -71,9 +71,7 @@ class TokenManagementTest
       t.authentik.group("token-users", false, List.of(), List.of());
       t.authentik.groupByName("token-users").getJSONObject("attributes").put("goauthentik.io/user/token-maximum-lifetime", "days=90");
       t.authentik.groupByName("token-users").getJSONArray("users").put(3);
-      t.authentik.group("qqq-service-accounts", false, List.of(), List.of());
-      t.authentik.groupByName("qqq-service-accounts").getJSONObject("attributes").put("goauthentik.io/user/token-maximum-lifetime", "days=365");
-      t.authentik.groupByName("qqq-service-accounts").getJSONArray("users").put(6);
+      t.authentik.users.get(6).getJSONObject("attributes").put("goauthentik.io/user/token-maximum-lifetime", "days=365");
       t.loginAs("sam@example.test");
       TokenKeyDelivery.set((output, key) -> delivered.add(key));
       appender = new AbstractAppender("token-test-capture", null, null, false, Property.EMPTY_ARRAY)
@@ -208,7 +206,7 @@ class TokenManagementTest
    }
 
    /*******************************************************************************
-    ** Service creation grants the lifetime group and requested subset groups.
+    ** Service creation sets a user lifetime cap and grants only requested groups.
     *******************************************************************************/
    @Test
    void serviceAccountAndSubsetRule() throws QException
@@ -219,7 +217,9 @@ class TokenManagementTest
       AuthentikAdmin.AdminResult result = t.admin().execute(request);
       assertThat(result.ok()).as(result.message()).isTrue();
       Integer pk = t.admin().userPkByUsername("new-service");
-      assertThat(t.authentik.groupNamesOf(pk)).contains("qqq-service-accounts", "kof-website-publishers");
+      assertThat(t.authentik.groupNamesOf(pk)).containsExactly("kof-website-publishers");
+      assertThat(t.authentik.users.get(pk).getJSONObject("attributes").getString("goauthentik.io/user/token-maximum-lifetime")).isEqualTo("days=365");
+      assertThat(t.authentik.users.get(pk).getJSONObject("attributes").getBoolean("goauthentik.io/user/token-expires")).isTrue();
       OneTimeKey key = result.takeSecret();
       assertThat(key.label()).isEqualTo("service-account-new-service-password");
       assertNoKey(key, result);
@@ -471,7 +471,7 @@ class TokenManagementTest
     ** Replanning closes a stale Review after a new protected-group membership.
     *******************************************************************************/
    @Test
-   void rechecksProtectionAndReportsMissingServiceGroup() throws QException
+   void rechecksProtectionAndNeedsNoServiceGroup() throws QException
    {
       AdminPlan plan = t.admin().plan(create());
       assertThat(plan.isRunnable()).isTrue();
@@ -479,11 +479,10 @@ class TokenManagementTest
       assertThat(t.admin().execute(plan, null).ok()).isFalse();
       assertThat(t.authentik.tokenKeys).isEmpty();
       t.loginAs("operator@example.test", IdentityPermission.values());
-      t.authentik.groups.remove(t.authentik.pk("qqq-service-accounts"));
       AuthentikAdmin.AdminResult result = t.admin().execute(AdminRequest.of(AdminAction.CREATE_SERVICE_ACCOUNT, "", "automation")
          .with("name", "missing-group").with("expiresInDays", 10));
       assertThat(result.ok()).as(result.message()).isTrue();
-      assertThat(result.message()).contains("is missing");
+      assertThat(result.message()).doesNotContain("is missing");
       assertThat(result.takeSecret().usageText()).contains("Expires:");
    }
 

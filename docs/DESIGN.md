@@ -72,7 +72,7 @@ Seven design rules shape everything below:
 | 27 | **Guardrails** (§13.4): (a) no minting or rotating for privileged accounts, in the qbit and again in Authentik; (b) self-service is self-only, admins may also target service accounts, never another human; (c) expiry is required, at most 90 days for people and 365 for service accounts (configurable); (d) optional two-person approval for service-account tokens (off by default); (e) an Authentik notification rule fires if the qbit's service account ever touches a protected user's token; (f) everything audited with the client channel. |
 | 28 | **Optional per-token scopes** (read only; specific apps and tables), narrower than the user, stored in `authentik_token_scope` and enforced by core scoped credentials (QRun-IO/qqq#1153, `QCredentialScope`) through a signed `qqq_token` claim (§13.5). |
 | 29 | **First class:** usage instructions generated from the instance's real URLs; expiry reminders 7 days and 1 day before (bell and email); last used; an unused-token cleanup suggestion; admin views by user and by age with bulk revoke; the doc page [`ACCESS-TOKENS.md`](ACCESS-TOKENS.md). |
-| 30 | **Owner-approved revision of the mechanism (2026-10-13, coordinator-approved under the owner's direction).** Authentik 2026.8.3 always creates a token for the *caller* unless the caller is a superuser (`TokenViewSet.perform_create`), so `add_token` cannot mint for anyone else (§13.2). The qbit therefore creates a person's token **as that person**, through RFC 8693 token exchange with a 2-minute API token from the `qqq-<appKey>-token-broker` provider (with a deny policy for protected users). Service accounts use `POST /core/users/service_account/` (create), `set_key` (rotate) and `PATCH` (extend). The qbit role gains `change_token` and `set_token_key`, keeps `delete_token` and `add_user`, and **never** holds `add_token` or `view_token_key`. Limitation: one app password per service account. |
+| 30 | **Owner-approved revision of the mechanism (2026-10-13, coordinator-approved under the owner's direction).** Authentik 2026.8.3 always creates a token for the *caller* unless the caller is a superuser (`TokenViewSet.perform_create`), so `add_token` cannot mint for anyone else (§13.2). The qbit therefore creates a person's token **as that person**, through RFC 8693 token exchange with a 2-minute API token from the `qqq-<appKey>-token-broker` provider (with a deny policy for protected users). Service accounts use `POST /core/users/service_account/` (create), `set_key` (rotate) and `PATCH` (extend). The qbit role gains `change_token`, `set_token_key` and `add_token`, keeps `delete_token` and `add_user`, and **never** holds `view_token_key`. `add_token` was found necessary by the contract tests (`service_account` needs `add_user` + `add_token`; `set_key` needs the POST object permission `add_token` + `set_token_key`) and is safe because a non-superuser's create is always the caller's (§13.9). Limitation: one app password per service account. |
 
 ### 0.2 Phase 0 findings (2026-10-11, verified on Authentik 2026.8.3)
 
@@ -624,7 +624,7 @@ The role `qqq-<appKey>-idadmin` is assigned directly to the service account (boo
 
 **Never granted:**
 - `enable_group_superuser` / `disable_group_superuser`. Authentik then refuses every route into superuser ancestry: membership (direct, bulk, by user or by group), `parents` under a superuser group or any descendant, creating a group under one, and flipping `is_superuser` (verified, §0.2 ii).
-- `view_token_key` and `add_token` (MHP APPS-1462). `set_token_key` is granted since revision 6 for service-account rotation only, behind §13.4 (§13.2 explains why `add_token` would not help anyway)
+- `view_token_key` (MHP APPS-1462). Since revision 6, `set_token_key` and `add_token` are granted for service-account creation and rotation only, behind §13.4; `add_token` cannot mint for others (§13.2, §13.9)
 - `impersonate`; `delete_user` and `delete_group` unless the `DELETE` feature is on (§12.5)
 - any `change_*` on flows, stages, providers, applications, policies, bindings, brands or blueprints
 - any change on its own role. Role permissions are object permissions excluding `qqq-*` roles, and the guard also refuses.
@@ -1319,6 +1319,8 @@ API-intent tokens (`intent: api`) call Authentik's own API, not the app. QQQ lis
 
 **Limitation (decision 30).** A service account has exactly one app password: the one `service_account` creates. Only a superuser could add a second. To run two credentials side by side, create a second service account.
 
+**Contract finding (2026-10-13, verified on 2026.8.3).** `UserViewSet.service_account` requires `add_user` **and** `add_token`, and `POST …/set_key/` requires `add_token` (Authentik's `ObjectPermissions` maps a detail POST to `add_*`) as well as `set_token_key`. Without `add_token` both return 403. The role therefore holds `add_token` (§13.9); `TokenContractIT` pins both behaviours.
+
 **Race guard.** Before an extend or a rotate, the qbit reads the token (owner pk and intent), and it reads the token again after the `PATCH` or `set_key`. If the owner or the intent changed:
 - the run fails;
 - the audit row is `FAILED` with "token moved";
@@ -1438,9 +1440,11 @@ Reminders are deduplicated through `lastReminder7d` and `lastReminder1d`. Tokens
 ### 13.9 Authentik changes (cluster-gitops, kof22)
 
 **The qbit role** `qqq-kof22-admin-idadmin`:
-- add `authentik_core.change_token` and `authentik_core.set_token_key`;
+- add `authentik_core.change_token`, `authentik_core.set_token_key` and `authentik_core.add_token`;
 - it already has `delete_token`, `view_token` and `add_user`;
-- **not** `add_token` or `view_token_key`.
+- **not** `view_token_key`.
+
+`add_token` is safe here: for a non-superuser, `POST /core/tokens/` always creates the token for the **caller**, so it can never mint a token for someone else. It is required by `service_account` and by `set_key` (the POST object permission).
 
 **New Authentik objects:**
 - the broker provider and application, with the deny policy (§13.3.1);
@@ -1463,6 +1467,7 @@ Reminders are deduplicated through `lastReminder7d` and `lastReminder1d`. Tokens
 |---|---|---|
 | `tokensEnabled` | `true` when any write feature is on | Opt-out (`AUTHENTIK_QBIT_TOKENS=false`) |
 | `tokenMaxDaysUser` / `tokenMaxDaysServiceAccount` | 90 / 365 | Guardrail (c) |
+| `serviceAccountTokenLifetime` | `days=365` | Authentik lifetime cap merged into each newly created service account's USER attributes |
 | `tokenProtectedGroups` | `authentik Admins`, `identity-admins` | Added to the hard-coded classes of guardrail (a) |
 | `tokenTwoPersonApproval` | `false` | Guardrail (d) |
 | `tokenScopesEnabled` | `false` | Offer scopes once the claim mapping is installed |

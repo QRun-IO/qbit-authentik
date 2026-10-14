@@ -68,7 +68,7 @@ public class AuthentikQBitConfig implements QBitConfig
    private String authentikPublicUrl = null;
    private String appClientId = null;
    private Integer tokenUnusedDays = 60;
-   private String serviceAccountGroup = "qqq-service-accounts";
+   private String serviceAccountTokenLifetime = "days=365";
    private com.kingsrook.qbits.authentik.client.AuthentikSubjectTokenSource subjectTokenSource = new com.kingsrook.qbits.authentik.client.OAuth2SubjectTokenSource();
 
    private String                baseUrl;
@@ -500,7 +500,7 @@ public class AuthentikQBitConfig implements QBitConfig
          + ", authentikPublicUrl=" + authentikPublicUrl
          + ", appClientId=" + appClientId
          + ", tokenUnusedDays=" + tokenUnusedDays
-         + ", serviceAccountGroup=" + serviceAccountGroup
+         + ", serviceAccountTokenLifetime=" + serviceAccountTokenLifetime
          + ", features=" + features + ", readOnly=" + readOnly + ", apiToken=" + (StringUtils.hasContent(apiToken) ? "******" : "(unset)") + "}");
    }
 
@@ -1811,31 +1811,31 @@ public class AuthentikQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
-    ** Getter for serviceAccountGroup.
+    ** Getter for serviceAccountTokenLifetime.
     *******************************************************************************/
-   public String getServiceAccountGroup()
+   public String getServiceAccountTokenLifetime()
    {
-      return (serviceAccountGroup);
+      return (serviceAccountTokenLifetime);
    }
 
 
 
    /*******************************************************************************
-    ** Setter for serviceAccountGroup.
+    ** Setter for serviceAccountTokenLifetime.
     *******************************************************************************/
-   public void setServiceAccountGroup(String serviceAccountGroup)
+   public void setServiceAccountTokenLifetime(String serviceAccountTokenLifetime)
    {
-      this.serviceAccountGroup = serviceAccountGroup;
+      this.serviceAccountTokenLifetime = serviceAccountTokenLifetime;
    }
 
 
 
    /*******************************************************************************
-    ** Fluent setter for serviceAccountGroup.
+    ** Fluent setter for serviceAccountTokenLifetime.
     *******************************************************************************/
-   public AuthentikQBitConfig withServiceAccountGroup(String serviceAccountGroup)
+   public AuthentikQBitConfig withServiceAccountTokenLifetime(String serviceAccountTokenLifetime)
    {
-      this.serviceAccountGroup = serviceAccountGroup;
+      this.serviceAccountTokenLifetime = serviceAccountTokenLifetime;
       return (this);
    }
 
