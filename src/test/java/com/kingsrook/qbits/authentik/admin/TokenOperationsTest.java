@@ -252,7 +252,7 @@ class TokenOperationsTest
       assertThat(data.getRows()).filteredOn(row -> "Owner deactivated".equals(row.get("category"))).hasSize(1);
       assertThat(data.getRows().toString()).contains("?filter=", "identifier", "username").doesNotContain("lastUsed%22");
       QWidgetMetaData widget = (QWidgetMetaData) t.qInstance.getWidget("authentikAccessTokens");
-      assertThat(widget.getType()).isEqualTo("TABLE");
+      assertThat(widget.getType()).isEqualTo(com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType.TABLE.getType());
       assertThat(new AuthentikTokenWidget().render(new RenderWidgetInput().withWidgetMetaData(widget))).isNotNull();
       t.config.withTokenUnusedDays(120);
       assertThat(AuthentikTokenWidget.data(util, now).getRows()).noneMatch(row -> "Unused for 120 days".equals(row.get("category")));
