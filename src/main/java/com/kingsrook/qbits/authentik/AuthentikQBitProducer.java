@@ -24,6 +24,7 @@ import java.util.Properties;
 import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
 import com.kingsrook.qbits.authentik.app.AuthentikRelations;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
+import com.kingsrook.qbits.authentik.health.AuthentikHealthChecks;
 import com.kingsrook.qbits.authentik.metadata.AuthentikAppMetaDataProducer;
 import com.kingsrook.qbits.authentik.processes.AuthentikProcesses;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -184,6 +185,7 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
       MetaDataProducerMultiOutput output = QBitMetaDataProducer.super.produce(qInstance);
       output.addSelfToInstance(qInstance);
 
+      AuthentikHealthChecks.register(qInstance, qBitConfig);
       addPossibleValueSources(qInstance);
       AuthentikRelations.apply(qInstance, qBitConfig);
       for(QProcessMetaData process : AuthentikProcesses.processes(qBitConfig))
