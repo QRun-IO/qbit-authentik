@@ -2,7 +2,7 @@
 
 A QQQ QBit to manage [Authentik](https://goauthentik.io) identities from a QQQ app: **the full user lifecycle, and groups with the permissions they grant**. Authentik stays the source of truth. The qbit reads Authentik live and writes through the Authentik API, never its database. Changes made in the Authentik admin UI are equally valid, and the qbit never overwrites them blindly.
 
-Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the approved spec, QRun-IO/qqq#1065). Status: [`docs/STATUS.md`](docs/STATUS.md). Phase 0 owner steps: [`docs/PHASE0-OWNER-CHECKLIST.md`](docs/PHASE0-OWNER-CHECKLIST.md). Table DDL: [`docs/schema.sql`](docs/schema.sql).
+Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the approved spec, QRun-IO/qqq#1065). Access tokens (PATs): [`docs/ACCESS-TOKENS.md`](docs/ACCESS-TOKENS.md). Status: [`docs/STATUS.md`](docs/STATUS.md). Phase 0 owner steps: [`docs/PHASE0-OWNER-CHECKLIST.md`](docs/PHASE0-OWNER-CHECKLIST.md). Table DDL: [`docs/schema.sql`](docs/schema.sql).
 
 ## What you get
 
