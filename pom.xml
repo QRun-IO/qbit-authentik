@@ -245,7 +245,8 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.2</qqq.snapshot.version>
+            <!-- STAND-IN(core=QRun-IO/qqq#1162, removeBy=4.1.0-RC.7): local build of feature/user-preferences; switch to the RC that ships #1162 -->
+            <qqq.snapshot.version>4.1.0-PREFS-SNAPSHOT</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

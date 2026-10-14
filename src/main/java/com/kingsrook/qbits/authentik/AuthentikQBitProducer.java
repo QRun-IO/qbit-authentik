@@ -25,6 +25,7 @@ import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
 import com.kingsrook.qbits.authentik.app.AuthentikRelations;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qbits.authentik.metadata.AuthentikAppMetaDataProducer;
+import com.kingsrook.qbits.authentik.preferences.AccessTokenPreferences;
 import com.kingsrook.qbits.authentik.processes.AuthentikProcesses;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
@@ -185,6 +186,10 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
       output.addSelfToInstance(qInstance);
 
       addPossibleValueSources(qInstance);
+      if(qBitConfig.hasFeature(AuthentikFeature.TOKENS))
+      {
+         AccessTokenPreferences.register(qInstance, qBitConfig);
+      }
       AuthentikRelations.apply(qInstance, qBitConfig);
       for(QProcessMetaData process : AuthentikProcesses.processes(qBitConfig))
       {

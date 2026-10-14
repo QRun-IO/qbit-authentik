@@ -12,6 +12,17 @@ The Authentik qbit's progress through DESIGN.md section 11, with links. Updated 
 | 3. Full user lifecycle | done, except the optional snapshot export |
 | 4. RBAC role management | post-v1, not started |
 | 5. Policies and full CRUD (DESIGN.md section 12) | 5a policy model (#14), 5b policy editor (#15), 5c user and group CRUD additions; the Next UI widget is a separate qqq-frontend-next PR |
+| 6d. Personal access token Preferences | implemented on `feature/token-preferences`; draft until a QQQ RC contains QRun-IO/qqq#1162 |
+
+### Phase 6d: Access tokens Preferences
+
+The `TOKENS` feature registers the `access-tokens` section and user-menu shortcut without an app or permission gate. The provider resolves the current Authentik operator and reads only their app passwords, with read-only metadata and optional scope inputs. Create, rotate, extend and revoke use `AuthentikAdmin`, including live protection/ownership checks, broker exchange and audit. Preferences uses core's one-time secret response independently of process delivery; keys never enter section values or local storage.
+
+This branch builds against the locally installed `4.1.0-PREFS-SNAPSHOT`. Keep any PR draft until the RC shipping #1162 is available, then replace the marked POM stand-in. Last-used tracking is not implemented in this branch, so the section omits it. Next UI renders the section and user-menu entry through the core Preferences contract.
+
+`AccessTokenPreferencesTest` exercises the core dispatcher with FakeAuthentik and an in-memory QInstance, including lifecycle, scoped rotation, ownership, protected-user/broker refusals, read-only validation, and searches of local tables, audit, reloaded section values, events and captured logs for leaked keys.
+
+Validation (2026-10-13): `./mvnw.cmd -q -o verify -DskipITs` passed on Windows: 253 tests, no failures/errors/skips; JaCoCo 91.48% instruction and 100% class coverage. Contract ITs were intentionally excluded.
 
 ### Built in this line (0.1)
 
