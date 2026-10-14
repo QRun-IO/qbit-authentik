@@ -130,6 +130,10 @@ public class AuthentikTokens
          boolean own = Objects.equals(operatorPk, ownerPk);
          boolean service = "service_account".equals(owner.optString("type"));
          boolean manager = AuthentikGuard.has(QContext.getQSession(), IdentityPermission.TOKENS_MANAGE);
+         if(isPreferences(request) && (!own || service || token != null && !"app_password".equals(token.optString("intent"))))
+         {
+            return (plan.refuse("Preferences only manages your own personal app-password tokens."));
+         }
          if(service && action == AdminAction.CREATE_TOKEN)
          {
             return (plan.refuse("Service accounts have one app password. Use Rotate Token or Create Service Account."));
@@ -169,7 +173,7 @@ public class AuthentikTokens
          }
          if(action == AdminAction.CREATE_TOKEN || action == AdminAction.ROTATE_TOKEN)
          {
-            if(!TokenKeyDelivery.get().available())
+            if(!isPreferences(request) && !TokenKeyDelivery.get().available())
             {
                return (plan.refuse(DELIVERY_UNAVAILABLE));
             }
@@ -402,7 +406,7 @@ public class AuthentikTokens
    {
       AdminRequest request = plan.getRequest();
       if((request.action() == AdminAction.CREATE_TOKEN || request.action() == AdminAction.ROTATE_TOKEN || request.action() == AdminAction.CREATE_SERVICE_ACCOUNT)
-         && !TokenKeyDelivery.get().available())
+         && (!isPreferences(request) || request.action() == AdminAction.CREATE_SERVICE_ACCOUNT) && !TokenKeyDelivery.get().available())
       {
          throw (new QUserFacingException(DELIVERY_UNAVAILABLE));
       }
@@ -416,6 +420,10 @@ public class AuthentikTokens
       boolean service = "service_account".equals(owner.optString("type"));
       boolean own = Objects.equals(admin.operator().pk(), owner.getInt("pk"));
       boolean manager = AuthentikGuard.has(QContext.getQSession(), IdentityPermission.TOKENS_MANAGE);
+      if(isPreferences(request) && (!own || service || before != null && !"app_password".equals(before.optString("intent"))))
+      {
+         throw (new QUserFacingException("Preferences only manages your own personal app-password tokens."));
+      }
       if((!own || service) && !manager || !own && !service && request.action() != AdminAction.REVOKE_TOKEN)
       {
          throw (new QUserFacingException("Token ownership changed; review again."));
@@ -606,7 +614,7 @@ public class AuthentikTokens
    /*******************************************************************************
     ** Scope summary contains metadata only.
     *******************************************************************************/
-   private String scopeSummary(String identifier) throws QException
+   public String scopeSummary(String identifier) throws QException
    {
       QRecord row = scopes.find(identifier);
       List<String> parts = new ArrayList<>();
@@ -618,6 +626,16 @@ public class AuthentikTokens
          }
       }
       return (parts.isEmpty() ? "Owner permissions" : String.join("; ", parts));
+   }
+
+
+
+   /*******************************************************************************
+    ** Preferences has core's response-only secret channel, independent of processes.
+    *******************************************************************************/
+   private static boolean isPreferences(AdminRequest request)
+   {
+      return ("preferences".equals(request.str("deliveryChannel")));
    }
 
 

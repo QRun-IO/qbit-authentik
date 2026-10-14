@@ -156,6 +156,22 @@ public class AuthentikGuard
 
 
    /*******************************************************************************
+    ** Self-service metadata reads need a signed-in person, not table permissions.
+    ** The Preferences provider must additionally constrain every read to that owner.
+    *******************************************************************************/
+   public void checkTokenPreferencesRead() throws QPermissionDeniedException
+   {
+      QSession session = QContext.getQSession();
+      requireUser(session);
+      if(session instanceof QSystemUserSession || !config.hasFeature(AuthentikFeature.READ) || !config.hasFeature(AuthentikFeature.TOKENS))
+      {
+         throw (new QPermissionDeniedException("Access token preferences are not available."));
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Whether the current session may see and filter sensitive fields.
     *******************************************************************************/
    public boolean maySeeSensitive()
