@@ -532,7 +532,22 @@ public class FakeAuthentik
       }
       if(path.equals("/events/events/"))
       {
-         return (page(loginEvents));
+         List<JSONObject> selected = new ArrayList<>(loginEvents);
+         String action = first(query, "action");
+         if(action != null)
+         {
+            selected.removeIf(event -> !action.equals(event.optString("action")));
+         }
+         if("-created".equals(first(query, "ordering")))
+         {
+            selected.sort(java.util.Comparator.comparing((JSONObject event) -> java.time.Instant.parse(event.getString("created"))).reversed());
+         }
+         int size = query.containsKey("page_size") ? Integer.parseInt(first(query, "page_size")) : 100;
+         int number = query.containsKey("page") ? Integer.parseInt(first(query, "page")) : 1;
+         int from = Math.min(selected.size(), (number - 1) * size);
+         int to = Math.min(selected.size(), from + size);
+         return (ok(200, new JSONObject().put("pagination", new JSONObject().put("count", selected.size()).put("current", number)
+            .put("total_pages", Math.max(1, (selected.size() + size - 1) / size))).put("results", new JSONArray(selected.subList(from, to)))));
       }
       if(path.equals("/managed/blueprints/") || path.equals("/core/applications/"))
       {

@@ -167,6 +167,13 @@ public class AuthentikTokens
                return (plan.refuse("Scopes are not enabled on this app yet."));
             }
          }
+         if(action == AdminAction.CREATE_TOKEN && Boolean.TRUE.equals(config.getTokenScopesEnabled()))
+         {
+            com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.validate(request);
+            QRecord scope = new QRecord();
+            request.params().forEach(scope::setValue);
+            plan.withChange(null, TokenScopeStore.summary(scope));
+         }
          if(action == AdminAction.CREATE_TOKEN || action == AdminAction.ROTATE_TOKEN)
          {
             if(!TokenKeyDelivery.get().available())
@@ -412,7 +419,7 @@ public class AuthentikTokens
       }
       JSONObject before = request.action() == AdminAction.CREATE_TOKEN ? null : token(request.targetKey());
       JSONObject owner = owner(before == null ? admin.operator().pk() : ownerPk(before));
-      checkProtected(owner);
+      checkProtectedAfterRead(owner);
       boolean service = "service_account".equals(owner.optString("type"));
       boolean own = Objects.equals(admin.operator().pk(), owner.getInt("pk"));
       boolean manager = AuthentikGuard.has(QContext.getQSession(), IdentityPermission.TOKENS_MANAGE);
@@ -433,6 +440,7 @@ public class AuthentikTokens
             util.writeAs(bearer, auth, "PATCH", path(request.targetKey()), new JSONObject().put("intent", before.getString("intent"))
                .put("user", owner.getInt("pk")).put("expires", expiry(request, service).toString()).put("expiring", true));
             raceGuard(before, token(request.targetKey()));
+            scopes.resetReminders(request.targetKey());
             return (success("Token expiry updated."));
          case ROTATE_TOKEN:
             if(!service)
@@ -462,13 +470,15 @@ public class AuthentikTokens
    /*******************************************************************************
     ** Guard owner and intent after every PATCH or set_key, with a safe warning.
     *******************************************************************************/
-   private static void raceGuard(JSONObject before, JSONObject after) throws QUserFacingException
+   private void raceGuard(JSONObject before, JSONObject after) throws QException
    {
       if(ownerPk(before) != ownerPk(after) || !before.getString("intent").equals(after.getString("intent")))
       {
+         alertGuardBypass();
          LOG.warn(TOKEN_MOVED);
          throw (new QUserFacingException(TOKEN_MOVED));
       }
+      checkProtectedAfterRead(owner(ownerPk(after)));
    }
 
 
@@ -487,6 +497,7 @@ public class AuthentikTokens
       try
       {
          JSONObject created = util.getAs(bearer, auth, path(identifier));
+         checkProtectedAfterRead(owner(ownerPk(created)));
          if(ownerPk(created) != owner.getInt("pk") || !"app_password".equals(created.optString("intent")))
          {
             throw (new QUserFacingException(TOKEN_MOVED));
@@ -569,8 +580,9 @@ public class AuthentikTokens
             util.write(auth, "POST", "/core/groups/" + AuthentikAdmin.safeKey(group.pk()) + "/add_user/", new JSONObject().put("pk", pk));
          }
          JSONObject owner = owner(pk);
-         checkProtected(owner);
+         checkProtectedAfterRead(owner);
          JSONObject after = token(identifier);
+         checkProtectedAfterRead(owner(ownerPk(after)));
          scopes.create(identifier, owner, request, admin.operator().email());
          return (success("Service account created. " + String.join(" ", plan.getNotes()))
             .withSecret(oneTime(identifier, created.getString("token"), owner, checkExpiry(after, true), "Owner permissions"),
@@ -656,4 +668,36 @@ public class AuthentikTokens
       String slug = username.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9-]+", "-");
       return ("qqq-pat-" + slug + "-" + DateTimeFormatter.ofPattern("yyyyMMdd").withZone(ZoneOffset.UTC).format(Instant.now()) + "-" + suffix);
    }
+   /*******************************************************************************
+    ** A protected owner observed after Review or a write is a guard incident.
+    *******************************************************************************/
+   private void checkProtectedAfterRead(JSONObject owner) throws QException
+   {
+      try
+      {
+         checkProtected(owner);
+      }
+      catch(QUserFacingException e)
+      {
+         alertGuardBypass();
+         throw (e);
+      }
+   }
+
+   /*******************************************************************************
+    ** Safe incident payload: no response bodies, credentials or owner details.
+    *******************************************************************************/
+   private void alertGuardBypass()
+   {
+      try
+      {
+         util.getRuntime().getTokenAlerts().send(new AuthentikTokenAlerts.Notice("authentik_token_guard_bypass", "high", null,
+            "An access token changed owner or intent, or a protected owner was observed after Review. Investigate in Authentik."));
+      }
+      catch(RuntimeException e)
+      {
+         LOG.warn("Access-token guard alert delivery failed.");
+      }
+   }
+
 }

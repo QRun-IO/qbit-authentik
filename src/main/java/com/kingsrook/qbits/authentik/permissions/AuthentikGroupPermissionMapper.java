@@ -170,6 +170,7 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
          permissions.addAll(qSession.getPermissions());
       }
       qSession.setPermissions(permissions);
+      com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.apply(qInstance, qSession, claims);
    }
 
 

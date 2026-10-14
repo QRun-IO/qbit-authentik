@@ -74,6 +74,12 @@ Seven design rules shape everything below:
 | 29 | **First class:** usage instructions generated from the instance's real URLs; expiry reminders 7 days and 1 day before (bell and email); last used; an unused-token cleanup suggestion; admin views by user and by age with bulk revoke; the doc page [`ACCESS-TOKENS.md`](ACCESS-TOKENS.md). |
 | 30 | **Owner-approved revision of the mechanism (2026-10-13, coordinator-approved under the owner's direction).** Authentik 2026.8.3 always creates a token for the *caller* unless the caller is a superuser (`TokenViewSet.perform_create`), so `add_token` cannot mint for anyone else (§13.2). The qbit therefore creates a person's token **as that person**, through RFC 8693 token exchange with a 2-minute API token from the `qqq-<appKey>-token-broker` provider (with a deny policy for protected users). Service accounts use `POST /core/users/service_account/` (create), `set_key` (rotate) and `PATCH` (extend). The qbit role gains `change_token`, `set_token_key` and `add_token`, keeps `delete_token` and `add_user`, and **never** holds `view_token_key`. `add_token` was found necessary by the contract tests (`service_account` needs `add_user` + `add_token`; `set_key` needs the POST object permission `add_token` + `set_token_key`) and is safe because a non-superuser's create is always the caller's (§13.9). Limitation: one app password per service account. |
 
+**Owner decision (2026-10-14): `add_token` (option A).** The contract tests showed that Authentik 2026.8.3 requires `add_token` for `POST /core/users/service_account/` (with `add_user`) and for `POST /core/tokens/{id}/set_key/` (the POST object permission, with `set_token_key`).
+
+| # | Decision |
+|---|---|
+| 31 | **Grant `add_token` to the qbit role, so service-account creation and rotation stay in the app.** It is safe: for a non-superuser, `POST /core/tokens/` always creates the token for the caller, so it can never mint a token for anyone else. `view_token_key` stays **not** granted. `TokenContractIT` pins 403 without `add_token` and 200/204 with it. The detective alarm (§13.4 e) also notifies `identity-admins` whenever the qbit's account creates a service account. The blueprint explains this next to the permission (cluster-gitops#103). |
+
 ### 0.2 Phase 0 findings (2026-10-11, verified on Authentik 2026.8.3)
 
 The four open points of revision 2 were resolved against a disposable Authentik 2026.8.3 (Testcontainers contract tests in `QRun-IO/qbit-authentik`). Six further facts changed the design; each is pinned by a contract test, so an Authentik upgrade that changes it fails CI.
@@ -1289,7 +1295,7 @@ A QQQ access token is an Authentik **app password** (`intent: app_password`) own
    - `password={token}`
    - `scope=openid profile email`
 
-   Authentik checks that the owner is active, that the token exists with intent `app_password`, and that the app's policies let the owner in. It records a `login` event with `method: token` and the token's identifier.
+   No client secret: Authentik 2026.8.3 authenticates this grant by the username and app password, even for a confidential client (client authentication is required only for the code, refresh, device and token-exchange grants; pinned by `TokenContractIT`). Authentik checks that the owner is active, that the token exists with intent `app_password`, and that the app's policies let the owner in. It records a `login` event with `method: token` and the token's identifier.
 2. **Call the app** (`/qqq/v1/...` and the published APIs) with `Authorization: Bearer {jwt}`. When the JWT expires (the provider's access-token validity), exchange the token again.
 
 The qbit generates these instructions from the instance's real URLs (§13.7).
@@ -1362,7 +1368,7 @@ Without a broker, the self-service actions are hidden, and Review says why.
 | (b) | **Self-service is self-only.** A person without `authentik.tokens.manage` may target only themselves. An admin may also target service accounts, but **never another human**; this covers create, rotate and extend. Revoke is the exception: for incident response, an admin may revoke any token whose owner isn't protected. | The qbit guard; Authentik itself for the as-user calls |
 | (c) | **Expiry is required.** There's no non-expiring option. The maximum is `tokenMaxDaysUser` (default 90) for people and `tokenMaxDaysServiceAccount` (default 365) for service accounts. Extend counts from now. Authentik's group attribute is a second cap. | The qbit (Review refuses); Authentik (`token-maximum-lifetime`) |
 | (d) | **Two-person approval** for service-account tokens (create service account, rotate): `tokenTwoPersonApproval`, default **off** while the team is one person. When on, the change is queued in `authentik_approval_request`, and the key is shown to the approver who applies it. | The qbit |
-| (e) | **Detective control.** An Authentik notification rule and an expression policy fire whenever the qbit's service account creates or updates a token whose owner is protected, reads its key, or sets its key (`model_created`, `model_updated`, `secret_view` or `secret_rotate` on `authentik_core.token`). They notify `identity-admins` through Authentik notifications. The rule should never fire; if it does, guard (a) was bypassed. | The Authentik blueprint (§13.9). The qbit also raises an `authentik_token_guard_bypass` alert through the Alerts producer when its own re-read finds a protected owner. |
+| (e) | **Detective control.** An Authentik notification rule and an expression policy fire whenever the qbit's service account creates or updates a token whose owner is protected, reads its key, or sets its key (`model_created`, `model_updated`, `secret_view` or `secret_rotate` on `authentik_core.token`). They notify `identity-admins` through Authentik notifications. The rule should never fire; if it does, guard (a) was bypassed. It also notifies `identity-admins` whenever the qbit's account creates a service account (decision 31). | The Authentik blueprint (§13.9). The qbit also raises an `authentik_token_guard_bypass` alert through the Alerts producer when its own re-read finds a protected owner. |
 | (f) | **Everything is audited.** Before each call, every action writes an `authentik_admin_action` row with the client channel (`audit.clientChannel`, for example `web`, `api` or `token:{identifier}`), plus an Authentik `custom_qqq_admin_action` event. The assistant can't reach these tables or actions, because the assistant wall denies `authentik_*`. | The qbit; core audit |
 
 ### 13.5 Scopes
@@ -1408,7 +1414,7 @@ STAND-IN(core=QRun-IO/qqq#1153, removeBy=the RC that ships #1153, RC.7 at the ea
 **Record actions.** These use core's one-time process output values: `RunBackendStepOutput.addOneTimeSecret(...)`, in the QRun-IO/qqq PR `feature/process-one-time-values`.
 - The value travels only in the step's HTTP response.
 - `ProcessState`, traces and lifecycle listeners (ESB) see only the masked form: `••••` plus the last 4 characters.
-- If the run finishes asynchronously, the key is lost by design, and the result says "Rotate the token to get a new key".
+- If the step outlives the middleware's step timeout (3 s) and finishes as a job, core parks the secrets in memory (`OneTimeSecretHandoff`, 5 minutes, never in state) and returns them once, to the first status poll that sees the job complete. A poll that reaches another server instance or comes too late finds nothing: the key is lost by design, and the result says "Rotate the token to get a new key". (Found in the demo: a create through the broker can take longer than 3 s.)
 
 **Where the key never goes.** The qbit never passes it to the audit row, the Authentik event context, `AdminResult.message`, notifications, logs or exceptions. `AuthentikRedactor` also masks any `key` or `token` JSON value in error text.
 

@@ -110,6 +110,20 @@ Apache 2.0
 
 Access-token metadata is readable with `authentik.audit.read` or `authentik.tokens.manage`. Personal actions have no additional process permission; ownership is checked live. Managing service-account tokens needs `authentik.tokens.manage`, and creating a service account also needs `authentik.users.manage`. Configure `tokenBrokerClientId`, `tokenBrokerClientSecret` (environment references supported), `appClientId`, `appPublicUrl` and `authentikPublicUrl` for exchange and usage instructions. Scope fields remain unavailable until `tokenScopesEnabled=true`.
 
+| Access-token setting | Default | Purpose |
+|---|---|---|
+| `tokenScopesEnabled` | `false` | Offer read-only, apps and tables fields after the signed claim mapping is installed. Names must exist and the operator must currently have read/hasAccess permission. |
+| `tokenScopeClaim` | `qqq_token` | Signed JWT claim containing the Authentik token identifier. Claims are enforced even when offering new scopes is disabled. |
+| `tokenUnusedDays` | `60` | Inactivity threshold for cleanup suggestions. With no login found, a known creation date and a threshold at most 90 days are required. |
+| `tokenReminderSchedulerName` | First registered scheduler | Run `authentikTokenReminders` daily. Without a scheduler the hidden process is available for a host to invoke. Register the scheduler before producing the qbit. |
+
+The **Access tokens** home widget requires `authentik.tokens.manage` and uses the standard TABLE widget. Its links use supported owner or identifier filters; creation time and last use are computed, not API-filterable or sortable. The Revoke Token action accepts 1–`MAX_BULK` selected tokens from either the record or list.
+
+Hosts with their own authentication customizer can call `AuthentikTokenScopes.apply(session, claims)` **after** computing permissions. The qbit's two claims mappers already do this. Scope and token-existence results are cached per runtime/identifier for 60 seconds; API/lookup failures deny access. The temporary session-permission intersection is marked `STAND-IN(core=QRun-IO/qqq#1153, removeBy=4.1.0-RC.7)`; a reflection bridge also attaches `QCredentialScope` when available. It does not add permissions.
+
+The RC.2 classpath has no Alerts producer SPI. Reminders and guard alerts log at INFO and skip delivery when the optional adapter is unavailable; skipped reminders are not marked delivered. With the newer core Alerts SPI and qbit-alerts installed, the reflection adapter sends owner notifications and raises guard incidents (dedupe key `authentik_token_guard_bypass`, mapped to core CRITICAL severity). A host may install a per-runtime `AuthentikTokenAlerts.Sink`. The daily scheduler's system session is trusted; manual runs require `authentik.tokens.manage`.
+
+
 Service-account creation merges `goauthentik.io/user/token-maximum-lifetime` into the new user attributes using `serviceAccountTokenLifetime` (default `days=365`). No lifetime group is required; only the requested, permitted groups are added.
 
 Service-account creation and rotation need `add_token` (verified on Authentik 2026.8.3 by `TokenContractIT`).

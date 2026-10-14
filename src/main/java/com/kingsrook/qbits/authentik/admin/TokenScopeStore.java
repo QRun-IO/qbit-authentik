@@ -65,7 +65,7 @@ public class TokenScopeStore
 
 
    /*******************************************************************************
-    ** Fetch the unique scope row.
+    ** Fetch the unique scope row as a trusted SYSTEM read (QueryInput default).
     *******************************************************************************/
    public QRecord find(String identifier) throws QException
    {
@@ -139,4 +139,54 @@ public class TokenScopeStore
          throw (new QException("Token scope metadata could not be saved."));
       }
    }
+   /*******************************************************************************
+    ** Human-readable, non-secret scope for lists and Review.
+    *******************************************************************************/
+   public static String summary(QRecord row)
+   {
+      java.util.ArrayList<String> parts = new java.util.ArrayList<>();
+      for(String field : SCOPE_FIELDS)
+      {
+         if(row != null && row.getValue(field) != null && !row.getValueString(field).isBlank())
+         {
+            parts.add(field + ": " + row.getValueString(field));
+         }
+      }
+      return (parts.isEmpty() ? "Owner permissions" : String.join("; ", parts));
+   }
+
+   /*******************************************************************************
+    ** Persist dedupe metadata. External tokens get no invented creation date or
+    ** restrictions; their token row remains unscoped.
+    *******************************************************************************/
+   public void reminded(String identifier, JSONObject owner, String field, Instant at) throws QException
+   {
+      QRecord row = find(identifier);
+      if(row == null)
+      {
+         row = new QRecord().withValue("tokenIdentifier", identifier).withValue("ownerPk", owner.getInt("pk"))
+            .withValue("ownerUsername", owner.getString("username")).withValue(field, at);
+         check(new InsertAction().execute(new InsertInput().withTableName(table()).withRecords(List.of(row))).getRecords());
+      }
+      else
+      {
+         row.setValue(field, at);
+         check(new UpdateAction().execute(new UpdateInput().withTableName(table()).withRecords(List.of(row))).getRecords());
+      }
+   }
+
+   /*******************************************************************************
+    ** A new expiry starts a new set of reminder windows.
+    *******************************************************************************/
+   public void resetReminders(String identifier) throws QException
+   {
+      QRecord row = find(identifier);
+      if(row != null)
+      {
+         row.setValue("lastReminder7d", null);
+         row.setValue("lastReminder1d", null);
+         check(new UpdateAction().execute(new UpdateInput().withTableName(table()).withRecords(List.of(row))).getRecords());
+      }
+   }
+
 }

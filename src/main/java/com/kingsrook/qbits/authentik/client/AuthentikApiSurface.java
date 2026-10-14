@@ -74,7 +74,7 @@ public final class AuthentikApiSurface
       rs.add(new Operation("get", "/core/users/{key}/", Set.of()));
       rs.add(new Operation("get", "/managed/blueprints/", Set.of("page", "page_size")));
       rs.add(new Operation("get", "/core/tokens/", Set.of("user__username", "intent", "page", "page_size")));
-      rs.add(new Operation("get", "/events/events/", Set.of("username", "ordering", "page", "page_size")));
+      rs.add(new Operation("get", "/events/events/", Set.of("username", "action", "ordering", "page", "page_size")));
       return (rs);
    }
 

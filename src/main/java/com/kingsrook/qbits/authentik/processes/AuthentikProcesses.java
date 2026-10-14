@@ -147,8 +147,8 @@ public final class AuthentikProcesses
       if(Boolean.TRUE.equals(config.getTokenScopesEnabled()))
       {
          createTokenFields.add(new QFieldMetaData("readOnly", QFieldType.BOOLEAN));
-         createTokenFields.add(new QFieldMetaData("apps", QFieldType.TEXT));
-         createTokenFields.add(new QFieldMetaData("tables", QFieldType.TEXT));
+         createTokenFields.add(new QFieldMetaData("apps", QFieldType.TEXT).withLabel("Apps (names, one per line)"));
+         createTokenFields.add(new QFieldMetaData("tables", QFieldType.TEXT).withLabel("Tables (names, one per line)"));
       }
       createTokenFields.add(reason);
       defs.add(new Def("createToken", "Create Token", AdminAction.CREATE_TOKEN, Kind.CREATE, AuthentikTables.TOKEN, "key", false,

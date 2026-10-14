@@ -174,4 +174,18 @@ public class SchemaDriftTest
       return (null);
    }
 
+   /*******************************************************************************
+    ** Login aggregation uses only parameters documented by the pinned schema.
+    *******************************************************************************/
+   @Test
+   void tokenActivitySurfacePinsLoginOrderingWithoutUnsupportedDateFilter()
+   {
+      assertThat(AuthentikApiSurface.operations()).anySatisfy(operation ->
+      {
+         assertThat(operation.path()).isEqualTo("/events/events/");
+         assertThat(operation.method()).isEqualTo("get");
+         assertThat(operation.params()).contains("action", "ordering", "page", "page_size").doesNotContain("created__gt");
+      });
+   }
+
 }

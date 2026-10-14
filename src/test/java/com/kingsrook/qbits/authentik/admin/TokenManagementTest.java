@@ -135,6 +135,7 @@ class TokenManagementTest
    void createOwnAndRotateScopeThenRevoke() throws QException
    {
       t.config.withTokenScopesEnabled(true);
+      QContext.getQSession().withPermission("cms.publish.hasAccess");
       AuthentikAdmin.AdminResult result = t.admin().execute(create().with("readOnly", true).with("tables", "post"));
       assertThat(result.ok()).as(result.message()).isTrue();
       OneTimeKey key = result.takeSecret();

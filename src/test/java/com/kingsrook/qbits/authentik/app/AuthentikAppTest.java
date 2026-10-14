@@ -61,7 +61,7 @@ class AuthentikAppTest
       assertThat(app.getChildren()).extracting(c -> c.getName())
          .containsExactly("authentik_user", "authentik_invitation", "authentik_group", "authentik_application", "authentik_approval_request", "authentik_admin_action");
       assertThat(app.getSections()).extracting(s -> s.getLabel()).containsExactly("People", "Access", "Activity");
-      assertThat(app.getWidgets()).containsExactly("authentikHome", "authentikDriftReport");
+      assertThat(app.getWidgets()).containsExactly("authentikHome", "authentikAccessTokens", "authentikDriftReport");
 
       for(String subTable : List.of("authentik_group_member", "authentik_session", "authentik_token", "authentik_event", "authentik_policy_binding", "authentik_role", "authentik_blueprint"))
       {
