@@ -293,10 +293,16 @@ public final class AuthentikLocalTables
       {
          table.withField(ro(name, QFieldType.TEXT));
       }
-      for(String name : List.of("createdAt", "rotatedAt", "lastReminder7d", "lastReminder1d"))
+      for(String name : List.of("createdAt", "rotatedAt"))
       {
          table.withField(ro(name, QFieldType.DATE_TIME));
       }
+      ////////////////////////////////////////////////////////////////////////
+      // explicit column names: a camel-to-snake mapping would give         //
+      // last_reminder7d, while docs/schema.sql (and hosts) use _7d / _1d   //
+      ////////////////////////////////////////////////////////////////////////
+      table.withField(ro("lastReminder7d", QFieldType.DATE_TIME).withBackendName("last_reminder_7d"));
+      table.withField(ro("lastReminder1d", QFieldType.DATE_TIME).withBackendName("last_reminder_1d"));
       return (table);
    }
 
