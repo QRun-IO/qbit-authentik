@@ -4,6 +4,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (automated sessions)
+- `AuthentikGroupPermissionMapper` resolves tokenless automated sessions by a unique active Authentik email match, applying direct and inherited group permissions, static fallbacks and the sign-in cut-over guard while preserving existing session permissions.
+
 ### Added (table feature permissions)
 - Policies can grant table feature permissions (e.g. analyze, comment) registered through core TableFeaturePermissionsMetaData
 
