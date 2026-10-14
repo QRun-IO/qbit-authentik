@@ -542,8 +542,13 @@ class TokenContractIT
     *******************************************************************************/
    private TestApi.Response credentials(String username, String key, String scope) throws Exception
    {
+      //////////////////////////////////////////////////////////////////////
+      // no client_secret: exactly what a PAT holder sends (the generated  //
+      // usage text). 2026.8.3 authenticates client_credentials by the     //
+      // username and app password even for a confidential client         //
+      //////////////////////////////////////////////////////////////////////
       return (form(Map.of("grant_type", "client_credentials", "client_id", AuthentikTestStack.APP_SLUG,
-         "client_secret", "contract-test-oauth2-client-secret", "username", username, "password", key, "scope", scope)));
+         "username", username, "password", key, "scope", scope)));
    }
 
 

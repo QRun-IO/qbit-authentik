@@ -255,7 +255,7 @@ public final class AuthentikTokenScopes
       catch(Exception e)
       {
          session.setPermissions(new TreeSet<>());
-         LOG.warn("Token scope could not be verified; denying credential permissions.");
+         LOG.warn("Token scope could not be verified; denying credential permissions.", e);
       }
    }
 
