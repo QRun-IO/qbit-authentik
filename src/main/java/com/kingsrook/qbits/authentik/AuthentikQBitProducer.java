@@ -192,7 +192,7 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
       }
 
       LOG.info("Authentik QBit produced", logPair("version", VERSION), logPair("appKey", qBitConfig.getAppKey()),
-         logPair("features", qBitConfig.getFeatures()), logPair("readOnly", qBitConfig.getReadOnly()));
+         logPair("features", qBitConfig.getEffectiveFeatures()), logPair("readOnly", qBitConfig.getReadOnly()));
       return (new MetaDataProducerMultiOutput());
    }
 
