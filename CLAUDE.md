@@ -43,7 +43,7 @@ CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Post
 
 ## Invariants (do not break)
 
-- Every `AuthentikActionUtil` entry point calls the guard first (QQQ core does not enforce permissions for non-HTTP callers, qqq#1061).
+- Every `AuthentikActionUtil` entry point calls the guard first (in addition to core action permission enforcement, retain Authentik-specific rules and protection for direct util calls).
 - Never log query strings (search terms are PII), the token, successful GET bodies, or bodies of sensitive endpoints; run anything stored through `AuthentikRedactor`.
 - Never filter client-side; reject what Authentik cannot evaluate.
 - Multi-value params are repeated plain names (`type=a&type=b`). Authentik silently ignores `type[]=`.
@@ -59,7 +59,7 @@ CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Post
 
 ## Dependencies
 
-Java 21. Parent `qbit-build-parent:2.0.0`. The default-active `qqq-snapshot` profile imports `qqq-bom-pom:4.1.0-RC.2` (ADR-0007, as in qbit-sql-workbench). The project uses `qqq-backend-core` and `qqq-backend-module-api`. Test dependencies: JUnit 5, AssertJ, Mockito, Testcontainers 1.21.4, and Jackson YAML (from qqq) for the schema tests.
+Java 21. Parent `qbit-build-parent:2.0.0`. The default-active `qqq-snapshot` profile imports `qqq-bom-pom:4.1.0-RC.5` (ADR-0007, as in qbit-sql-workbench). The project uses `qqq-backend-core` and `qqq-backend-module-api`. Test dependencies: JUnit 5, AssertJ, Mockito, Testcontainers 1.21.4, and Jackson YAML (from qqq) for the schema tests.
 
 ## Release
 

@@ -39,7 +39,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 
 /*******************************************************************************
  ** Renders the drift report as a TableData. Re-checks authentik.admin itself
- ** (QQQ core does not enforce permissions for non-HTTP callers, qqq#1061).
+ ** for direct renderer calls as well as calls through core RenderWidgetAction.
  *******************************************************************************/
 public class AuthentikDriftReportWidgetRenderer extends AbstractWidgetRenderer
 {

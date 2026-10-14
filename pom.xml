@@ -237,7 +237,7 @@
    <profiles>
       <!-- Needs qqq 4.1 (QBit producer API). Until qbit-build-parent imports the -->
       <!-- released 4.1 BOM, this profile is active by default and imports         -->
-      <!-- qqq-bom-pom 4.1.0-RC.2 ahead of the parent 4.0.0 BOM, as in             -->
+      <!-- qqq-bom-pom 4.1.0-RC.5 ahead of the parent 4.0.0 BOM, as in             -->
       <!-- qbit-sql-workbench and qbit-quick-search (ADR-0007).                     -->
       <profile>
          <id>qqq-snapshot</id>
@@ -245,7 +245,7 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.2</qqq.snapshot.version>
+            <qqq.snapshot.version>4.1.0-RC.5</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

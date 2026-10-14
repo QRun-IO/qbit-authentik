@@ -67,7 +67,7 @@ QQQ permissions, held as `<name>.hasAccess`, granted through the group attribute
 
 Policies also grant table feature permissions registered through core `TableFeaturePermissionsMetaData`: `analyze` (qbit-data-analysis) and `comment`, `attach`, `tag`, `share`, `task`, `assign` (qbit-collaboration), or any future registered feature. For example, `{"Effect":"Allow","Action":["analyze","comment"],"Resource":["person"]}` grants `person.analyze` and `person.comment`. The resource is the table's effective permission base name. Features must be granted explicitly: policy action `"*"` still means only `hasAccess`, `read`, `insert`, `edit`, `delete`.
 
-The editor discovers features and labels through `PermissionsHelper.getAllAvailablePermissions`; they appear when the host's core version exposes them. This qbit does not compile against the unreleased metadata hook. See [the policy format](docs/POLICY-FORMAT.md) for validation and host customizer usage.
+The editor discovers features and labels through `PermissionsHelper.getAllAvailablePermissions`; they appear when the host's core version exposes them. The pinned RC.5 release does not include `TableFeaturePermissionsMetaData`; its later core implementation is a follow-up for the next baseline upgrade. See [the policy format](docs/POLICY-FORMAT.md) for validation and host customizer usage.
 
 ### Authentik side
 
@@ -82,7 +82,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Item | What to do |
 |---|---|
 | Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
-| QQQ version | QQQ 4.1 (see `pom.xml` for the exact RC). Java 21. |
+| QQQ version | QQQ 4.1.0-RC.5 (released BOM, no core SNAPSHOT). Java 21. |
 | Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
 | Tables | Create `authentik_admin_action` and `authentik_approval_request` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
