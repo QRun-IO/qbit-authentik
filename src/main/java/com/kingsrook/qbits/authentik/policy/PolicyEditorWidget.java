@@ -17,15 +17,26 @@
 package com.kingsrook.qbits.authentik.policy;
 
 
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.admin.AuthentikAdmin;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
+import com.kingsrook.qbits.authentik.permissions.AccessComparison;
+import com.kingsrook.qbits.authentik.permissions.EffectivePermissionResolver;
+import com.kingsrook.qbits.authentik.permissions.GroupGraph;
+import com.kingsrook.qbits.authentik.security.AuthentikGuard;
+import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.actions.dashboard.widgets.AbstractWidgetRenderer;
+import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QPermissionDeniedException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetInput;
 import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
@@ -33,6 +44,7 @@ import com.kingsrook.qqq.backend.core.model.dashboard.widgets.QWidgetData;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.dashboard.QWidgetMetaData;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
 
@@ -41,8 +53,8 @@ import org.json.JSONObject;
  ** 12.4). It is shown on the Edit Policy step; the Next UI widget of the same
  ** type draws the matrix and hands the generated document back to the step as
  ** the process value policyDocument. The data here: the catalog of what a
- ** policy can grant, and the group's current document read live from
- ** Authentik.
+ ** policy can grant, the group's current document read live from Authentik,
+ ** and the base permissions of members who inherit it.
  *******************************************************************************/
 public final class PolicyEditorWidget
 {
@@ -57,6 +69,8 @@ public final class PolicyEditorWidget
 
    /** Widget parameter (process value) with the group's pk. */
    public static final String GROUP_PK_PARAM = "groupPk";
+
+   private static final int MAX_MEMBERS = 200;
 
 
 
@@ -74,12 +88,17 @@ public final class PolicyEditorWidget
     *******************************************************************************/
    public static Data load(AuthentikQBitConfig config, String groupPk) throws QException
    {
+      if(!AuthentikGuard.has(QContext.getQSession(), IdentityPermission.POLICIES_MANAGE))
+      {
+         throw (new QPermissionDeniedException("You do not have permission to edit policies (authentik.policies.manage)."));
+      }
       AuthentikRuntime runtime = AuthentikRuntime.forBackend(config.getApiBackendName());
       PolicyFormat     format  = config.getPolicyFormat();
       Data             data    = new Data()
          .withSpec(format.spec())
          .withVersion(format.version())
          .withCatalog(runtime.getPolicyCatalog().toJson().toList())
+         .withMapperEnabled(config.getMapperEnabled())
          .withOutputFieldName(AuthentikAdmin.POLICY_DOCUMENT);
 
       if(!StringUtils.hasContent(groupPk))
@@ -119,7 +138,57 @@ public final class PolicyEditorWidget
       {
          data.withChangedInAuthentik(!Objects.equals(row.getValueString("authentikFingerprint"), PolicyStore.fingerprint(stored, format, runtime.getPolicyCatalog())));
       }
+      loadMembers(config, groupPk, data);
       return (data);
+   }
+
+
+
+   /*******************************************************************************
+    ** Members who inherit this policy, with only the edited document removed
+    ** from their sign-in grants. Fetch one extra eligible member to detect truncation.
+    *******************************************************************************/
+   private static void loadMembers(AuthentikQBitConfig config, String groupPk, Data data) throws QException
+   {
+      AuthentikActionUtil util = AuthentikActionUtil.forBackend(config.getApiBackendName());
+      GroupGraph graph = util.groupGraph();
+      EffectivePermissionResolver resolver = new EffectivePermissionResolver(graph, util.getRuntime().getPermissionCatalog());
+      Set<String> affectedGroups = graph.nodes().stream()
+         .filter(node -> node.pk().equals(groupPk) || graph.ancestorPks(node.pk()).contains(groupPk))
+         .map(GroupGraph.Node::pk).collect(Collectors.toSet());
+      List<JSONObject> users = new ArrayList<>(util.policyPreviewUsers(affectedGroups, MAX_MEMBERS + 1));
+      users.sort(Comparator.comparing(user -> user.optString("username")));
+      List<Map<String, Object>> members = new ArrayList<>();
+      for(JSONObject user : users)
+      {
+         List<String> groupPks = new ArrayList<>();
+         JSONArray groups = user.optJSONArray("groups_obj");
+         for(int i = 0; groups != null && i < groups.length(); i++)
+         {
+            String pk = groups.getJSONObject(i).getString("pk");
+            if(graph.byPk(pk) != null)
+            {
+               groupPks.add(pk);
+            }
+         }
+         List<String> viaGroups = groupPks.stream().filter(affectedGroups::contains).map(pk -> graph.byPk(pk).name()).sorted().toList();
+         if(viaGroups.isEmpty())
+         {
+            continue;
+         }
+         if(members.size() == MAX_MEMBERS)
+         {
+            data.withMembersTruncated(true);
+            break;
+         }
+         List<String> names = groupPks.stream().map(pk -> graph.byPk(pk).name()).toList();
+         Set<String> basePermissions = AccessComparison.mapperPermissions(config, resolver, groupPks, names,
+            String.valueOf(user.getInt("pk")), user.optString("uuid"), groupPk);
+         String username = user.optString("username");
+         members.add(Map.of("username", username, "label", user.optString("name") + " (" + username + ")",
+            "viaGroups", viaGroups, "basePermissions", basePermissions.stream().sorted().toList()));
+      }
+      data.withMembers(members);
    }
 
 
@@ -158,6 +227,9 @@ public final class PolicyEditorWidget
       private String                    documentProblem;
       private Boolean                   changedInAuthentik = false;
       private String                    outputFieldName;
+      private List<Map<String, Object>> members = List.of();
+      private Boolean                   membersTruncated = false;
+      private Boolean                   mapperEnabled;
 
 
 
@@ -335,6 +407,69 @@ public final class PolicyEditorWidget
       public Data withOutputFieldName(String outputFieldName)
       {
          this.outputFieldName = outputFieldName;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for members.
+       *******************************************************************************/
+      public List<Map<String, Object>> getMembers()
+      {
+         return (members);
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for members.
+       *******************************************************************************/
+      public Data withMembers(List<Map<String, Object>> members)
+      {
+         this.members = members;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for membersTruncated.
+       *******************************************************************************/
+      public Boolean getMembersTruncated()
+      {
+         return (membersTruncated);
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for membersTruncated.
+       *******************************************************************************/
+      public Data withMembersTruncated(Boolean membersTruncated)
+      {
+         this.membersTruncated = membersTruncated;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for mapperEnabled.
+       *******************************************************************************/
+      public Boolean getMapperEnabled()
+      {
+         return (mapperEnabled);
+      }
+
+
+
+      /*******************************************************************************
+       ** Fluent setter for mapperEnabled.
+       *******************************************************************************/
+      public Data withMapperEnabled(Boolean mapperEnabled)
+      {
+         this.mapperEnabled = mapperEnabled;
          return (this);
       }
    }

@@ -173,4 +173,27 @@ class EffectivePermissionResolverTest
       assertThat(resolver.expand(null)).isEmpty();
    }
 
+
+
+   /*******************************************************************************
+    ** Exclusion applies through ancestors and duplicate paths without removing
+    ** overlapping named grants or policies from other groups, or mutating the graph.
+    *******************************************************************************/
+   @Test
+   void excludesOnlyTheSelectedPolicy()
+   {
+      GroupGraph graph = new GroupGraph()
+         .add(new GroupGraph.Node("parent", "Parent", false, List.of(), List.of("cms.publish"), List.of("app"), List.of(), List.of(), List.of("cms.*", "missing")))
+         .add(new GroupGraph.Node("child", "Child", false, List.of("parent"), List.of(), List.of(), List.of(), List.of(), List.of("cms.edit")));
+      EffectivePermissionResolver resolver = new EffectivePermissionResolver(graph, CATALOG);
+      EffectivePermissionResolver.Resolution base = resolver.resolveGroups(List.of("child", "parent"), "parent");
+      assertThat(base.sessionPermissions()).containsExactly("cms.edit", "cms.publish");
+      assertThat(base.grantedBy().get("cms.edit")).containsExactly("Child");
+      assertThat(base.grantedBy().get("cms.publish")).containsExactly("Parent");
+      assertThat(base.appAccess()).containsExactly("app");
+      assertThat(base.unknown()).isEmpty();
+      assertThat(resolver.resolveGroups(List.of("child")).sessionPermissions()).contains("cms.delete");
+      assertThat(resolver.resolveGroups(List.of("child"), "absent")).isEqualTo(resolver.resolveGroups(List.of("child")));
+   }
+
 }
