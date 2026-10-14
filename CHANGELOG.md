@@ -5,8 +5,9 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 ## [Unreleased]
 
 ### Changed (core baseline, #20 / F19)
-- Build against the released QQQ BOM `4.1.0-RC.5` through the existing `qqq.snapshot.version` property; no core SNAPSHOT is used. No Java API compatibility fixes were needed.
-- Core actions now enforce permissions for non-HTTP callers. Authentik-specific guards remain for direct util calls and domain rules. See [UPGRADE.md](UPGRADE.md) for host impact and the remaining test stand-in.
+- Build against the released QQQ BOM `4.1.0-RC.6` through the existing `qqq.snapshot.version` property; no core SNAPSHOT is used. Adopt `qbit-build-parent:2.1.0` with `qbit.guardrails.enforce=true`.
+- Core actions now enforce permissions for non-HTTP callers. Authentik-specific guards remain for direct util calls and domain rules. See [UPGRADE.md](UPGRADE.md) for host impact and feature registration requirements.
+- Replace the expired feature-catalog stand-in with real `TableFeaturePermissionsMetaData` registrations and remove the test-only `PolicyCatalog` permission-source overload. Feature discovery uses the core catalog without static mocking.
 
 ### Added (automated sessions)
 - `AuthentikGroupPermissionMapper` resolves tokenless automated sessions by a unique active Authentik email match, applying direct and inherited group permissions, static fallbacks and the sign-in cut-over guard while preserving existing session permissions.

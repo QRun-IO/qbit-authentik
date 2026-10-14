@@ -139,17 +139,7 @@ public final class PolicyCatalog
     *******************************************************************************/
    public static PolicyCatalog of(QInstance qInstance)
    {
-      return (of(qInstance, PermissionsHelper.getAllAvailablePermissions(qInstance)));
-   }
-
-
-
-   /*******************************************************************************
-    ** Build using an explicit permission source, including features registered
-    ** by core. This needs no dependency on the feature metadata hook itself.
-    *******************************************************************************/
-   public static PolicyCatalog of(QInstance qInstance, Collection<AvailablePermission> availablePermissions)
-   {
+      Collection<AvailablePermission> availablePermissions = PermissionsHelper.getAllAvailablePermissions(qInstance);
       Map<String, String>                     appOfObject = appsOfObjects(qInstance);
       Map<String, Map<String, ResourceDraft>> byApp       = new LinkedHashMap<>();
 
