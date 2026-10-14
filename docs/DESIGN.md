@@ -1188,6 +1188,8 @@ Saving an empty matrix removes the attribute. Full access canonicalizes to one w
 - resources sorted
 - a resource with every action is still written as five statements, not `*`, so diffs stay readable
 
+**Maintenance API.** Reviewed Java code in the host repository, typically a run-once job such as `KOF22_RUN_ONCE`, may call `AuthentikMaintenance.applyPolicy(apiBackendName, groupName, policyJson, operatorName, reason)`. This is a plain Java API with no registered process or route; hosts must not expose it over HTTP. It resolves exactly one group by name and uses the same audited Save Policy plan and execution, including stale, scope, superuser ancestry, read-only and feature checks. A temporary non-system session grants `authentik.policies.manage` plus the document's permissions (the complete current expansion for full access); its `maintenance:` or `run-once:` operator name and the required reason are recorded verbatim. The caller's context is restored. Equivalent policies return `NO_CHANGE` without a write or audit row; `policyTwoPersonApproval` queues approval instead of applying. `AuthentikMaintenance.fullAccessDocument(config)` generates the canonical compact full-access document for the host's spec/version. System sessions remain forbidden from writing directly.
+
 ### 12.5 Full user and group CRUD (revision 5 additions)
 
 | Action | Table / slot | Permission | Feature | Confirmation | Authentik |

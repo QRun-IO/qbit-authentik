@@ -329,7 +329,8 @@ public class AuthentikAdmin
    /*******************************************************************************
     ** The operator, resolved once per instance from live Authentik data. When
     ** the operator is not an Authentik user (static or development sessions),
-    ** the session's own permissions stand in. bootstrapOperatorSubjects additionally
+    ** the session's own permissions stand in. Maintenance sessions are local job
+    ** identities and never resolved as Authentik users. bootstrapOperatorSubjects additionally
     ** hold every authentik.* permission.
     *******************************************************************************/
    public Operator operator() throws QException
@@ -340,12 +341,13 @@ public class AuthentikAdmin
       }
 
       String      email       = guard.operatorEmail();
-      boolean     bootstrap   = email != null && com.kingsrook.qbits.authentik.security.BootstrapOperators.matchesUniqueUser(config.getResolvedBootstrapSubjects(), util, email);
+      boolean     maintenance = AuthentikMaintenance.isMaintenanceSession(QContext.getQSession());
+      boolean     bootstrap   = !maintenance && email != null && com.kingsrook.qbits.authentik.security.BootstrapOperators.matchesUniqueUser(config.getResolvedBootstrapSubjects(), util, email);
       Integer     pk          = null;
       Set<String> permissions = new TreeSet<>();
       Set<String> appAccess   = new TreeSet<>();
 
-      JSONObject user = email == null ? null : findUserByEmail(email);
+      JSONObject user = maintenance || email == null ? null : findUserByEmail(email);
       if(user != null)
       {
          pk = user.optInt("pk");
