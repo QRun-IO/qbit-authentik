@@ -1138,7 +1138,7 @@ The feature `POLICIES` turns on the editor, the `authentik_policy` table and the
 
 *Edit Policy* is a record action on `authentik_group` and on `authentik_policy`, never in the nav. It is a standard streamed-ETL process with three steps.
 
-**1. Edit** (frontend step). The step shows the widget `authentikPolicyEditor`, type `AUTHENTIK_POLICY_EDITOR`, a lazy-loaded Next UI widget. The server sends it two things.
+**1. Edit** (frontend step). The step shows the widget `authentikPolicyEditor`, type `AUTHENTIK_POLICY_EDITOR`, a lazy-loaded Next UI widget. The server sends its catalog, current document and member preview data.
 
 The **catalog** lists every app, table, process, report and protected widget in the QInstance. Each entry has its permission base name, label, kind, app, and the actions QQQ actually checks for it:
 - `hasAccess` for apps, processes, reports and widgets
@@ -1154,6 +1154,8 @@ The catalog also follows these rules:
 - Objects with a custom permission checker, or `NOT_PROTECTED`, are left out because a policy cannot grant them.
 
 The **current document** is read live from the group in Authentik, the source of truth, together with the group's fingerprint for the stale check. If it differs from the last QQQ save, a notice says it was changed in Authentik.
+
+**Preview for a member.** On editor load only, under `authentik.policies.manage`, the payload adds `members` (up to 200 active, in-scope members of this group or its descendants, sorted by username), `membersTruncated` (true when more eligible people exist), and `mapperEnabled` from config so the UI can say "not enforced at sign-in". Each member has `username`, `label` (`Full Name (username)`), `viaGroups` (sorted direct group names that are this group or its descendants), and `basePermissions` (sorted session permissions with only this group's policy document excluded). Named `qqq.io/permissions`, other groups' and ancestors' policies, wildcard expansion, static direct-group fallbacks and bootstrap-subject grants still count. The Next UI combines that base with the current and edited documents to preview effective permissions and additions/removals locally.
 
 The screen works like this:
 - Resources are grouped by app, with a search box.

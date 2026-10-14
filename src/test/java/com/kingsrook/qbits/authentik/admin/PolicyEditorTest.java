@@ -23,6 +23,8 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import com.kingsrook.qbits.authentik.AuthentikFeature;
+import com.kingsrook.qbits.authentik.AuthentikTestSupport;
+import com.kingsrook.qbits.authentik.client.FixtureActionUtil;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qbits.authentik.policy.PolicyEditorWidget;
 import com.kingsrook.qbits.authentik.policy.PolicyFormat;
@@ -359,5 +361,155 @@ class PolicyEditorTest
       input.setQueryParams(new java.util.HashMap<>(Map.of("groupPk", groupPk)));
       RenderWidgetOutput output = new RenderWidgetAction().execute(input);
       assertThat(output.getWidgetData().getType()).isEqualTo("AUTHENTIK_POLICY_EDITOR");
+   }
+
+
+
+   /*******************************************************************************
+    ** Direct and descendant members get all other grants, including inherited
+    ** policies, wildcard attributes and static permissions of direct groups.
+    *******************************************************************************/
+   @Test
+   void memberPreviewPreservesOtherGrants() throws Exception
+   {
+      String group = "kof-website-analysts";
+      t.authentik.groupByName(group).getJSONObject("attributes").put("qqq.io/policy", PAGE_READ_EDIT);
+      t.authentik.group("child", false, List.of(), List.of(), group)
+         .group("grandchild", false, List.of(), List.of(), "child")
+         .group("other-parent", false, List.of(), List.of())
+         .group("other", false, List.of("cms_page.*"), List.of(), "other-parent")
+         .user(10, "zoe", "zoe@example.test", "internal", true, group, "child", "other")
+         .user(11, "amy", "amy@example.test", "external", true, "child", "other-parent")
+         .user(12, "ben", "ben@example.test", "internal", true, "grandchild")
+         .user(13, "inactive", "inactive@example.test", "internal", false, group);
+      t.authentik.groupByName("other-parent").getJSONObject("attributes").put("qqq.io/policy", PAGE_READ_EDIT.replace("\"read\",\"edit\"", "\"insert\""));
+      t.config.withStaticGroupPermissions(Map.of("child", List.of("static.floor"), group, List.of("direct.floor")));
+
+      PolicyEditorWidget.Data data = PolicyEditorWidget.load(t.config, t.authentik.pk(group));
+      assertThat(data.getMembers()).extracting(m -> m.get("username")).containsExactly("amy", "ben", "zoe");
+      assertThat(data.getMembersTruncated()).isFalse();
+      assertThat(data.getMembers().get(0)).containsExactlyInAnyOrderEntriesOf(Map.of(
+         "username", "amy", "label", "amy Name (amy)", "viaGroups", List.of("child"),
+         "basePermissions", List.of("cms_page.insert", "kof22.analytics.hasAccess", "static.floor")));
+      assertThat(data.getMembers().get(1)).containsEntry("viaGroups", List.of("grandchild"))
+         .containsEntry("basePermissions", List.of("kof22.analytics.hasAccess"));
+      assertThat(data.getMembers().get(2)).containsEntry("viaGroups", List.of("child", group))
+         .containsEntry("basePermissions", List.of("cms_page.delete", "cms_page.edit", "cms_page.insert", "cms_page.read", "direct.floor", "kof22.analytics.hasAccess", "static.floor"));
+   }
+
+
+
+   /*******************************************************************************
+    ** The cap is applied after eligibility and username ordering, and duplicate
+    ** memberships do not consume multiple slots. Exactly 200 is not truncated.
+    *******************************************************************************/
+   @Test
+   void memberPreviewCapsEligiblePeople() throws Exception
+   {
+      String group = "kof-website-analysts";
+      t.authentik.group("child", false, List.of(), List.of(), group);
+      for(int i = 199; i >= 0; i--)
+      {
+         String username = "person%03d".formatted(i);
+         t.authentik.user(100 + i, username, username + "@example.test", "internal", true, group, "child");
+      }
+      t.authentik.user(400, "aaa-inactive", "inactive@example.test", "internal", false, group);
+      PolicyEditorWidget.Data exact = PolicyEditorWidget.load(t.config, t.authentik.pk(group));
+      assertThat(exact.getMembers()).hasSize(200);
+      assertThat(exact.getMembersTruncated()).isFalse();
+
+      t.authentik.user(401, "aaa-active", "active@example.test", "internal", true, "child");
+      t.admin().getUtil().getRuntime().invalidateCache();
+      FixtureActionUtil.REQUESTS.clear();
+      PolicyEditorWidget.Data capped = PolicyEditorWidget.load(t.config, t.authentik.pk(group));
+      assertThat(capped.getMembers()).hasSize(200);
+      assertThat(capped.getMembersTruncated()).isTrue();
+      assertThat(capped.getMembers()).extracting(m -> (String) m.get("username")).isSorted().doesNotContain("person199", "aaa-inactive");
+      assertThat(capped.getMembers().get(0)).containsEntry("username", "aaa-active");
+      List<String> queries = FixtureActionUtil.REQUESTS.stream().filter(r -> r.getURI().getPath().equals("/api/v3/core/users/"))
+         .map(r -> r.getURI().getQuery()).toList();
+      assertThat(queries).hasSize(3).allSatisfy(query -> assertThat(query)
+         .contains("ordering=username", "is_active=true", "groups_by_pk=" + t.authentik.pk(group), "groups_by_pk=" + t.authentik.pk("child")));
+   }
+
+
+
+   /*******************************************************************************
+    ** Scope restrictions apply even to inherited members; no extra user-read
+    ** permission is needed beyond the editor permission.
+    *******************************************************************************/
+   @Test
+   void memberPreviewRespectsScopeAndEditorPermission() throws Exception
+   {
+      String group = "kof-website-analysts";
+      t.authentik.group("child", false, List.of(), List.of(), group)
+         .group("scope", false, List.of(), List.of())
+         .user(10, "allowed", "allowed@example.test", "internal", true, "child", "scope")
+         .user(11, "wrong-path", "path@example.test", "internal", true, group, "scope")
+         .user(12, "wrong-group", "group@example.test", "internal", true, group);
+      t.authentik.users.get(11).put("path", "outside");
+      t.config.withUserScopePathStartsWith("users").withUserScopeGroupNames(List.of("scope"));
+      t.loginAs(AuthentikTestSupport.OPERATOR, IdentityPermission.POLICIES_MANAGE);
+      assertThat(PolicyEditorWidget.load(t.config, t.authentik.pk(group)).getMembers())
+         .extracting(m -> m.get("username")).containsExactly("allowed");
+
+      t.loginAs(AuthentikTestSupport.OPERATOR, IdentityPermission.USERS_READ);
+      FixtureActionUtil.REQUESTS.clear();
+      assertThatThrownBy(() -> PolicyEditorWidget.load(t.config, t.authentik.pk(group))).hasMessageContaining("authentik.policies.manage");
+      assertThat(FixtureActionUtil.REQUESTS).isEmpty();
+      assertThatThrownBy(() -> t.admin().getUtil().policyPreviewUsers(List.of(t.authentik.pk(group)), 201)).hasMessageContaining("authentik.policies.manage");
+      assertThat(FixtureActionUtil.REQUESTS).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Bootstrap subjects retain identity grants by immutable pk or uuid; a
+    ** superuser flag alone never grants QQQ permissions or leaks private fields.
+    *******************************************************************************/
+   @Test
+   void memberPreviewIncludesBootstrapWithoutSuperuserEscalation() throws Exception
+   {
+      String group = "kof-website-analysts";
+      t.authentik.user(10, "bootstrap-pk", "pk@example.test", "internal", true, group)
+         .user(11, "bootstrap-uuid", "uuid@example.test", "internal", true, group)
+         .user(12, "superuser", "superuser@example.test", "internal", true, group, "authentik Admins");
+      t.authentik.users.get(11).put("uuid", "immutable-subject");
+      t.config.withBootstrapOperatorSubjects("10,immutable-subject");
+      List<Map<String, Object>> members = PolicyEditorWidget.load(t.config, t.authentik.pk(group)).getMembers();
+      for(Map<String, Object> member : members.subList(0, 2))
+      {
+         assertThat((List<?>) member.get("basePermissions")).hasSize(IdentityPermission.values().length + 1);
+         for(IdentityPermission permission : IdentityPermission.values())
+         {
+            assertThat(((List<?>) member.get("basePermissions")).contains(permission.getSessionPermission())).isTrue();
+         }
+      }
+      assertThat(members.get(2)).containsEntry("basePermissions", List.of("kof22.analytics.hasAccess"));
+      assertThat(members.get(2)).containsOnlyKeys("username", "label", "viaGroups", "basePermissions");
+   }
+
+
+
+   /*******************************************************************************
+    ** The added fields serialize like the existing widget fields, including an
+    ** empty member list when no group is selected and the configured mapper flag.
+    *******************************************************************************/
+   @Test
+   void memberPreviewPayloadAndMapperFlag() throws Exception
+   {
+      t.config.withMapperEnabled(false);
+      FixtureActionUtil.REQUESTS.clear();
+      PolicyEditorWidget.Data empty = PolicyEditorWidget.load(t.config, null);
+      assertThat(empty.getMembers()).isEmpty();
+      assertThat(empty.getMembersTruncated()).isFalse();
+      assertThat(empty.getMapperEnabled()).isFalse();
+      assertThat(FixtureActionUtil.REQUESTS).isEmpty();
+      t.config.withMapperEnabled(true);
+      PolicyEditorWidget.Data data = PolicyEditorWidget.load(t.config, t.authentik.pk("kof-website-publishers"));
+      JSONObject json = new JSONObject(data);
+      assertThat(json.getBoolean("mapperEnabled")).isTrue();
+      assertThat(json.getBoolean("membersTruncated")).isFalse();
+      assertThat(json.getJSONArray("members").getJSONObject(0).keySet()).containsExactlyInAnyOrder("username", "label", "viaGroups", "basePermissions");
    }
 }

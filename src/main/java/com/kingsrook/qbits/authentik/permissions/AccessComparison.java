@@ -152,7 +152,19 @@ public final class AccessComparison
    public static Set<String> mapperPermissions(AuthentikQBitConfig config, EffectivePermissionResolver resolver, Collection<String> groupPks, Collection<String> directGroupNames,
       String userPk, String userUuid)
    {
-      Set<String> rs = new TreeSet<>(resolver.resolveGroups(groupPks).sessionPermissions());
+      return (mapperPermissions(config, resolver, groupPks, directGroupNames, userPk, userUuid, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Preview the mapper with one group's policy removed, preserving the
+    ** static floor and immutable bootstrap-subject grants.
+    *******************************************************************************/
+   public static Set<String> mapperPermissions(AuthentikQBitConfig config, EffectivePermissionResolver resolver, Collection<String> groupPks, Collection<String> directGroupNames,
+      String userPk, String userUuid, String excludePolicyOfGroupPk)
+   {
+      Set<String> rs = new TreeSet<>(resolver.resolveGroups(groupPks, excludePolicyOfGroupPk).sessionPermissions());
       rs.addAll(staticPermissions(config, directGroupNames));
       Set<String> subjects = config.getResolvedBootstrapSubjects();
       if(subjects.contains(userPk) || (userUuid != null && !userUuid.isEmpty() && subjects.contains(userUuid)))

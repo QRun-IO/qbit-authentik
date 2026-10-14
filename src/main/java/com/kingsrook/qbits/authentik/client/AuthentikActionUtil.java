@@ -22,6 +22,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +31,7 @@ import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.permissions.EffectivePermissionResolver;
 import com.kingsrook.qbits.authentik.permissions.GroupGraph;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
+import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qbits.authentik.security.WriteAuthorization;
 import com.kingsrook.qqq.backend.core.actions.customizers.QCodeLoader;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
@@ -920,6 +922,51 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
             }
          }
          return (rs);
+      }
+      catch(java.net.URISyntaxException e)
+      {
+         throw (new QException("Bad Authentik URL", e));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A bounded, username-ordered policy-preview lookup. Membership, active
+    ** status and user scope are evaluated by Authentik before the limit.
+    ** This read needs only the editor permission, not the users table permission.
+    *******************************************************************************/
+   public List<JSONObject> policyPreviewUsers(Collection<String> groupPks, int maxObjects) throws QException
+   {
+      if(!AuthentikGuard.has(QContext.getQSession(), IdentityPermission.POLICIES_MANAGE))
+      {
+         throw (new QPermissionDeniedException("You do not have permission to preview policies (authentik.policies.manage)."));
+      }
+      if(groupPks.isEmpty())
+      {
+         return (List.of());
+      }
+      try
+      {
+         URIBuilder builder = new URIBuilder("/core/users/");
+         builder.addParameter("include_groups", "true");
+         builder.addParameter("include_roles", "false");
+         builder.addParameter("is_active", "true");
+         builder.addParameter("ordering", "username");
+         for(String pk : groupPks)
+         {
+            builder.addParameter("groups_by_pk", pk);
+         }
+         addUserScope(builder, List.of());
+         List<JSONObject> users = new ArrayList<>();
+         for(JSONObject user : getAllPages(builder.build().toString(), maxObjects))
+         {
+            if(runtime().getGuard().isUserInScope(user) && user.optBoolean("is_active", false))
+            {
+               users.add(user);
+            }
+         }
+         return (users);
       }
       catch(java.net.URISyntaxException e)
       {
