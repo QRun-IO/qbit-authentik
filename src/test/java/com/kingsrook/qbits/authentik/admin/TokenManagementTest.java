@@ -299,7 +299,7 @@ class TokenManagementTest
       t.config.withTokenBrokerClientSecret("test-secret").withSubjectTokenSource(session -> null);
       refused(create(), "signed-in Authentik session");
       t.config.withSubjectTokenSource(session -> "subject:3");
-      TokenKeyDelivery.set(null);
+      TokenKeyDelivery.set(org.mockito.Mockito.mock(TokenKeyDelivery.class));
       refused(create(), "upgrade QQQ");
       seed("own", 3);
       refused(AdminRequest.of(AdminAction.ROTATE_TOKEN, "own", "replace"), "upgrade QQQ");

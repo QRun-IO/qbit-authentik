@@ -66,7 +66,7 @@ public final class AuthentikHomeView
       people(html, data, config);
       groups(html, data, config);
       activity(html, data, config);
-      connection(html, data);
+      health(html, data);
       return (html.append("</div>").toString());
    }
 
@@ -204,31 +204,12 @@ public final class AuthentikHomeView
    /*******************************************************************************
     **
     *******************************************************************************/
-   private static void connection(StringBuilder html, AuthentikHomeData data)
+   private static void health(StringBuilder html, AuthentikHomeData data)
    {
-      open(html, "Connection");
-      html.append("<dl style=\"").append(LIST).append("\">");
-      row(html, "Authentik", data.getConfig().getBaseUrl());
-      row(html, "Version", data.getVersion() == null ? "Not reachable" : data.getVersion());
-      row(html, "Service account", data.getConfig().getEffectiveServiceAccountUsername());
-      row(html, "Changes", Boolean.TRUE.equals(data.getConfig().getReadOnly()) ? "Off (read-only)" : "On, every change is audited here and in Authentik");
-      if(data.getConfig().hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.POLICIES))
-      {
-         String state;
-         try
-         {
-            com.kingsrook.qbits.authentik.permissions.AccessComparison.State mapper = com.kingsrook.qbits.authentik.permissions.AccessComparison.state(
-               com.kingsrook.qbits.authentik.AuthentikRuntime.forBackend(data.getConfig().getApiBackendName()),
-               com.kingsrook.qbits.authentik.client.AuthentikActionUtil.forBackend(data.getConfig().getApiBackendName()));
-            state = (mapper.enforced() ? "Enforced. " : "Not enforced. ") + mapper.message();
-         }
-         catch(Exception e)
-         {
-            state = "Unknown (" + e.getMessage() + ")";
-         }
-         row(html, "Policies at sign-in", state);
-      }
-      html.append("</dl>");
+      open(html, "Health");
+      String target = prefix(data.getConfig()) + "/health_component" + (data.getHealthComponentId() == null ? "" : "/" + data.getHealthComponentId());
+      html.append("<p>Authentik: ").append(esc(data.getHealthStatus())).append(" - <a href=\"")
+         .append(esc(target)).append("\">System Health</a></p>");
       close(html);
    }
 
