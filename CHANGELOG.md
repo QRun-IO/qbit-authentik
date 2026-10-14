@@ -4,6 +4,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+- Guided empty states: `help/qbit-authentik.yaml` (QQQ help-bundle format) gives the Identity app and all 15 tables a summary and a "How rows get created" section; the 11 API-backed tables say they are read live from Authentik and what an empty list means (no permission, feature or invitation flow not enabled, or Authentik has none). Applied by the new `AuthentikHelp` stand-in (`STAND-IN(core=QRun-IO/qqq#1198, removeBy=4.1.0-RC.7)`), which fills only empty slots and follows the host's `tableNamePrefix`. `AuthentikTablesGuardrailTest` pins that every table is used at runtime, explained and documented. No schema, config or seed changes.
 - `AuthentikQBitConfig.fullAccessHostPermissions` lets a host declare permission names core cannot enumerate (custom checkers, named permissions); full access expands to them at use time, for the instance holding that runtime's backend only.
 - `AuthentikMaintenance.applyPolicy` lets reviewed host run-once jobs apply a policy to an exact group name through the existing audited Save Policy path. Dedicated maintenance identities, full-access expansion, canonical no-ops, context restoration, stale checks and optional two-person approval are covered; system-session writes remain forbidden. No HTTP route or process is registered.
 
