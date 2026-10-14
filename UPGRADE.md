@@ -1,8 +1,8 @@
 # Upgrading qbit-authentik
 
-## QQQ 4.1.0-RC.5 baseline (#20 / F19)
+## QQQ 4.1.0-RC.6 baseline (#20 / F19)
 
-Hosts should align their QQQ dependencies with the released `qqq-bom-pom:4.1.0-RC.5`
+Hosts should align their QQQ dependencies with the released `qqq-bom-pom:4.1.0-RC.6`
 and use Java 21. The historical `qqq-snapshot` profile and `qqq.snapshot.version`
 property names remain, but the imported core version is a release, not a SNAPSHOT.
 Core actions now enforce permissions and field security locks for non-HTTP callers
@@ -11,21 +11,16 @@ The qbit keeps its guards, scope checks and sensitive-field stripping because th
 also protect direct backend calls and implement Authentik-specific rules.
 No qbit configuration, stored policy format or schema changes are introduced.
 
-Stand-in audit against core tag `v4.1.0-RC.5`:
-
-- `PolicyFeaturePermissionsTest` supplies a synthetic available-permission catalog:
-  `STAND-IN(core=QRun-IO/qqq#1136, removeBy=4.1.0-RC.6)`. RC.6 is the removal target,
-  subject to verifying that release contains the metadata hook. Retain malformed
-  and duplicate catalog test cases when adding real metadata registration coverage.
-- The requested stand-in/RC grep found only the old baseline references; the broader
-  audit found the test catalog above and stale core-enforcement explanations.
-  No production bridge can safely be removed by this baseline bump.
-- `TableFeaturePermissionsMetaData` (core commit `9a302136d`, #1136) and client
-  channels (core commit `741bb4974`, PR #1141) exist after RC.5, but neither commit
-  is an ancestor of the RC.5 tag and neither API is present in that release.
-  Follow up on a released baseline containing them: verify the policy editor's
-  catalog with real feature metadata and adopt client-channel attribution and
-  identity/credential channel restrictions. These features are not added here.
+The build adopts `qbit-build-parent:2.1.0` with `qbit.guardrails.enforce=true`.
+The expired #1136 test stand-in is removed: tests now register features through
+`TableFeaturePermissionsMetaData` and discover them through the real
+`PermissionsHelper.getAllAvailablePermissions`, as production hosts do. The
+unused explicit permission-source overload in `PolicyCatalog` is removed.
+Duplicate shared-base entries, replacement registrations and malformed suffixes
+remain covered. Hosts should register feature suffixes, labels and table
+applicability through the core metadata API; no synthetic catalog is needed.
+Client-channel attribution and identity/credential channel restrictions remain
+separate follow-up work.
 
 ## Permissions renamed `identity.*` → `authentik.*` (unreleased → first release)
 
