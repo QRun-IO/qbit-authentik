@@ -24,7 +24,7 @@ Seven design rules shape everything below:
    - A group's QQQ permissions live in the group attribute `qqq.io/permissions`.
    - The reusable `AuthentikGroupPermissionMapper` turns a user's groups, including inherited parents, into QQQ session permissions.
    - Who can operate the qbit is decided by those same permissions (`authentik.*`). No operator group is hard-coded.
-4. **The qbit checks permissions itself.** QQQ core actions do not enforce permissions (QRun-IO/qqq#1061), and `FieldSecurityLock` is not enforced (#1062). An `AuthentikGuard` in the backend action layer checks every read and write.
+4. **The qbit checks permissions itself.** The original core gaps (QRun-IO/qqq#1061, #1062) are fixed in the RC.5 baseline. Direct backend calls and Authentik-specific rules still require local checks. An `AuthentikGuard` in the backend action layer checks every read and write.
 5. **No escalation.**
    - Operators can only grant permissions they hold themselves, whether through memberships or permission attributes.
    - Operators cannot edit themselves.
@@ -652,7 +652,7 @@ This is weaker than revision 1's per-group object permissions. That is the cost 
 - `AuthentikActionUtil.doQuery/doGet/doInsert/doUpdate/doDelete` call `AuthentikGuard.check(table, op, session)` first. The guard checks the QQQ permission, the feature flag, `readOnly` and scope.
   - A session with no user is refused, except `MirrorSync`'s internal read-only session.
 - Every qbit process's first backend step re-checks `checkProcessPermissionThrowing` and the per-record rules (§5.4). It does not trust that the middleware ran.
-- Field-level protection does not use `FieldSecurityLock` (#1062):
+- Field-level protection retains explicit stripping for direct backend calls; core also enforces `FieldSecurityLock` in the RC.5 baseline (#1062):
   - Sensitive columns are removed in `jsonObjectToRecord` without `authentik.audit.read`. These are `attributes` (except the `qqq.io/*` keys, shown under `users.read`), `last_ip`, `user_agent` and `geo_ip`.
   - Filters on those fields are rejected for that session.
 - Tables also declare `QPermissionRules`, so the UI hides what the user can't use.
@@ -933,7 +933,7 @@ Authenticated API calls are not throttled by Authentik, and kof22's Authentik sh
 | A blueprint re-apply reverts QQQ edits | No `present` identity entries, no member lists (CI lint); bootstrap as `created` (verified, §4.2); reversion detector |
 | Lost update between QQQ and the Authentik UI | Stale check at execute; attribute merge-patch after a fresh read |
 | Account takeover through a recovery link | Links are never shown; email only |
-| A non-HTTP caller bypasses permissions (#1061) | Guard in the backend util, plus ArchUnit |
+| A direct backend caller bypasses core actions | Guard in the backend util, plus ArchUnit |
 | A field leaks because `FieldSecurityLock` isn't enforced (#1062) | Sensitive fields stripped in the util |
 | A forged webhook | Shared secret, constant-time compare; it only triggers re-reads |
 | Stale session permissions after a demotion | Re-evaluation on token refresh plus webhook-triggered marking (§5.6); live groups used for guard checks |
@@ -1011,7 +1011,7 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 | The service account can lock administrators out (remove members from `authentik Admins`, deactivate break-glass, strip `qqq.io/protected`, §0.2 ii-b). Re-parenting under a superuser group **is** refused by Authentik (§0.2 ii) | Guard refusal of every write that targets a protected account or a superuser group; drift report; recovery through cluster access |
 | Load on the shared Postgres | Throttle, caps, mirror |
 | Webhook loss | Inbox, 15-minute reconcile, nightly sweep |
-| QQQ core gaps (#1061, #1062) | Guard in the backend util, ArchUnit, field stripping |
+| Direct backend calls outside core enforcement | Guard in the backend util, ArchUnit, field stripping |
 | Token leakage | Redaction tests; no body logging on sensitive paths |
 | An Authentik upgrade changes fields | Pinned schema, fixtures per version, version check |
 

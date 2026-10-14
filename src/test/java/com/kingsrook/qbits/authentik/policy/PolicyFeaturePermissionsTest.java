@@ -45,7 +45,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /*******************************************************************************
  ** Table features use generic permission suffixes from core's existing catalog
- ** API. No test or production code depends on the unreleased metadata hook.
+ ** API. The metadata hook is absent from the pinned core RC.5 release.
+ ** STAND-IN(core=QRun-IO/qqq#1136, removeBy=4.1.0-RC.6)
+ ** Replace the synthetic feature catalog with metadata registration when upgrading.
  *******************************************************************************/
 class PolicyFeaturePermissionsTest
 {

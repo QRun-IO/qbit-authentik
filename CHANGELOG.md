@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Changed (core baseline, #20 / F19)
+- Build against the released QQQ BOM `4.1.0-RC.5` through the existing `qqq.snapshot.version` property; no core SNAPSHOT is used. No Java API compatibility fixes were needed.
+- Core actions now enforce permissions for non-HTTP callers. Authentik-specific guards remain for direct util calls and domain rules. See [UPGRADE.md](UPGRADE.md) for host impact and the remaining test stand-in.
+
 ### Added (table feature permissions)
 - Policies can grant table feature permissions (e.g. analyze, comment) registered through core TableFeaturePermissionsMetaData
 
