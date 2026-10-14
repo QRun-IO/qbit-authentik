@@ -1299,7 +1299,7 @@ API-intent tokens (`intent: api`) call Authentik's own API, not the app. QQQ lis
   - A `PATCH` without `intent` turns an app password into an API token with the default expiry.
   - A `PATCH` without `user` moves the token to the caller.
   - So **every `PATCH` the qbit sends carries `intent`, `user` (the current owner's pk) and `expires`**, and the qbit re-reads the token afterwards (the race guard in §13.3).
-- **Expiry is capped.** An app password's expiry is capped by the owner's group attribute `goauthentik.io/user/token-maximum-lifetime` (for example `days=90`), or else by the tenant's default token duration, which is short. The blueprint sets the attribute (§13.9).
+- **Expiry is capped.** An app password's expiry is capped by `goauthentik.io/user/token-maximum-lifetime` (for example `days=90`) from `User.group_attributes`, which merges the **brand's** attributes, then the user's groups, then the user. Without it the cap is the tenant's default token duration, which is short. The blueprint sets the attribute on the brands (§13.9); the qbit sets `days=365` on each service account it creates.
 - **Expired tokens linger.** They stay in the database until Authentik's cleanup task removes them, and the token-endpoint lookup (`Token.objects.filter(key=...)`) doesn't check `expires`. So the qbit never relies on an expired token being unusable. Revoke deletes the token.
 
 ### 13.3 How each action works
@@ -1310,7 +1310,7 @@ API-intent tokens (`intent: api`) call Authentik's own API, not the app. QQQ lis
 | *Rotate Token* (own) | same | The owner | As the user: create a new token with the same description, expiry and scope, read its key, then `DELETE` the old one. The new identifier replaces the old one in `authentik_token_scope`. If the delete fails, the result says so and the old token stays listed. |
 | *Revoke Token* | Preferences (own); table record and bulk action (`authentik.tokens.manage`) | The owner, or an admin for any owner who isn't protected | `DELETE /core/tokens/{identifier}/`. Own tokens: as the user. Admin: as the service account, with `delete_token`. |
 | *Extend Expiry* | Preferences (own); table record action | The owner; an admin for service accounts | Own tokens: as the user. Service accounts: as the qbit's service account, with `change_token`. Always `PATCH {intent, user, expires}`, then a re-read. |
-| *Create Service Account* | `authentik_user` table action | `authentik.tokens.manage` + `authentik.users.manage` | `POST /core/users/service_account/` (`name`, `create_group: false`, `expiring: true`, `expires`). The response's `token` is the one-time key. Then add the account to the `qqq-service-accounts` group (the expiry cap, §13.9) and to the groups chosen in the policy editor, subject to the subset rule (§5.4). |
+| *Create Service Account* | `authentik_user` table action | `authentik.tokens.manage` + `authentik.users.manage` | `POST /core/users/service_account/` (`name`, `create_group: false`, `expiring: true`, `expires`). The response's `token` is the one-time key. Then set `goauthentik.io/user/token-maximum-lifetime: days=365` on the new account (its expiry cap, §13.9) and add it to the groups chosen in the policy editor, subject to the subset rule (§5.4). |
 | *Rotate Token* (service account) | `authentik_token` record action | `authentik.tokens.manage` | The qbit generates a key (48 random bytes, URL-safe base64) and calls `POST /core/tokens/{identifier}/set_key/`. The identifier, expiry and scope don't change. |
 
 **Limitation (decision 30).** A service account has exactly one app password: the one `service_account` creates. Only a superuser could add a second. To run two credentials side by side, create a second service account.
@@ -1374,7 +1374,7 @@ Without a broker, the self-service actions are hidden, and Review says why.
 
 There is no key, and no hash of a key. Generic insert, edit and delete are off; only the token actions change the table. Record-level audit is on.
 
-**Binding the JWT to its token.** A scope mapping on the app's provider, `qqq-{appKey}-token-claim`, adds `qqq_token: {identifier}` to JWTs minted by `client_credentials` with an app password. It finds the app password the request presented, owned by the same user. Authentik signs the claim, so a client can't forge or drop it without losing a valid JWT.
+**Binding the JWT to its token.** A scope mapping on the app's provider (scope name `profile`) adds `qqq_token: {identifier}` to JWTs minted by `client_credentials` with an app password. It finds the app password the request presented, owned by the same user. Authentik signs the claim. It is bound to `profile` because the app needs the `groups` claim (also `profile`) to accept a token at all, so a client can't drop the claim and keep access.
 
 **Enforcement.** The mapper reads `qqq_token`, loads the scope row (cached 60 s) and sets core's `QCredentialScope` (QRun-IO/qqq#1153) on the session. Core then:
 - intersects the scope with the owner's live permissions in `PermissionsHelper`;
@@ -1441,11 +1441,11 @@ Reminders are deduplicated through `lastReminder7d` and `lastReminder1d`. Tokens
 **New Authentik objects:**
 - the broker provider and application, with the deny policy (§13.3.1);
 - the `qqq_token` scope mapping on the kof22 admin provider (§13.5);
-- `goauthentik.io/user/token-maximum-lifetime: days=90` on the groups people sign in through;
-- a seed group `qqq-service-accounts` (`state: created`, no permissions) with `days=365`;
+- `goauthentik.io/user/token-maximum-lifetime: days=90` on the brands (people). Groups are `state: created` and can't take new attributes from a blueprint; the qbit sets `days=365` on service accounts it creates;
+- the broker in its own blueprint file (`kof22-qqq-tokens.yaml`), so a problem there can't affect sign-in;
 - the notification rule and policy (§13.4 e).
 
-**Rollout (kof22).** Merge the role-permissions gitops PR first, then the backend. `TOKENS` is on by default, so there is no flag PR. The ESO secrets are `AUTHENTIK_TOKEN_BROKER_CLIENT_ID` and `AUTHENTIK_TOKEN_BROKER_CLIENT_SECRET` (Infisical `/kof22-website-authentik-api/`).
+**Rollout (kof22).** Seed the Infisical key `/kof22-website-authentik-api/token-broker-client-secret` first, then merge the role-permissions gitops PR, then deploy the backend. `TOKENS` is on by default, so there is no flag PR. The ESO secrets are `AUTHENTIK_TOKEN_BROKER_CLIENT_ID` and `AUTHENTIK_TOKEN_BROKER_CLIENT_SECRET` (Infisical `/kof22-website-authentik-api/`).
 
 ### 13.10 Permissions, tables and config
 
@@ -1464,6 +1464,7 @@ Reminders are deduplicated through `lastReminder7d` and `lastReminder1d`. Tokens
 | `tokenScopesEnabled` | `false` | Offer scopes once the claim mapping is installed |
 | `tokenBrokerClientId` / `tokenBrokerClientSecret` / `tokenEndpointUrl` | env / env / `{baseUrl}/application/o/token/` | §13.3.1 |
 | `appPublicUrl`, `authentikPublicUrl`, `appClientId` | from the OAuth2 module | §13.7 |
+| `serviceAccountTokenLifetime` | `days=365` | Set on service accounts the qbit creates |
 | `tokenUnusedDays` | 60 | The cleanup suggestion |
 
 ### 13.11 Tests
