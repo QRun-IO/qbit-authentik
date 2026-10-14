@@ -1,5 +1,9 @@
 # Upgrading qbit-authentik
 
+## Table help bundle (unreleased)
+
+Nothing to do. The qbit now applies `help/qbit-authentik.yaml` to the Identity app and its tables at the end of `produce()`, filling only help slots the host has not set. There is no schema change and nothing to seed or include in a Liquibase changelog: the API-backed tables are live Authentik data, and the four local tables fill as people use the actions.
+
 ## QQQ 4.1.0-RC.6 baseline (#20 / F19)
 
 Hosts should align their QQQ dependencies with the released `qqq-bom-pom:4.1.0-RC.6`

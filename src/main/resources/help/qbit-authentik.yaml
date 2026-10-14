@@ -1,0 +1,93 @@
+bundle: qbit-authentik
+version: 1
+layer: QBIT
+# Help for the Identity app and every authentik_* table, in the QQQ help-bundle
+# format (qqq#1198). Table keys use the default table prefix (authentik_); a host
+# with a different tableNamePrefix gets the same text on its renamed tables.
+# AuthentikHelp applies it until the core HelpBundles registry ships in a QQQ
+# release (STAND-IN(core=QRun-IO/qqq#1198)). Summaries stay under 120 characters.
+#
+# Two kinds of table live here. The API-backed tables hold no rows of their own:
+# every list is read live from Authentik, so an empty list means "Authentik returned
+# nothing to you", never "set this up". The local tables are the qbit's own audit and
+# bookkeeping records, written only by the qbit's actions.
+entries:
+  - key: app:authentikAdmin;slot:help
+    summary: "Manage Authentik users, groups, access and tokens from this app; Authentik stays the source of truth."
+    content: |
+      Nothing here needs seeding. Setup comes from the qbit's configuration (Authentik URL, API token, features, read-only mode), and the home's "Needs attention" card lists what is left to do. The user, group, session, event, application, binding, blueprint, role, token and invitation tables are read live from Authentik and have no rows in your database. Four small tables are the qbit's own records: admin actions (the audit trail), approval requests, saved policies and token scopes. They fill as people use the actions.
+
+  - key: table:authentik_user;slot:help
+    summary: "Authentik users, read live from Authentik: people, service accounts and external users."
+    content: |
+      **How rows get created:** you do not add rows to this table directly. The list is read live from Authentik on every view, and users are created with the Create User, Create Service Account and Invite User actions (when those features are on), which call the Authentik API and write an audit row. An empty list means Authentik returned no users to you: your role lacks the Identity read permission, the qbit is not enabled or its API token cannot read users, or Authentik has none. Read-only mode only blocks changes, not this list.
+
+  - key: table:authentik_group;slot:help
+    summary: "Authentik groups, read live, with their parents, members and the QQQ permissions they grant."
+    content: |
+      **How rows get created:** read live from Authentik on every view; create a group with the Create Group action (when the groups feature is on) or in Authentik itself. A group's permissions are the QQQ permissions its attributes grant, edited with Edit Policy or Edit Permissions And App Access. An empty list means Authentik returned no groups to you: no permission, the qbit not enabled, or the API token cannot read groups.
+
+  - key: table:authentik_group_member;slot:help
+    summary: "Who belongs to which group, assembled live from Authentik; not a stored table."
+    content: |
+      **How rows get created:** this is a virtual table. Every row is computed live from the groups' member lists, and there is nothing to seed. Add or remove a member with Add To Group, Remove From Group, Add Members or Remove Members (when the membership feature is on). An empty list means the group or user you are looking at has no members, or you lack the read permission, or the qbit is not enabled.
+
+  - key: table:authentik_session;slot:help
+    summary: "Signed-in sessions, read live from Authentik. Needs the audit read permission."
+    content: |
+      **How rows get created:** Authentik creates a session when someone signs in; the qbit only shows them. End a user's sessions with the Revoke Sessions action on the user (when the sessions feature is on). An empty list means nobody is signed in, or you lack the audit read permission, or the qbit is not enabled.
+
+  - key: table:authentik_event;slot:help
+    summary: "Authentik's own event log, read live. Needs the audit read permission."
+    content: |
+      **How rows get created:** Authentik writes an event for every sign-in, change and failure; the qbit writes only one `custom_qqq_admin_action` event after each admin action, whose id is kept on the matching Admin Actions row. An empty list means no events match, or you lack the audit read permission, or the qbit is not enabled.
+
+  - key: table:authentik_application;slot:help
+    summary: "Authentik applications (what people sign in to), read live and read-only."
+    content: |
+      **How rows get created:** applications are defined in Authentik, usually by a blueprint; the qbit shows them and which groups may open them. An empty list means Authentik has no applications you can see, or you lack the read permission, or the qbit is not enabled.
+
+  - key: table:authentik_policy_binding;slot:help
+    summary: "Which groups, users or policies are bound to an application, read live from Authentik."
+    content: |
+      **How rows get created:** bindings are created in Authentik, on an application. The qbit shows them as a child list on the application and on the group. An empty list means that application has no binding, or you lack the read permission, or the qbit is not enabled.
+
+  - key: table:authentik_blueprint;slot:help
+    summary: "Authentik blueprints (configuration as code) and whether each last applied cleanly, read live."
+    content: |
+      **How rows get created:** blueprints are files or OCI sources that Authentik discovers; the qbit only shows their status. An empty list means Authentik has no blueprint instance, or you lack the read permission, or the qbit is not enabled.
+
+  - key: table:authentik_role;slot:help
+    summary: "Authentik RBAC roles, read live. Roles are different from groups: they carry Authentik permissions."
+    content: |
+      **How rows get created:** roles are created in Authentik; the qbit shows the custom ones (managed system roles are hidden). An empty list means Authentik has no custom roles, or you lack the read permission, or the qbit is not enabled.
+
+  - key: table:authentik_token;slot:help
+    summary: "Authentik API tokens, read live. Metadata only: the key itself is never shown or stored."
+    content: |
+      **How rows get created:** create a token with the Create Token action (when the tokens feature is on); the key is delivered once and never stored. What each token may use is kept in Token Scopes. An empty list means no tokens exist, or you lack the audit read or token manage permission, or the qbit is not enabled.
+
+  - key: table:authentik_invitation;slot:help
+    summary: "Pending enrolment invitations, read live. Only present when an invitation flow is configured."
+    content: |
+      **How rows get created:** the Invite User action creates one through Authentik's invitation stage; the table exists only when the host sets `invitationFlow`. Cancel Invitation withdraws one. An empty list means no invitation is pending, or you lack the read permission.
+
+  - key: table:authentik_admin_action;slot:help
+    summary: "Audit trail of every change the qbit attempts in Authentik, written before the call is made."
+    content: |
+      **How rows get created:** every user, group, membership, credential, session, token and policy action writes one row first (status Running), then moves it to Succeeded, Failed or Refused; a change that needs a second person shows Waiting for approval. Rows are never edited by hand or deleted, so a mistake can be traced. The Authentik Event Pk column is the id of the matching `custom_qqq_admin_action` event in Authentik's Events, for cross-reference. An empty table means no action has been attempted yet.
+
+  - key: table:authentik_approval_request;slot:help
+    summary: "Changes waiting for a second person: granting authentik.* permissions needs two people."
+    content: |
+      **How rows get created:** when an operator grants authentik.* permissions, the qbit stores the change here instead of applying it. A different person with the Approve permission uses Approve And Apply or Reject; requests nobody reviews expire. An empty table means nothing is waiting.
+
+  - key: table:authentik_policy;slot:help
+    summary: "The last saved policy document for each group, with who saved it and when."
+    content: |
+      **How rows get created:** the Edit Policy action writes one row per group when a policy is saved (the live document stays in Authentik). Field-level history of changes is kept. Only present when the policies feature is on. An empty table means no policy has been saved yet; open a group and choose Edit Policy.
+
+  - key: table:authentik_token_scope;slot:help
+    summary: "What each token may use: apps, tables, processes, reports, widgets and operations. No key material."
+    content: |
+      **How rows get created:** Create Token writes a scope row when you give the token a scope (token scopes enabled), and the expiry reminder job stamps when it last reminded. Only present when the tokens feature is on. An empty table means no scoped token has been created yet.
