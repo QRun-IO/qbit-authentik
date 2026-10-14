@@ -105,7 +105,7 @@ Authentik puts the merged document into the token through a scope mapping. Steps
    - `AuthentikGroupPermissionMapper`, which also reads the claim and the group graph, or
    - your own customizer, calling `PolicyPermissions.fromClaims(claims, config.getPolicyFormat(), PolicyCatalog.of(qInstance))`.
 
-The catalog-aware overloads of `PolicyParser`, `PolicyGenerator`, `PolicyPermissions`, `PolicyStore.fingerprint` and `GroupGraph.fromGroups` support features. The older overloads without a catalog continue to accept only standard actions. Both bundled mappers and the editor pass the catalog, as do group-policy resolution and access comparison. This qbit consumes the existing available-permission API without compiling against the unreleased `TableFeaturePermissionsMetaData` hook; features become available when the host's core supplies those entries.
+The catalog-aware overloads of `PolicyParser`, `PolicyGenerator`, `PolicyPermissions`, `PolicyStore.fingerprint` and `GroupGraph.fromGroups` support features. The older overloads without a catalog continue to accept only standard actions. Both bundled mappers and the editor pass the catalog, as do group-policy resolution and access comparison. This qbit consumes the existing available-permission API without compiling against the `TableFeaturePermissionsMetaData` hook (absent from the pinned RC.5 release); features become available when the host's core supplies those entries.
 
 The mapping merges the statements of every group in `request.user.all_groups()` (direct groups and their ancestors) whose document has the right spec and version. It always emits a document, with an empty `Statement` array when the user has no policies.
 

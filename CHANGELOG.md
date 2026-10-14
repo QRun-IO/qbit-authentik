@@ -12,6 +12,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Action-scoped OAuth2 token exchange, response-only one-time key delivery (fail closed on older QQQ), generated usage instructions and non-secret token scope records.
 - Token-manager read access, expanded token metadata, secret redaction and in-memory process/persistence tests.
 
+### Changed (core baseline, #20 / F19)
+- Build against the released QQQ BOM `4.1.0-RC.5` through the existing `qqq.snapshot.version` property; no core SNAPSHOT is used. No Java API compatibility fixes were needed.
+- Core actions now enforce permissions for non-HTTP callers. Authentik-specific guards remain for direct util calls and domain rules. See [UPGRADE.md](UPGRADE.md) for host impact and the remaining test stand-in.
+
 ### Added (automated sessions)
 - `AuthentikGroupPermissionMapper` resolves tokenless automated sessions by a unique active Authentik email match, applying direct and inherited group permissions, static fallbacks and the sign-in cut-over guard while preserving existing session permissions.
 
