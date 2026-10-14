@@ -1289,7 +1289,7 @@ A QQQ access token is an Authentik **app password** (`intent: app_password`) own
    - `password={token}`
    - `scope=openid profile email`
 
-   Authentik checks that the owner is active, that the token exists with intent `app_password`, and that the app's policies let the owner in. It records a `login` event with `method: token` and the token's identifier.
+   No client secret: Authentik 2026.8.3 authenticates this grant by the username and app password, even for a confidential client (client authentication is required only for the code, refresh, device and token-exchange grants; pinned by `TokenContractIT`). Authentik checks that the owner is active, that the token exists with intent `app_password`, and that the app's policies let the owner in. It records a `login` event with `method: token` and the token's identifier.
 2. **Call the app** (`/qqq/v1/...` and the published APIs) with `Authorization: Bearer {jwt}`. When the JWT expires (the provider's access-token validity), exchange the token again.
 
 The qbit generates these instructions from the instance's real URLs (§13.7).
@@ -1408,7 +1408,7 @@ STAND-IN(core=QRun-IO/qqq#1153, removeBy=the RC that ships #1153, RC.7 at the ea
 **Record actions.** These use core's one-time process output values: `RunBackendStepOutput.addOneTimeSecret(...)`, in the QRun-IO/qqq PR `feature/process-one-time-values`.
 - The value travels only in the step's HTTP response.
 - `ProcessState`, traces and lifecycle listeners (ESB) see only the masked form: `••••` plus the last 4 characters.
-- If the run finishes asynchronously, the key is lost by design, and the result says "Rotate the token to get a new key".
+- If the step outlives the middleware's step timeout (3 s) and finishes as a job, core parks the secrets in memory (`OneTimeSecretHandoff`, 5 minutes, never in state) and returns them once, to the first status poll that sees the job complete. A poll that reaches another server instance or comes too late finds nothing: the key is lost by design, and the result says "Rotate the token to get a new key". (Found in the demo: a create through the broker can take longer than 3 s.)
 
 **Where the key never goes.** The qbit never passes it to the audit row, the Authentik event context, `AdminResult.message`, notifications, logs or exceptions. `AuthentikRedactor` also masks any `key` or `token` JSON value in error text.
 
