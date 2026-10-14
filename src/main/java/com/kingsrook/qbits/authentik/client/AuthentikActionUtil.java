@@ -803,6 +803,10 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
                record.setDisplayValue("isSuperuserInherited", UNAVAILABLE);
             }
          }
+         else if(AuthentikTables.TOKEN.equals(spec.getName()))
+         {
+            AuthentikTokenActivity.enrich(this, record);
+         }
          return (record);
       }
       catch(JSONException | IllegalArgumentException e)

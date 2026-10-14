@@ -7,6 +7,12 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Service-account lifetime caps use the user attribute (`serviceAccountTokenLifetime`, default `days=365`), preserving other attributes and requiring no special group.
 - `TokenContractIT` on Authentik 2026.8.3 (9 tests) with the production token blueprint: token exchange as the user, the broker deny policy, the `qqq_token` claim, PATCH defaults, the expiry cap, service-account create/set_key/extend, the detective alarm, and the qbit lifecycle with the one-time key absent from audit rows and events.
 
+### Added (access tokens 6c)
+- Read-only and app/table scopes, validated at Review and execution and enforced after claims permissions; revoked credentials fail closed. Optional core credential-scope bridge for #1153.
+- Last-used login activity (90-day window, five-minute cache), creation time and scope summaries; API tokens are explicitly not tracked.
+- Daily expiry reminders with persistent per-window deduplication and optional Alerts delivery; high-severity guard-bypass alerts.
+- A standard Access tokens TABLE widget with owner counts, age buckets and cleanup links, plus the existing record/list bulk revoke action.
+
 ### Added (access tokens, DESIGN.md section 13)
 - Default-on `TOKENS` with personal create/rotate/revoke/extend, service-account creation and rotation, protected-owner guardrails and optional two-person approval.
 - Action-scoped OAuth2 token exchange, response-only one-time key delivery (fail closed on older QQQ), generated usage instructions and non-secret token scope records.
@@ -62,7 +68,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 
 ### Changed
-- **Permissions renamed `identity.*` → `authentik.*`** (same suffixes; owner naming rule, 2026-10-12; spec #1065 amended). Legacy names are reported as unknown and never granted. The old names are kept as `@Deprecated` `IdentityPermission.LEGACY_PREFIX`/`LEGACY_WILDCARD`/`getLegacyShortName()`. Update the `qqq.io/permissions` group attributes before deploying; see [UPGRADE.md](UPGRADE.md).
+- **Permissions renamed `identity.*` â†’ `authentik.*`** (same suffixes; owner naming rule, 2026-10-12; spec #1065 amended). Legacy names are reported as unknown and never granted. The old names are kept as `@Deprecated` `IdentityPermission.LEGACY_PREFIX`/`LEGACY_WILDCARD`/`getLegacyShortName()`. Update the `qqq.io/permissions` group attributes before deploying; see [UPGRADE.md](UPGRADE.md).
 - **Table names are lowercase snake_case with the `authentik_` prefix** (owner naming rule, 2026-10-12): `authentik_user`, `authentik_group`, `authentik_group_member`, `authentik_session`, `authentik_event` (were `authentikUser`, ...). New `AuthentikQBitConfig.applyTablePrefix` and `toSnakeCase`; apps, widgets, the backend and processes keep camelCase names (`authentikAdmin`, `authentikApi`). The old names are kept as `@Deprecated` `AuthentikTables.LEGACY_*_TABLE_NAME` constants. See [UPGRADE.md](UPGRADE.md).
 
 ### Documentation

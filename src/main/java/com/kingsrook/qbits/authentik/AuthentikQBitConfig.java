@@ -61,6 +61,8 @@ public class AuthentikQBitConfig implements QBitConfig
    private List<String> tokenProtectedGroups = new ArrayList<>(List.of("authentik Admins", "identity-admins"));
    private Boolean tokenTwoPersonApproval = false;
    private Boolean tokenScopesEnabled = false;
+   private String tokenScopeClaim = "qqq_token";
+   private String tokenReminderSchedulerName;
    private String tokenBrokerClientId = "${env.AUTHENTIK_TOKEN_BROKER_CLIENT_ID}";
    private String tokenBrokerClientSecret = "${env.AUTHENTIK_TOKEN_BROKER_CLIENT_SECRET}";
    private String tokenEndpointUrl = null;
@@ -129,6 +131,10 @@ public class AuthentikQBitConfig implements QBitConfig
       if(tokenMaxDaysServiceAccount == null || tokenMaxDaysServiceAccount < 1)
       {
          errors.add("tokenMaxDaysServiceAccount must be at least 1");
+      }
+      if(tokenScopeClaim == null || tokenScopeClaim.isBlank())
+      {
+         errors.add("tokenScopeClaim must not be blank");
       }
       if(tokenUnusedDays == null || tokenUnusedDays < 1)
       {
@@ -1868,6 +1874,56 @@ public class AuthentikQBitConfig implements QBitConfig
    public AuthentikQBitConfig withSubjectTokenSource(com.kingsrook.qbits.authentik.client.AuthentikSubjectTokenSource subjectTokenSource)
    {
       this.subjectTokenSource = subjectTokenSource;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Signed JWT claim identifying the Authentik token.
+    *******************************************************************************/
+   public String getTokenScopeClaim()
+   {
+      return (tokenScopeClaim);
+   }
+
+   /*******************************************************************************
+    ** Set the host's signed token claim name.
+    *******************************************************************************/
+   public void setTokenScopeClaim(String value)
+   {
+      tokenScopeClaim = value;
+   }
+
+   /*******************************************************************************
+    ** Fluent signed token claim name.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenScopeClaim(String value)
+   {
+      tokenScopeClaim = value;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Optional scheduler; otherwise use the instance's first scheduler.
+    *******************************************************************************/
+   public String getTokenReminderSchedulerName()
+   {
+      return (tokenReminderSchedulerName);
+   }
+
+   /*******************************************************************************
+    ** Select a scheduler when the host defines several.
+    *******************************************************************************/
+   public void setTokenReminderSchedulerName(String value)
+   {
+      tokenReminderSchedulerName = value;
+   }
+
+   /*******************************************************************************
+    ** Fluent scheduler selection.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenReminderSchedulerName(String value)
+   {
+      tokenReminderSchedulerName = value;
       return (this);
    }
 

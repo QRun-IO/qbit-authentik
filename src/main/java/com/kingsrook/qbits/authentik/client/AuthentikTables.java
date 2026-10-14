@@ -419,6 +419,10 @@ public final class AuthentikTables
       spec.withField(new AuthentikFieldSpec("ownerType", "Owner Type", QFieldType.STRING, at("user_obj", "type")));
       spec.withField(new AuthentikFieldSpec("ownerName", "Owner", QFieldType.STRING, at("user_obj", "name")));
       spec.withField(new AuthentikFieldSpec("managed", "Managed", QFieldType.STRING, string("managed")));
+      spec.withField(new AuthentikFieldSpec("lastUsed", "Last Used", QFieldType.DATE_TIME, o -> null));
+      spec.withField(new AuthentikFieldSpec("lastUsedNote", "Last Used Note", QFieldType.STRING, o -> null));
+      spec.withField(new AuthentikFieldSpec("createdAt", "Created", QFieldType.DATE_TIME, o -> null));
+      spec.withField(new AuthentikFieldSpec("scopeSummary", "Scope", QFieldType.STRING, o -> null));
       return (spec);
    }
 

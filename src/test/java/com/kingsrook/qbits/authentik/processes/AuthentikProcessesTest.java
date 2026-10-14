@@ -131,7 +131,14 @@ class AuthentikProcessesTest
 
       for(QProcessMetaData process : t.qInstance.getProcesses().values())
       {
-         assertThat(process.getTableName()).as(process.getName()).isNotBlank();
+         if(!process.getName().equals("authentikTokenReminders"))
+         {
+            assertThat(process.getTableName()).as(process.getName()).isNotBlank();
+         }
+         else
+         {
+            assertThat(process.getIsHidden()).isTrue();
+         }
          assertThat(t.qInstance.getApp("authentikAdmin").getChildren()).extracting(c -> c.getName()).doesNotContain(process.getName());
       }
       assertThat(t.qInstance.getProcess("authentikCreateUser").getMaxInputRecords()).isEqualTo(0);
