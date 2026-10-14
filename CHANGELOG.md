@@ -8,6 +8,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Service-account lifetime caps use the user attribute (`serviceAccountTokenLifetime`, default `days=365`), preserving other attributes and requiring no special group.
 - `TokenContractIT` on Authentik 2026.8.3 (9 tests) with the production token blueprint: token exchange as the user, the broker deny policy, the `qqq_token` claim, PATCH defaults, the expiry cap, service-account create/set_key/extend, the detective alarm, and the qbit lifecycle with the one-time key absent from audit rows and events.
 
+### Added (central health)
+- `authentik.api`, `authentik.api_token`, `authentik.mapper`, and `authentik.token_broker` dependency checks registered by the producer, with safe details and bounded requests through the existing client.
+- Client-credentials broker probe using the existing token transport; its bearer is discarded.
+
+### Removed (central health)
+- The Identity home Connection health card, its direct version/token-expiry probes, and its inline mapper status. A single central component status links to System Health. The configuration drift-report widget is retained.
+
 ### Added (access tokens 6c)
 - Read-only and app/table scopes, validated at Review and execution and enforced after claims permissions; revoked credentials fail closed. Optional core credential-scope bridge for #1153.
 - Last-used login activity (90-day window, five-minute cache), creation time and scope summaries; API tokens are explicitly not tracked.
