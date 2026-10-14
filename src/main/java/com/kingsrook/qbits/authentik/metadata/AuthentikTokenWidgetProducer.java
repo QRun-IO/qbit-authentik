@@ -63,7 +63,7 @@ public class AuthentikTokenWidgetProducer extends QBitComponentMetaDataProducer<
    public QWidgetMetaData produce(QInstance instance)
    {
       AuthentikQBitConfig config = getQBitConfig();
-      return (new QWidgetMetaData().withName(config.applyPrefix(NAME)).withLabel("Access tokens").withType("TABLE")
+      return (new QWidgetMetaData().withName(config.applyPrefix(NAME)).withLabel("Access tokens").withType(com.kingsrook.qqq.backend.core.model.dashboard.widgets.WidgetType.TABLE.getType())
          .withGridColumns(12).withIsCard(true).withPermissionRules(IdentityPermission.TOKENS_MANAGE.rules())
          .withCodeReference(new QCodeReference(AuthentikTokenWidget.class)).withDefaultValue("backendName", config.getApiBackendName()));
    }
