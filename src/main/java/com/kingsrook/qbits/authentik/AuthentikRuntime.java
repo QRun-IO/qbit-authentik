@@ -83,6 +83,16 @@ public class AuthentikRuntime
 
 
    /*******************************************************************************
+    ** Every registered runtime (a snapshot).
+    *******************************************************************************/
+   public static java.util.List<AuthentikRuntime> all()
+   {
+      return (java.util.List.copyOf(BY_BACKEND.values()));
+   }
+
+
+
+   /*******************************************************************************
     ** Find the runtime for an API backend name.
     *******************************************************************************/
    public static AuthentikRuntime forBackend(String backendName)
@@ -152,10 +162,11 @@ public class AuthentikRuntime
 
    /*******************************************************************************
     ** QQQ permission names that qqq.io/permissions may grant: every permission
-    ** the instance's metadata defines (PermissionsHelper), computed once.
+    ** the instance's metadata defines (PermissionsHelper), computed per instance.
     *******************************************************************************/
    public java.util.Set<String> getPermissionCatalog()
    {
+      PolicyCatalog currentPolicyCatalog = getPolicyCatalog();
       if(permissionCatalog == null)
       {
          com.kingsrook.qqq.backend.core.model.metadata.QInstance qInstance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
@@ -164,7 +175,7 @@ public class AuthentikRuntime
             return (java.util.Set.of());
          }
          java.util.Set<String> catalog = new java.util.TreeSet<>(com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper.getAllAvailablePermissionNames(qInstance));
-         catalog.addAll(getPolicyCatalog().permissionNames());
+         catalog.addAll(currentPolicyCatalog.permissionNames());
          permissionCatalog = catalog;
       }
       return (permissionCatalog);
@@ -173,19 +184,20 @@ public class AuthentikRuntime
 
 
    /*******************************************************************************
-    ** What a policy can grant in the current instance (built once, lazily: the
+    ** What a policy can grant in the current instance (built lazily per instance: the
     ** instance is complete by the first request).
     *******************************************************************************/
    public PolicyCatalog getPolicyCatalog()
    {
-      if(policyCatalog == null)
+      com.kingsrook.qqq.backend.core.model.metadata.QInstance qInstance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
+      if(policyCatalog == null || policyCatalog.getQInstance() != qInstance)
       {
-         com.kingsrook.qqq.backend.core.model.metadata.QInstance qInstance = com.kingsrook.qqq.backend.core.context.QContext.getQInstance();
          if(qInstance == null)
          {
             return (PolicyCatalog.of(new com.kingsrook.qqq.backend.core.model.metadata.QInstance()));
          }
          policyCatalog = PolicyCatalog.of(qInstance);
+         permissionCatalog = null;
       }
       return (policyCatalog);
    }

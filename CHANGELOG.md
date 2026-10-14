@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+- `AuthentikQBitConfig.fullAccessHostPermissions` lets a host declare permission names core cannot enumerate (custom checkers, named permissions); full access expands to them at use time, for the instance holding that runtime's backend only.
+- `AuthentikMaintenance.applyPolicy` lets reviewed host run-once jobs apply a policy to an exact group name through the existing audited Save Policy path. Dedicated maintenance identities, full-access expansion, canonical no-ops, context restoration, stale checks and optional two-person approval are covered; system-session writes remain forbidden. No HTTP route or process is registered.
+
+- Explicit full-access policy statement (`Action: ["*"], Resource: ["*"]`) resolves against all current core and qbit permissions, including features, READ_WRITE `write`, identity names and future resources. Added canonical round trips, complete-set save authorization, last-admin removal protection and the editor `fullAccess` payload contract; named-resource wildcards retain their five-action meaning.
+
 - Edit Policy supplies per-member preview data for up to 200 active, in-scope direct and descendant members, with relevant direct group names, base permissions excluding only the edited policy, a truncation flag, and the configured mapper-enabled flag. The Next UI can compute effective permissions and additions/removals locally while preserving inherited, named, static and bootstrap grants.
 - Service-account lifetime caps use the user attribute (`serviceAccountTokenLifetime`, default `days=365`), preserving other attributes and requiring no special group.
 - `TokenContractIT` on Authentik 2026.8.3 (9 tests) with the production token blueprint: token exchange as the user, the broker deny policy, the `qqq_token` claim, PATCH defaults, the expiry cap, service-account create/set_key/extend, the detective alarm, and the qbit lifecycle with the one-time key absent from audit rows and events.
