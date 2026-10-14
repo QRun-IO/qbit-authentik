@@ -335,6 +335,79 @@ class TokenContractIT
 
 
    /*******************************************************************************
+    ** Owner decision A (2026-10-14): the role holds add_token because 2026.8.3
+    ** needs it for service_account and for set_key (POST object permission).
+    ** Pin both: 403 without add_token, 200/204 with it (restored in finally).
+    *******************************************************************************/
+   @Test
+   void serviceAccountActionsNeedAddToken() throws Exception
+   {
+      JSONObject seed = expect(admin.post("/core/users/service_account/", new JSONObject().put("name", unique("needs-add"))
+         .put("create_group", false).put("expiring", true).put("expires", expires(30))), 200);
+      users.add(seed.getInt("user_pk"));
+      String seedToken = "service-account-" + seed.getString("username") + "-password";
+      tokens.add(seedToken);
+      String role = admin.first("/rbac/roles/?name=" + AuthentikTestStack.SERVICE_ACCOUNT).getString("pk");
+      JSONObject permissions = new JSONObject().put("permissions", new org.json.JSONArray().put("authentik_core.add_token"));
+      String name = unique("no-add-token");
+      assertThat(admin.patch("/rbac/permissions/assigned_by_roles/" + role + "/unassign/", permissions).status()).isEqualTo(204);
+      try
+      {
+         expect(stack.serviceAccount().post("/core/users/service_account/", new JSONObject().put("name", name)
+            .put("create_group", false).put("expiring", true).put("expires", expires(30))), 403);
+         assertThat(admin.first("/core/users/?username=" + name)).isNull();
+         expect(stack.serviceAccount().post(tokenPath(seedToken) + "set_key/", new JSONObject().put("key", UUID.randomUUID().toString() + UUID.randomUUID())), 403);
+      }
+      finally
+      {
+         assertThat(admin.post("/rbac/permissions/assigned_by_roles/" + role + "/assign/", permissions).status()).isEqualTo(200);
+      }
+      JSONObject created = expect(stack.serviceAccount().post("/core/users/service_account/", new JSONObject().put("name", name)
+         .put("create_group", false).put("expiring", true).put("expires", expires(30))), 200);
+      users.add(created.getInt("user_pk"));
+      tokens.add("service-account-" + name + "-password");
+      expect(stack.serviceAccount().post(tokenPath(seedToken) + "set_key/", new JSONObject().put("key", UUID.randomUUID().toString() + UUID.randomUUID())), 204);
+   }
+
+
+
+   /*******************************************************************************
+    ** The alarm also notifies identity-admins whenever the qbit's account
+    ** creates a service account (owner decision 2026-10-14).
+    *******************************************************************************/
+   @Test
+   void detectiveRuleNotifiesOnServiceAccountCreation() throws Exception
+   {
+      int member = user("alarm-sa");
+      expect(admin.post("/core/groups/" + admin.groupPk("identity-admins") + "/add_user/", new JSONObject().put("pk", member)), 204);
+      JSONObject created = expect(stack.serviceAccount().post("/core/users/service_account/", new JSONObject().put("name", unique("alarmed"))
+         .put("create_group", false).put("expiring", true).put("expires", expires(30))), 200);
+      int servicePk = created.getInt("user_pk");
+      users.add(servicePk);
+      tokens.add("service-account-" + created.getString("username") + "-password");
+      String[] eventPk = { null };
+      AuthentikTestStack.waitFor(Duration.ofSeconds(30), "service-account model_created event", () ->
+      {
+         JSONArray events = admin.getOk("/events/events/?action=model_created&ordering=-created&page_size=50&username="
+            + TestApi.encode(AuthentikTestStack.SERVICE_ACCOUNT)).getJSONArray("results");
+         for(int i = 0; i < events.length(); i++)
+         {
+            JSONObject model = events.getJSONObject(i).getJSONObject("context").optJSONObject("model");
+            if(model != null && "user".equals(model.optString("model_name")) && String.valueOf(servicePk).equals(model.optString("pk")))
+            {
+               eventPk[0] = events.getJSONObject(i).getString("pk");
+               return (true);
+            }
+         }
+         return (false);
+      });
+      AuthentikTestStack.waitFor(Duration.ofSeconds(60), "service-account creation notification", () ->
+         notifications(member, eventPk[0]).length() > 0);
+   }
+
+
+
+   /*******************************************************************************
     ** Real qbit calls, local audit/scope persistence and the response-only SPI.
     *******************************************************************************/
    @Test

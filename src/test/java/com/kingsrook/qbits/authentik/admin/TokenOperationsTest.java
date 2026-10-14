@@ -198,7 +198,10 @@ class TokenOperationsTest
       util.getRuntime().withTokenAlerts(new AuthentikTokenAlerts()::send);
       AuthentikTokenReminders.run(util, now);
       assertThat(new TokenScopeStore(t.config).find("external")).isNull();
-      assertThat(new AuthentikTokenAlerts().send(new AuthentikTokenAlerts.Notice("authentik_token_guard_bypass", "high", null, "safe"))).isFalse();
+      //////////////////////////////////////////////////////////////////////
+      // core QAlerts exists from RC.5: guard incidents always have a path //
+      //////////////////////////////////////////////////////////////////////
+      assertThat(new AuthentikTokenAlerts().send(new AuthentikTokenAlerts.Notice("authentik_token_guard_bypass", "high", null, "safe"))).isTrue();
       t.loginAs("sam@example.test");
       assertThatThrownBy(() -> AuthentikTokenReminders.run(util, now)).hasMessageContaining("tokens.manage");
       assertThatThrownBy(() -> AuthentikTokenWidget.data(util, now)).hasMessageContaining("tokens.manage");

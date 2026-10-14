@@ -17,10 +17,7 @@
 package com.kingsrook.qbits.authentik.admin;
 
 
-import java.lang.reflect.Method;
-import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 
 
 /*******************************************************************************
@@ -64,8 +61,8 @@ public class AuthentikTokenAlerts
 
 
    /*******************************************************************************
-    ** RC.5 Alerts raises guard incidents. The installed qbit's notification
-    ** API supplies owner-directed reminders until core ships notifications.
+    ** Guard incidents are raised through core QAlerts (RC.5+); owner reminders
+    ** through core QAlerts.notify (qqq#1125) when the QQQ version has it.
     *******************************************************************************/
    public boolean send(Notice notice)
    {
@@ -84,22 +81,22 @@ public class AuthentikTokenAlerts
             alerts.getMethod("raise", signalType).invoke(null, signal);
             return (true);
          }
-         Class<?> runtimeType = Class.forName("com.kingsrook.qbits.alerts.AlertsRuntime");
-         Object runtime = runtimeType.getMethod("find", QInstance.class).invoke(null, QContext.getQInstance());
-         if(runtime != null)
-         {
-            Object sink = runtimeType.getMethod("sink").invoke(runtime);
-            Class<?> signalType = Class.forName("com.kingsrook.qbits.alerts.spi.NotificationSignal");
-            Class<?> audienceType = Class.forName("com.kingsrook.qbits.alerts.spi.NotificationAudience");
-            Object signal = signalType.getConstructor(String.class).newInstance("Access token expiry reminder");
-            signalType.getMethod("withBody", String.class).invoke(signal, notice.message());
-            signalType.getMethod("withSourceName", String.class).invoke(signal, "authentik");
-            signalType.getMethod("withSourceKey", String.class).invoke(signal, notice.key());
-            signalType.getMethod("withAudience", audienceType).invoke(signal, audienceType.getMethod("user", String.class).invoke(null, notice.recipient()));
-            Method notify = sink.getClass().getMethod("notify", signalType);
-            notify.invoke(sink, signal);
-            return (true);
-         }
+         //////////////////////////////////////////////////////////////////////
+         // owner reminders go through CORE's notification SPI (bell and      //
+         // email via whichever alerts producer is installed), never through //
+         // another qbit's classes (guardrail G1).                            //
+         // STAND-IN(core=QRun-IO/qqq#1125, removeBy=4.1.0-RC.7): reflection  //
+         // until the qbit's QQQ version has NotificationSignal.              //
+         //////////////////////////////////////////////////////////////////////
+         Class<?> signalType   = Class.forName("com.kingsrook.qqq.backend.core.alerts.NotificationSignal");
+         Class<?> audienceType = Class.forName("com.kingsrook.qqq.backend.core.alerts.NotificationAudience");
+         Object   signal       = signalType.getConstructor(String.class).newInstance("Access token expiry reminder");
+         signalType.getMethod("withBody", String.class).invoke(signal, notice.message());
+         signalType.getMethod("withSourceName", String.class).invoke(signal, "authentik");
+         signalType.getMethod("withSourceKey", String.class).invoke(signal, notice.key());
+         signalType.getMethod("withAudience", audienceType).invoke(signal, audienceType.getMethod("user", String.class).invoke(null, notice.recipient()));
+         alerts.getMethod("notify", signalType).invoke(null, signal);
+         return (true);
       }
       catch(ReflectiveOperationException | LinkageError e)
       {

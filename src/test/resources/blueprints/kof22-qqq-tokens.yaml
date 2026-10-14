@@ -104,6 +104,9 @@ entries:
   # superuser, a member of authentik Admins or identity-admins, or
   # qqq.io/protected). If it ever happens, guard (a) was bypassed:
   # identity-admins get an Authentik notification and an email.
+  # It also notifies whenever that account creates a service account (each
+  # comes with an app password; owner decision 2026-10-14), so in-app
+  # service-account creation is always visible to identity-admins.
   - model: authentik_policies_expression.expressionpolicy
     id: qqq-token-alarm-policy
     state: present
@@ -121,6 +124,11 @@ entries:
         if (event.user or {}).get("username") != "qqq-kof22-admin-idadmin":
             return False
         model = event.context.get("model") or event.context.get("secret") or {}
+        # Also notify (owner decision 2026-10-14) whenever the qbit's account
+        # creates a service account: each one comes with an app password.
+        if event.action == "model_created" and model.get("app") == "authentik_core" and model.get("model_name") == "user":
+            created = User.objects.filter(pk=model.get("pk")).first()
+            return created is not None and created.type == "service_account"
         # Two shapes: the usual model reference (app, model_name, pk), and set_key's
         # model_to_dict(token) (token_uuid, identifier, intent, user; key masked).
         is_reference = model.get("app") == "authentik_core" and model.get("model_name") == "token"
