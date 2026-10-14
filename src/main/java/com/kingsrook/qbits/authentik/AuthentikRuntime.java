@@ -83,6 +83,16 @@ public class AuthentikRuntime
 
 
    /*******************************************************************************
+    ** Every registered runtime (a snapshot).
+    *******************************************************************************/
+   public static java.util.List<AuthentikRuntime> all()
+   {
+      return (java.util.List.copyOf(BY_BACKEND.values()));
+   }
+
+
+
+   /*******************************************************************************
     ** Find the runtime for an API backend name.
     *******************************************************************************/
    public static AuthentikRuntime forBackend(String backendName)

@@ -4,6 +4,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+- `AuthentikQBitConfig.fullAccessHostPermissions` lets a host declare permission names core cannot enumerate (custom checkers, named permissions); full access expands to them at use time, for the instance holding that runtime's backend only.
 - `AuthentikMaintenance.applyPolicy` lets reviewed host run-once jobs apply a policy to an exact group name through the existing audited Save Policy path. Dedicated maintenance identities, full-access expansion, canonical no-ops, context restoration, stale checks and optional two-person approval are covered; system-session writes remain forbidden. No HTTP route or process is registered.
 
 - Explicit full-access policy statement (`Action: ["*"], Resource: ["*"]`) resolves against all current core and qbit permissions, including features, READ_WRITE `write`, identity names and future resources. Added canonical round trips, complete-set save authorization, last-admin removal protection and the editor `fullAccess` payload contract; named-resource wildcards retain their five-action meaning.

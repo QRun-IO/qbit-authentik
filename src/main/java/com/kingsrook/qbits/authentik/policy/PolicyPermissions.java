@@ -102,6 +102,7 @@ public final class PolicyPermissions
       {
          PermissionsHelper.getAllAvailablePermissions(qInstance).forEach(permission -> permissions.add(permission.getName()));
          permissions.addAll(PolicyCatalog.of(qInstance).permissionNames());
+         permissions.addAll(hostPermissions(qInstance));
       }
       for(IdentityPermission permission : IdentityPermission.values())
       {
@@ -109,6 +110,30 @@ public final class PolicyPermissions
       }
       permissions.remove(FULL_ACCESS);
       return (permissions);
+   }
+
+
+
+   /*******************************************************************************
+    ** The host-declared permission names (config fullAccessHostPermissions) of
+    ** every Authentik runtime whose API backend is in this instance.
+    *******************************************************************************/
+   static Set<String> hostPermissions(QInstance qInstance)
+   {
+      Set<String> rs = new TreeSet<>();
+      for(com.kingsrook.qbits.authentik.AuthentikRuntime runtime : com.kingsrook.qbits.authentik.AuthentikRuntime.all())
+      {
+         com.kingsrook.qbits.authentik.AuthentikQBitConfig config = runtime.getConfig();
+         if(config.getFullAccessHostPermissions() != null && config.getApiBackendName() != null && qInstance.getBackend(config.getApiBackendName()) != null)
+         {
+            java.util.Collection<String> names = config.getFullAccessHostPermissions().apply(qInstance);
+            if(names != null)
+            {
+               names.stream().filter(n -> n != null && !n.isBlank()).forEach(rs::add);
+            }
+         }
+      }
+      return (rs);
    }
 
 

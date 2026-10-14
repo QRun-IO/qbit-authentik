@@ -183,4 +183,31 @@ class PolicyFullAccessTest
       }
       assertThat(PolicyPermissions.allPermissions(null, null)).hasSize(IdentityPermission.values().length);
    }
+
+
+
+   /*******************************************************************************
+    ** Host-declared names (custom checkers QQQ metadata cannot list) join the
+    ** expansion for an instance holding that runtime's backend, are computed at
+    ** use time, and never leak into another instance.
+    *******************************************************************************/
+   @Test
+   void hostDeclaredPermissionsJoinFullAccessForTheirInstanceOnly()
+   {
+      AuthentikQBitConfig config = new AuthentikQBitConfig().withTableNamePrefix("hostdecl");
+      List<String>        names  = new java.util.ArrayList<>(List.of("host.purge"));
+      config.withFullAccessHostPermissions(qInstance -> names);
+      AuthentikRuntime.register(new AuthentikRuntime(config));
+
+      QInstance mine = new QInstance();
+      mine.addBackend(new com.kingsrook.qqq.backend.core.model.metadata.QBackendMetaData().withName(config.getApiBackendName()));
+      assertThat(PolicyPermissions.allPermissions(mine, Set.of())).contains("host.purge");
+
+      names.add("host.later");
+      assertThat(PolicyPermissions.allPermissions(mine, Set.of())).contains("host.purge", "host.later");
+
+      assertThat(PolicyPermissions.allPermissions(new QInstance(), Set.of())).doesNotContain("host.purge", "host.later");
+      config.withFullAccessHostPermissions(qInstance -> null);
+      assertThat(PolicyPermissions.allPermissions(mine, Set.of())).doesNotContain("host.purge");
+   }
 }
