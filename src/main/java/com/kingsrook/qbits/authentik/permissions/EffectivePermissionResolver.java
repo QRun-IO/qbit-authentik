@@ -87,6 +87,17 @@ public class EffectivePermissionResolver
     *******************************************************************************/
    public Resolution resolveGroups(Collection<String> groupPks)
    {
+      return (resolveGroups(groupPks, null));
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve normally, except for one group's policy document. Its named
+    ** permissions and every other group's policy still contribute.
+    *******************************************************************************/
+   public Resolution resolveGroups(Collection<String> groupPks, String excludePolicyOfGroupPk)
+   {
       Set<String>              permissions = new TreeSet<>();
       Map<String, Set<String>> grantedBy   = new LinkedHashMap<>();
       Set<String>              unknown     = new TreeSet<>();
@@ -103,7 +114,10 @@ public class EffectivePermissionResolver
             }
             appAccess.addAll(node.appAccess());
             List<String> raws = new ArrayList<>(node.permissions());
-            raws.addAll(node.policyPermissions());
+            if(!node.pk().equals(excludePolicyOfGroupPk))
+            {
+               raws.addAll(node.policyPermissions());
+            }
             for(String raw : raws)
             {
                Set<String> expanded = expand(raw);

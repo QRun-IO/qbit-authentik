@@ -460,7 +460,37 @@ public class FakeAuthentik
             {
                continue;
             }
+            if(query.containsKey("is_active") && user.optBoolean("is_active") != Boolean.parseBoolean(first(query, "is_active")))
+            {
+               continue;
+            }
+            if(query.containsKey("path_startswith") && !user.optString("path").startsWith(first(query, "path_startswith")))
+            {
+               continue;
+            }
+            List<String> names = groupNamesOf(user.getInt("pk"));
+            if(query.containsKey("groups_by_name") && names.stream().noneMatch(query.get("groups_by_name")::contains))
+            {
+               continue;
+            }
+            if(query.containsKey("groups_by_pk") && names.stream().map(this::pk).noneMatch(query.get("groups_by_pk")::contains))
+            {
+               continue;
+            }
             rs.add(rendered);
+         }
+         if("username".equals(first(query, "ordering")))
+         {
+            rs.sort(java.util.Comparator.comparing(user -> user.getString("username")));
+         }
+         if(query.containsKey("page_size"))
+         {
+            int size = Integer.parseInt(first(query, "page_size"));
+            int number = Integer.parseInt(first(query, "page"));
+            int from = Math.min(rs.size(), (number - 1) * size);
+            int to = Math.min(rs.size(), from + size);
+            return (ok(200, new JSONObject().put("pagination", new JSONObject().put("count", rs.size()).put("current", number)
+               .put("total_pages", Math.max(1, (rs.size() + size - 1) / size))).put("results", new JSONArray(rs.subList(from, to)))));
          }
          return (page(rs));
       }
