@@ -236,4 +236,17 @@ class AuthentikQBitConfigTest
       assertThat(config.getTokenBrokerClientSecret()).isNull();
    }
 
+
+
+   /*******************************************************************************
+    ** The startup log lists TOKENS when it is on by default (writes enabled).
+    *******************************************************************************/
+   @org.junit.jupiter.api.Test
+   void effectiveFeaturesIncludeDefaultTokens()
+   {
+      AuthentikQBitConfig writes = new AuthentikQBitConfig().withFeatures(java.util.EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS)).withTokensEnabled(true);
+      org.assertj.core.api.Assertions.assertThat(writes.getEffectiveFeatures()).contains(AuthentikFeature.TOKENS, AuthentikFeature.READ, AuthentikFeature.USERS);
+      AuthentikQBitConfig readOnly = new AuthentikQBitConfig().withFeatures(java.util.EnumSet.of(AuthentikFeature.READ));
+      org.assertj.core.api.Assertions.assertThat(readOnly.getEffectiveFeatures()).containsExactly(AuthentikFeature.READ);
+   }
 }

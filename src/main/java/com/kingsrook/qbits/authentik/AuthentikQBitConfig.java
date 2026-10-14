@@ -453,6 +453,26 @@ public class AuthentikQBitConfig implements QBitConfig
 
 
    /*******************************************************************************
+    ** The features that are actually on: the configured set, plus TOKENS when it
+    ** is on by default (writes enabled, not opted out), minus TOKENS when it is
+    ** listed but off (read only or opted out). This is what hosts see in logs.
+    *******************************************************************************/
+   public java.util.Set<AuthentikFeature> getEffectiveFeatures()
+   {
+      java.util.EnumSet<AuthentikFeature> effective = java.util.EnumSet.noneOf(AuthentikFeature.class);
+      for(AuthentikFeature feature : AuthentikFeature.values())
+      {
+         if(hasFeature(feature))
+         {
+            effective.add(feature);
+         }
+      }
+      return (effective);
+   }
+
+
+
+   /*******************************************************************************
     ** Whether a feature is enabled.
     *******************************************************************************/
    public boolean hasFeature(AuthentikFeature feature)
