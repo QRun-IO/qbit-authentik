@@ -32,9 +32,9 @@ import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
-import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 
 
 /*******************************************************************************
@@ -93,6 +93,19 @@ public class AuthentikDriftReport
       runCheck(findings, "group attributes", this::checkGroupAttributes);
       runCheck(findings, "service-account activity", this::checkServiceAccountActivity);
       findings.sort(Comparator.comparing(DriftFinding::severity));
+      return (findings);
+   }
+
+
+
+   /*******************************************************************************
+    ** Reuse only mapper attributes and service-account lockout diagnostics.
+    *******************************************************************************/
+   public List<DriftFinding> runMapperChecks()
+   {
+      List<DriftFinding> findings = new ArrayList<>();
+      runCheck(findings, "group attributes", this::checkGroupAttributes);
+      runCheck(findings, "service-account activity", this::checkServiceAccountActivity);
       return (findings);
    }
 
