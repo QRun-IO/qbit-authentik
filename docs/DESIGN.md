@@ -1085,16 +1085,18 @@ A **policy** is a JSON document on an Authentik group that grants QQQ permission
 }
 ```
 
-Each `Allow` statement grants `{resource}.{action}` for every listed resource and action (`*` = only the five standard actions: `hasAccess`, `read`, `insert`, `edit`, `delete`). Those are QQQ permission names, so a QQQ session that holds them passes QQQ's own permission checks. Policies cover the instance's tables, processes, apps, reports and widgets. Named permissions that are not `{resource}.{action}` (for example `authentik.users.manage`) stay in `qqq.io/permissions` (§5.6); a policy cannot grant them, because a resource cannot contain a dot.
+Each `Allow` statement grants `{resource}.{action}` for every listed resource and action (`*` on a named resource = only the five standard actions: `hasAccess`, `read`, `insert`, `edit`, `delete`). Those are QQQ permission names, so a QQQ session that holds them passes QQQ's own permission checks. Policies cover the instance's tables, processes, apps, reports and widgets. Named permissions that are not `{resource}.{action}` (for example `authentik.users.manage`) stay in `qqq.io/permissions` (§5.6); individual policy resources cannot contain a dot. Full access includes these named permissions in session form.
 
-Table feature actions are generic strings registered in the table's permission catalog: for example `analyze` (qbit-data-analysis), or `comment`, `attach`, `tag`, `share`, `task`, `assign` (qbit-collaboration). `{"Effect":"Allow","Action":["analyze"],"Resource":["person"]}` grants `person.analyze`, checked with `session.hasPermission("person.analyze")`. A feature must exist for every resource in its statement. Unknown features reject the document. `"*"` never includes features, so existing policies do not acquire new grants when a feature is registered.
+Table feature actions are generic strings registered in the table's permission catalog: for example `analyze` (qbit-data-analysis), or `comment`, `attach`, `tag`, `share`, `task`, `assign` (qbit-collaboration). `{"Effect":"Allow","Action":["analyze"],"Resource":["person"]}` grants `person.analyze`, checked with `session.hasPermission("person.analyze")`. A feature must exist for every resource in its statement. Unknown features reject the document. `Action: ["*"]` on a named resource never includes features, so those statements do not acquire new grants when a feature is registered.
+
+**Full access.** `{"Effect":"Allow","Action":["*"],"Resource":["*"]}` grants every name from `PermissionsHelper.getAllAvailablePermissions(qInstance)`, the qbit permission catalog (including hidden record actions), and all `IdentityPermission` session names. This includes table features, READ_WRITE `write`, custom permission names enumerated by core, and future resources. Expansion happens at permission computation, never by replacing the stored statement with today's list. `Resource "*"` requires exactly `Action ["*"]`; other combinations reject the whole document. Other statements are still validated. Canonical full access is exactly one wildcard statement; enumerating all current grants never invents it. See [Full access](POLICY-FORMAT.md#full-access) for exact inclusion rules.
 
 **Fail closed.** Any of these grants **zero** permissions from that document and logs a warning:
 - an unknown `PolicySpec` or an unsupported `PolicyVersion`
 - a document that is not a JSON object, or a `Statement` that is not an array
 - a statement whose `Effect` is not `Allow`
 - an unknown action
-- a resource that does not match `[A-Za-z0-9_]+`
+- a resource that does not match `[A-Za-z0-9_]+`, except the full-access `*`
 - any other parse error
 
 This is stricter than the reference implementation in two places. The reference ignores unknown actions, while this qbit rejects the whole document. `Deny` is not supported yet, so a `Deny` statement also rejects the document; ignoring it would grant more than its author intended.
@@ -1143,7 +1145,7 @@ The feature `POLICIES` turns on the editor, the `authentik_policy` table and the
 The **catalog** lists every app, table, process, report and protected widget in the QInstance. Each entry has its permission base name, label, kind, app, and the actions QQQ actually checks for it:
 - `hasAccess` for apps, processes, reports and widgets
 - `read`, `insert`, `edit` and `delete` for tables, limited by the table's capabilities and permission level
-- Table features from `PermissionsHelper.getAllAvailablePermissions(qInstance)`, matched by the table's effective permission base name plus `.`. Their labels come from `AvailablePermission.permissionType`; no dependency on the unreleased `TableFeaturePermissionsMetaData` hook is required. The five standard suffixes are excluded.
+- Table features from `PermissionsHelper.getAllAvailablePermissions(qInstance)`, matched by the table's effective permission base name plus `.`. Their labels come from `AvailablePermission.permissionType`; registered `TableFeaturePermissionsMetaData` features appear through this core API. The five standard suffixes are excluded.
 
 The widget JSON keeps `actions` unchanged and adds a `features` array to each table resource, for example `"actions":["read","insert","edit","delete"],"features":[{"name":"analyze","label":"Analyze"},{"name":"comment","label":"Comment"}]`. Tables without features have `"features":[]`. Features also appear for `HAS_ACCESS` and `READ_WRITE` tables. Shared permission base names merge their features. Feature checkboxes must emit explicit action names.
 
@@ -1152,6 +1154,8 @@ The catalog also follows these rules:
 - Objects that are in no app are listed under "Other".
 - Tables that use `READ_WRITE` permissions are shown with the standard action `read` and any registered features, and a note about their single write permission. The generic matching rule also exposes their available `write` permission as an explicit named action; `*` does not grant it.
 - Objects with a custom permission checker, or `NOT_PROTECTED`, are left out because a policy cannot grant them.
+
+**Full-access UI contract (Next implementation in a separate PR).** The widget payload adds `fullAccess: boolean`, true only when the current valid document contains the full-access statement, false for an absent or invalid document. Next must show a prominent **Full access (all current and future resources)** checkbox initialized from this field. While checked, disable the permissions matrix and emit a document with the payload's `spec` and `version` and exactly `Statement: [{"Effect":"Allow","Action":["*"],"Resource":["*"]}]` through the existing `outputFieldName`. Do not enumerate the matrix into explicit permissions. Unchecking removes that statement and re-enables the matrix; the emitted document then contains only explicit selected grants. `fullAccess` is display state, not a separately trusted save input: the server derives authority from the submitted document. Member `basePermissions` already expands full-access policies from other groups; the UI must label full access as including future resources, not infer completeness from the matrix alone.
 
 The **current document** is read live from the group in Authentik, the source of truth, together with the group's fingerprint for the stale check. If it differs from the last QQQ save, a notice says it was changed in Authentik.
 
@@ -1169,7 +1173,7 @@ The screen works like this:
 - regenerates it in canonical form and checks that parse(generate(x)) = x (the round-trip invariant)
 - flags unknown resources
 - shows the permissions added and removed, and how many members are affected
-- applies the subset rule (§5.4 rule 4): the operator must hold every **added** permission
+- applies the subset rule (§5.4 rule 4): the operator must hold every **added** permission; for full access they must hold its **entire current expansion** (their own effective full-access policy satisfies this). Review and audit summaries say **Full access (all current and future resources)**. Removing full access also preserves the last qualifying identity administrator.
 
 Refusals name the reason.
 
@@ -1179,7 +1183,7 @@ Refusals name the reason.
 - writes the `authentik_admin_action` row and the Authentik event
 - clears the caches
 
-Saving an empty matrix removes the attribute. The canonical form is the reference generator's:
+Saving an empty matrix removes the attribute. Full access canonicalizes to one wildcard statement. Other documents retain the reference generator's canonical form:
 - one statement per action, in the order `hasAccess`, `read`, `insert`, `edit`, `delete`, followed by feature names sorted alphabetically
 - resources sorted
 - a resource with every action is still written as five statements, not `*`, so diffs stay readable

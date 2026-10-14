@@ -113,14 +113,16 @@ public final class PolicyCatalog
 
    private final List<Group>           groups;
    private final Map<String, Resource> byName;
+   private final QInstance qInstance;
 
 
 
    /*******************************************************************************
     ** Constructor.
     *******************************************************************************/
-   private PolicyCatalog(List<Group> groups)
+   private PolicyCatalog(List<Group> groups, QInstance qInstance)
    {
+      this.qInstance = qInstance;
       this.groups = groups;
       this.byName = new LinkedHashMap<>();
       for(Group group : groups)
@@ -256,7 +258,17 @@ public final class PolicyCatalog
          }
          groups.add(new Group(entry.getKey(), groupLabel, resources));
       }
-      return (new PolicyCatalog(groups));
+      return (new PolicyCatalog(groups, qInstance));
+   }
+
+
+
+   /*******************************************************************************
+    ** The source instance, used for live full-access expansion, not a snapshot.
+    *******************************************************************************/
+   public QInstance getQInstance()
+   {
+      return (qInstance);
    }
 
 
@@ -464,7 +476,7 @@ public final class PolicyCatalog
       Set<String> rs    = new TreeSet<>();
       for(String permission : permissions)
       {
-         if(!known.contains(permission))
+         if(!known.contains(permission) && !PolicyPermissions.FULL_ACCESS.equals(permission))
          {
             rs.add(permission);
          }

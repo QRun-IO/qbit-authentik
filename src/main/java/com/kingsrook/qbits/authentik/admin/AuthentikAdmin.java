@@ -43,6 +43,7 @@ import com.kingsrook.qbits.authentik.policy.PolicyFormat;
 import com.kingsrook.qbits.authentik.policy.PolicyGenerator;
 import com.kingsrook.qbits.authentik.policy.PolicyParseException;
 import com.kingsrook.qbits.authentik.policy.PolicyParser;
+import com.kingsrook.qbits.authentik.policy.PolicyPermissions;
 import com.kingsrook.qbits.authentik.policy.PolicyStore;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
@@ -1307,12 +1308,21 @@ public class AuthentikAdmin
          return (plan.refuse("These are not permissions of this app: " + String.join(", ", unknownNew) + ". Pick them in the editor."));
       }
 
-      if(added.isEmpty() && removed.isEmpty() && storedProblem == null && extrasNew.isEmpty())
+      boolean fullAccess = newPermissions.contains(PolicyPermissions.FULL_ACCESS);
+      boolean noChange = added.isEmpty() && removed.isEmpty() && storedProblem == null && extrasNew.isEmpty();
+      if(noChange && !fullAccess)
       {
          return (plan.noChange("Nothing to change."));
       }
-
       Set<String> needed = new TreeSet<>(added);
+      if(fullAccess)
+      {
+         needed = resolver().expand(PolicyPermissions.FULL_ACCESS);
+      }
+      else if(oldPermissions.contains(PolicyPermissions.FULL_ACCESS))
+      {
+         needed.removeAll(resolver().expand(PolicyPermissions.FULL_ACCESS));
+      }
       for(String extra : extrasNew)
       {
          needed.addAll(resolver().expand(extra));
@@ -1321,6 +1331,24 @@ public class AuthentikAdmin
       if(!missing.isEmpty())
       {
          return (plan.refuse("You cannot grant permissions you do not hold yourself: " + String.join(", ", missing)));
+      }
+
+      if(noChange)
+      {
+         return (plan.noChange("Nothing to change."));
+      }
+
+      if(removed.contains(PolicyPermissions.FULL_ACCESS))
+      {
+         GroupGraph.Node current = membersGraph().byPk(request.targetKey());
+         GroupGraph simulated = AuthentikSafety.withNodes(membersGraph(), new GroupGraph.Node(current.pk(), current.name(),
+            current.ownSuperuser(), current.parentPks(), current.permissions(), current.appAccess(), current.memberPks(),
+            current.malformed(), List.copyOf(newPermissions)));
+         if(AuthentikSafety.removesLastAdmin(adminsNow(), AuthentikSafety.qualifyingAdmins(simulated,
+            new EffectivePermissionResolver(simulated, runtime.getPermissionCatalog()), userFacts())))
+         {
+            return (plan.refuse("Removing this policy would leave nobody able to manage memberships and permissions."));
+         }
       }
 
       plan.withChange(policySummary(oldPermissions), policySummary(newPermissions));
@@ -1338,11 +1366,11 @@ public class AuthentikAdmin
       }
       if(!added.isEmpty())
       {
-         plan.getNotes().add("Adds: " + abbreviate(added));
+         plan.getNotes().add("Adds: " + (added.contains(PolicyPermissions.FULL_ACCESS) ? PolicyPermissions.FULL_ACCESS_LABEL : abbreviate(added)));
       }
       if(!removed.isEmpty())
       {
-         plan.getNotes().add("Removes: " + abbreviate(removed));
+         plan.getNotes().add("Removes: " + (removed.contains(PolicyPermissions.FULL_ACCESS) ? PolicyPermissions.FULL_ACCESS_LABEL : abbreviate(removed)));
       }
       if(storedProblem != null)
       {
@@ -1355,7 +1383,8 @@ public class AuthentikAdmin
       }
       JSONArray users = group.optJSONArray("users");
       plan.getNotes().add((users == null ? 0 : users.length()) + " member(s), and the members of groups below it, get the change at their next sign-in or token refresh.");
-      plan.getNotes().add(canonical.getJSONArray("Statement").length() + " statement(s), " + newPermissions.size() + " permission(s); the document round-trips.");
+      int permissionCount = fullAccess ? resolver().expand(PolicyPermissions.FULL_ACCESS).size() : newPermissions.size();
+      plan.getNotes().add(canonical.getJSONArray("Statement").length() + " statement(s), " + permissionCount + " current permission(s); the document round-trips.");
 
       if(Boolean.TRUE.equals(config.getPolicyTwoPersonApproval()) && !request.bool("approved"))
       {
@@ -1655,6 +1684,10 @@ public class AuthentikAdmin
     *******************************************************************************/
    private static String policySummary(Set<String> permissions)
    {
+      if(permissions.contains(PolicyPermissions.FULL_ACCESS))
+      {
+         return (PolicyPermissions.FULL_ACCESS_LABEL);
+      }
       return (permissions.isEmpty() ? "no policy" : permissions.size() + " permission(s): " + abbreviate(permissions));
    }
 
@@ -2221,7 +2254,8 @@ public class AuthentikAdmin
 
       try
       {
-         PolicyStore.save(config, request.targetKey(), fresh.optString("name"), canonical, permissions.size(), guard.operatorEmail(),
+         int permissionCount = permissions.contains(PolicyPermissions.FULL_ACCESS) ? resolver().expand(PolicyPermissions.FULL_ACCESS).size() : permissions.size();
+         PolicyStore.save(config, request.targetKey(), fresh.optString("name"), canonical, permissionCount, guard.operatorEmail(),
             permissions.isEmpty() ? null : PolicyStore.fingerprint(compact, format, runtime.getPolicyCatalog()));
       }
       catch(Exception e)
