@@ -5,7 +5,7 @@ layer: QBIT
 # format (qqq#1198). Table keys use the default table prefix (authentik_); a host
 # with a different tableNamePrefix gets the same text on its renamed tables.
 # AuthentikHelp applies it until the core HelpBundles registry ships in a QQQ
-# release (STAND-IN(core=QRun-IO/qqq#1198)). Summaries stay under 120 characters.
+# release (STAND-IN(core=QRun-IO/qqq#1198, removeBy=4.1.0-RC.7)). Summaries stay under 120 characters.
 #
 # Two kinds of table live here. The API-backed tables hold no rows of their own:
 # every list is read live from Authentik, so an empty list means "Authentik returned
