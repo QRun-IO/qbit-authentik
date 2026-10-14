@@ -80,7 +80,7 @@ public class AuthentikGuard
          return;
       }
       requireUser(session);
-      if(!has(session, spec.getReadPermission()))
+      if(!has(session, spec.getReadPermission()) && !(spec.getAlternativeReadPermission() != null && has(session, spec.getAlternativeReadPermission())))
       {
          throw (new QPermissionDeniedException("You do not have permission to view " + spec.getLabel() + "."));
       }
@@ -130,9 +130,13 @@ public class AuthentikGuard
       {
          throw (new QPermissionDeniedException(action.getLabel() + " is not enabled (feature " + action.getFeature() + ")."));
       }
-      if(!has(session, action.getPermission()))
+      if(action.getPermission() != null && !has(session, action.getPermission()))
       {
          throw (new QPermissionDeniedException("You do not have permission to do this (" + action.getPermission().getShortName() + ")."));
+      }
+      if(action == AdminAction.CREATE_SERVICE_ACCOUNT && !has(session, IdentityPermission.USERS_MANAGE))
+      {
+         throw (new QPermissionDeniedException("Creating a service account also needs authentik.users.manage."));
       }
       return (new WriteAuthorization(action.name(), operatorEmail()));
    }

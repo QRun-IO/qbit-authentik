@@ -1,10 +1,10 @@
-# AGENTS.md
+# AGENTS.md / CLAUDE.md
 
-This file provides guidance to Codex and other agents when working with code in this repository. It mirrors CLAUDE.md; keep them in sync.
+Shared guidance for agents working in this repository. Keep AGENTS.md and CLAUDE.md in sync.
 
 ## Project Overview
 
-**QBit Authentik**: a QQQ QBit to manage Authentik users, groups, memberships and group-granted QQQ permissions from a QQQ app. Authentik's database is the source of truth; the qbit reads live and (from phase 2) writes through the Authentik API. Design: `docs/DESIGN.md` (approved spec, QRun-IO/qqq#1065). Current line: 0.1 = read-only (phases 0-1).
+**QBit Authentik**: a QQQ QBit to manage Authentik users, groups, memberships and group-granted QQQ permissions from a QQQ app. Authentik's database is the source of truth; the qbit reads live and writes through the Authentik API (never its DB). Design: `docs/DESIGN.md` (approved spec, QRun-IO/qqq#1065). Current line: 0.1 = the full user lifecycle and group/permission management (phases 0-3), read-only by default.
 
 ## Build Commands
 
@@ -12,6 +12,7 @@ This file provides guidance to Codex and other agents when working with code in 
 ./mvnw compile          # always use the wrapper: Maven 3.10 cannot read the parent POM
 ./mvnw test             # unit tests, offline, on recorded fixtures (src/test/resources/fixtures/2026.8.3)
 ./mvnw test -Dtest=ClassName
+./mvnw verify -DskipITs # compile, unit tests and JaCoCo; no contract ITs
 CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Postgres, Mailpit (Testcontainers), JaCoCo gate
 ./mvnw verify -Dit.test=QbitReadContractIT -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw verify -Dauthentik.fixtures.record=true              # refresh unit fixtures from the contract ITs
@@ -29,14 +30,18 @@ CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Post
 - `AuthentikRuntime` (registry by API backend name): config, `TokenBucketThrottle` (10 rps, burst 20 by default), `AuthentikGuard`, `AuthentikFilterMapper`, response cache, and the table-name to `AuthentikTableSpec` map.
 - `client/AuthentikActionUtil extends BaseAPIActionUtil` is the only code that talks to Authentik.
   - `doQuery`/`doCount`/`doGet` use page/page_size paging (max 100). Key-only filters become per-id GETs. The user scope and type filters are applied server-side and re-checked per record.
-  - Writes go to the guard, which refuses them in 0.1.
+  - The generic table writes (`doInsert`/`doUpdate`/`doDelete`) are refused. Changes use `write(WriteAuthorization, ...)` or `writeAs(bearer, WriteAuthorization, ...)`, and only `AuthentikGuard.authorize(AdminAction)` mints a `WriteAuthorization` (an architecture test pins callers to `AuthentikAdmin` and its `AuthentikTokens` delegate).
   - `execute()` is the single request loop: throttle, bearer header, 429/5xx retry, error mapping, logging.
   - `send()` is the test seam (`FixtureActionUtil`, `QbitReadContractIT.RecordingActionUtil`).
 - `client/AuthentikTables` maps tables to the pinned schema (users, groups, sessions, events), plus the **virtual** `groupMember` table, which `AuthentikActionUtil.memberships()` serves from a group, a user, or a bounded sweep. `client/AuthentikApiSurface` lists every operation and parameter used. `SchemaDriftTest` and `SchemaDriftIT` check that surface.
 - `client/AuthentikFilterMapper` maps a QQQ filter to Authentik params, or rejects it with a `QUserFacingException`. It never filters client-side.
-- `security/AuthentikGuard` handles read and write permission checks, the user scope, and protected-account detection. `security/IdentityPermission` is the `identity.*` catalog (session form `<name>.hasAccess`).
+- `security/AuthentikGuard` handles read permission checks, write authorization, the user scope, and protected-account detection. `security/IdentityPermission` is the `authentik.*` catalog (session form `<name>.hasAccess`).
+- `admin/AuthentikAdmin` plans and performs every change (`AdminAction`, `AdminRequest`, `AdminPlan`): the guardrails of DESIGN.md 5.4 run against LIVE Authentik data and the operator's LIVE groups (never the session claim) at plan time and again at execute time; the audit row (`AdminActionAuditor`, table `authentik_admin_action`) is written BEFORE the call and the call is not made if that fails; then the change, then an Authentik `custom_qqq_admin_action` event. `AuthentikSafety` holds the pure rules (subset rule helpers, last-admin, fingerprints). Granting `authentik.*` queues an `authentik_approval_request` for a second person (`approve`/`reject`).
+- `admin/AuthentikTokens` implements DESIGN section 13: personal calls use an action-scoped exchanged bearer; service-account calls use the qbit bearer. One-time keys never enter records, process values, audit or event context. `TokenKeyDelivery` refuses key-producing actions when core has no response-only secret channel.
+- `processes/AuthentikProcesses`: every action is a standard streamed-ETL table or record action (details screen, Review = dry run, Result), never in the nav. The ETL defaults to full validation, so the Review screen already holds the dry-run lines. The preview step's record count is NOT carried to later steps (and a client count needs `setDistinctCount`), so steps count targets themselves.
+- `app/`: `AuthentikHomeData`/`AuthentikHomeView` (the single home widget, HTML with no tables) and `AuthentikRelations` (joins, child-list widgets and sections so sub-tables appear on their parents, not in the nav).
 - `permissions/GroupGraph` + `EffectivePermissionResolver` (pure) turn groups and their ancestors into QQQ permissions. The util caches the graph for `groupCacheTtlSeconds` and uses it for derived fields.
-- `drift/AuthentikDriftReport` holds the drift checks, using only the service account's read permissions. It is rendered by `metadata/AuthentikDriftReportWidgetRenderer`, a standard TABLE widget gated by `identity.admin`.
+- `drift/AuthentikDriftReport` holds the drift checks, using only the service account's read permissions. It is rendered by `metadata/AuthentikDriftReportWidgetRenderer`, a standard TABLE widget gated by `authentik.admin`.
 
 ## Invariants (do not break)
 
@@ -46,7 +51,9 @@ CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Post
 - Multi-value params are repeated plain names (`type=a&type=b`). Authentik silently ignores `type[]=`.
 - The user detail GET takes no `include_*` params. Groups have no `last_updated` in 2026.8.
 - `check_access?for_user=` is useless for the service account: it is silently evaluated for the caller. Never use it for other users.
-- The service account must never be a superuser and never hold `enable_group_superuser`, token-key, impersonate or delete permissions.
+- Only `AuthentikAdmin` and its `AuthentikTokens` delegate may call `AuthentikActionUtil.write` / `writeAs`. Every write needs a reason, passes the guard, and is audited first.
+- `recovery_email` needs the brand to have a recovery flow ("No recovery flow set." otherwise), the role's `add_user` (DRF maps POST to add) plus `reset_user_password`, and `view_emailstage` on the stage.
+- The service account must never be a superuser and never hold `enable_group_superuser` or impersonate permissions; never token-key READ (view_token_key) or add_token; set_token_key only for service-account rotation; `delete_user`/`delete_group` only when the host turns the `DELETE` feature on.
 
 ## Code Style
 

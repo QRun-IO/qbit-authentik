@@ -42,6 +42,7 @@ public enum IdentityPermission
    ROLES_MANAGE("authentik.roles.manage"),
    CREDENTIALS_RESET("authentik.credentials.reset"),
    SESSIONS_REVOKE("authentik.sessions.revoke"),
+   TOKENS_MANAGE("authentik.tokens.manage"),
    AUDIT_READ("authentik.audit.read"),
    APPROVE("authentik.approve"),
    ADMIN("authentik.admin");

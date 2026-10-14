@@ -4,6 +4,11 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Added (access tokens, DESIGN.md section 13)
+- Default-on `TOKENS` with personal create/rotate/revoke/extend, service-account creation and rotation, protected-owner guardrails and optional two-person approval.
+- Action-scoped OAuth2 token exchange, response-only one-time key delivery (fail closed on older QQQ), generated usage instructions and non-secret token scope records.
+- Token-manager read access, expanded token metadata, secret redaction and in-memory process/persistence tests.
+
 ### Added (automated sessions)
 - `AuthentikGroupPermissionMapper` resolves tokenless automated sessions by a unique active Authentik email match, applying direct and inherited group permissions, static fallbacks and the sign-in cut-over guard while preserving existing session permissions.
 

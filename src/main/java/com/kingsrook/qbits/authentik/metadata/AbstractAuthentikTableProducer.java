@@ -83,7 +83,7 @@ public abstract class AbstractAuthentikTableProducer extends QBitComponentMetaDa
          .withBackendName(config.getApiBackendName())
          .withPrimaryKeyField(spec.getKeyFieldName())
          .withBackendDetails(new APITableBackendDetails().withTablePath(spec.getPath()))
-         .withPermissionRules(spec.getReadPermission().rules())
+         .withPermissionRules(spec.readRules())
          .withCapabilities(Capability.TABLE_QUERY, Capability.TABLE_GET, Capability.TABLE_COUNT, Capability.TABLE_EXPORT)
          .withoutCapabilities(Capability.TABLE_INSERT, Capability.TABLE_UPDATE, Capability.TABLE_DELETE, Capability.QUERY_STATS);
 

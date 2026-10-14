@@ -8,6 +8,7 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the approved spec, QRun-IO/qqq#1065)
 
 | | |
 |---|---|
+| **Access tokens** | Create and rotate your personal access tokens, revoke (including bulk), extend expiry, and create service accounts. Enabled with any write feature; opt out with `tokensEnabled=false` or `AUTHENTIK_QBIT_TOKENS=false`. Keys are response-only and shown once; key-producing actions require QQQ 4.1.0-RC.7+ one-time output support. See [Access tokens](docs/ACCESS-TOKENS.md). |
 | **People** | Create a user (Authentik emails them a link to set their own password; QQQ never sets or sees one), invite, edit, deactivate and reactivate, send a password reset email, reset MFA, revoke app passwords, revoke sessions, cancel invitations. Edit covers username, name, email, path and other attributes. Delete is a separate, explicit action behind the `DELETE` feature (off by default); deactivate stays the default. |
 | **Groups and permissions** | Create, edit (parents, other attributes) and delete groups, add and remove members, and edit the QQQ permissions and app sign-in a group grants (`qqq.io/permissions`, `qqq.io/app-access` on the Authentik group). |
 | **Policies** | IAM-style policy documents on groups (`qqq.io/policy`, format in [docs/POLICY-FORMAT.md](docs/POLICY-FORMAT.md)), edited with a matrix of the app's apps, tables, processes and reports and a live JSON preview (Next UI widget `AUTHENTIK_POLICY_EDITOR`). At sign-in they become QQQ permissions through `AuthentikGroupPermissionMapper`, or through the token claim with `AuthentikPolicyClaimMapper`. Parsing fails closed. |
@@ -71,9 +72,9 @@ The editor discovers features and labels through `PermissionsHelper.getAllAvaila
 
 ### Authentik side
 
-The qbit's API token belongs to a dedicated Authentik service account whose role holds only the permissions it needs (DESIGN.md section 5.1), created by a bootstrap blueprint in the host's GitOps repository. It is never a superuser and never holds `enable_group_superuser`, token-key or impersonate permissions, and holds delete permissions only when the `DELETE` feature is on. [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml) is one host's worked example.
+The qbit's API token belongs to a dedicated Authentik service account whose role holds only the permissions it needs (DESIGN.md section 5.1), created by a bootstrap blueprint in the host's GitOps repository. It is never a superuser and never holds `enable_group_superuser`, `view_token_key`, `add_token` or impersonate permissions, and holds user/group delete permissions only when the `DELETE` feature is on. [`src/test/resources/blueprints/kof22-identity-bootstrap.yaml`](src/test/resources/blueprints/kof22-identity-bootstrap.yaml) is one host's worked example.
 
-Write features need these in the role, on top of the read set: `add_user`, `change_user`, `reset_user_password`, `add_group`, `change_group`, `add_user_to_group`, `remove_user_from_group`, `view_token`, `delete_token`, `delete_authenticatedsession`, invitation `view`/`add`/`delete` (if you use invitations), `authentik_flows.view_flow` (to find the invitation flow by slug), and `view_emailstage` on the recovery stage. Saving a policy uses `change_group`. The `DELETE` feature also needs `delete_user` and `delete_group`. The contract tests grant exactly this list.
+Write features need these in the role, on top of the read set: `add_user`, `change_user`, `reset_user_password`, `add_group`, `change_group`, `add_user_to_group`, `remove_user_from_group`, `view_token`, `delete_token`, `delete_authenticatedsession`, invitation `view`/`add`/`delete` (if you use invitations), `authentik_flows.view_flow` (to find the invitation flow by slug), and `view_emailstage` on the recovery stage. Saving a policy uses `change_group`. Token management additionally needs `change_token` and `set_token_key` (only for service-account rotation); never grant `add_token` or `view_token_key`. Personal token operations use an exchanged user bearer from the confidential token broker, never the qbit bearer. The `DELETE` feature also needs `delete_user` and `delete_group`. The existing contract fixtures cover the pre-token write set; token unit tests model the additional endpoints.
 
 ## Adopting in another app
 
@@ -84,7 +85,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
 | QQQ version | QQQ 4.1 (see `pom.xml` for the exact RC). Java 21. |
 | Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
-| Tables | Create `authentik_admin_action` and `authentik_approval_request` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
+| Tables | Create `authentik_admin_action`, `authentik_approval_request` and `authentik_token_scope` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
 | Required config | `baseUrl`, `apiToken`, `appKey`. For writes: `features`, `localBackendName`, `recoveryEmailStage` (users and credentials). Optional: `invitationFlow`, `twoPersonApproval` (default on), `userScopePathStartsWith`, `protectedUsernames`, `applicationsInScope`, `linkPrefix` (default `/app`), `throttleRequestsPerSecond` (default 10), `bulkPacingMillis`. |
 | Secrets / env | `apiToken` as a `${env.X}` reference; `bootstrapOperatorSubjects` (the lockout escape hatch) defaults to `${env.AUTHENTIK_QBIT_BOOTSTRAP_SUBJECTS}`: immutable ids only (the Authentik user pk or uuid, or the token `sub`), never emails, because users can change their own email. Empty it once real group grants exist. Keep secrets in the host's secret store. |
@@ -106,3 +107,5 @@ Contract tests start Authentik (server and worker), Postgres and Mailpit, and ta
 ## License
 
 Apache 2.0
+
+Access-token metadata is readable with `authentik.audit.read` or `authentik.tokens.manage`. Personal actions have no additional process permission; ownership is checked live. Managing service-account tokens needs `authentik.tokens.manage`, and creating a service account also needs `authentik.users.manage`. Configure `tokenBrokerClientId`, `tokenBrokerClientSecret` (environment references supported), `appClientId`, `appPublicUrl` and `authentikPublicUrl` for exchange and usage instructions. Scope fields remain unavailable until `tokenScopesEnabled=true`.

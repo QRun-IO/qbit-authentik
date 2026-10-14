@@ -202,4 +202,35 @@ class AuthentikQBitConfigTest
       assertThat(AuthentikQBitConfig.toSnakeCase("auth2Factor")).isEqualTo("auth2_factor");
    }
 
+
+   /*******************************************************************************
+    ** Token defaults, minimum lifetimes and secret-safe diagnostics.
+    *******************************************************************************/
+   @Test
+   void tokenConfig()
+   {
+      AuthentikQBitConfig config = AuthentikTestSupport.unitConfig();
+      assertThat(config.getTokenMaxDaysUser()).isEqualTo(90);
+      assertThat(config.getTokenMaxDaysServiceAccount()).isEqualTo(365);
+      assertThat(config.getTokenUnusedDays()).isEqualTo(60);
+      assertThat(config.getTokenProtectedGroups()).containsExactly("authentik Admins", "identity-admins");
+      assertThat(config.getTokenScopesEnabled()).isFalse();
+      assertThat(config.getTokenTwoPersonApproval()).isFalse();
+      assertThat(config.getTokenEndpointUrl()).isEqualTo(config.getBaseUrl() + "/application/o/token/");
+      assertThat(config.getAuthentikPublicUrl()).isEqualTo(config.getBaseUrl());
+      assertThat(config.getServiceAccountGroup()).isEqualTo("qqq-service-accounts");
+      config.withTokenBrokerClientSecret("do-not-serialize-this");
+      assertThat(config.toString()).doesNotContain("do-not-serialize-this");
+      assertThat(com.kingsrook.qqq.backend.core.utils.JsonUtils.toJson(config)).doesNotContain("do-not-serialize-this");
+      config.setTokenMaxDaysUser(0);
+      config.setTokenMaxDaysServiceAccount(-1);
+      config.setTokenUnusedDays(null);
+      assertThat(errors(config)).contains("tokenMaxDaysUser must be at least 1", "tokenMaxDaysServiceAccount must be at least 1", "tokenUnusedDays must be at least 1");
+      config.withTokenMaxDaysUser(1).withTokenMaxDaysServiceAccount(1).withTokenUnusedDays(1);
+      assertThat(errors(config)).isEmpty();
+      config.withTokenBrokerClientId("${env.QBIT_TEST_UNSET_BROKER_ID}").withTokenBrokerClientSecret("${env.QBIT_TEST_UNSET_BROKER_SECRET}");
+      assertThat(config.getTokenBrokerClientId()).isNull();
+      assertThat(config.getTokenBrokerClientSecret()).isNull();
+   }
+
 }

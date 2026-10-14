@@ -54,6 +54,12 @@ public class FakeAuthentik
    public final List<JSONObject>                events   = new ArrayList<>();
    public final List<JSONObject>                writeBodies = new ArrayList<>();
 
+   public final Map<String, String> tokenKeys = new LinkedHashMap<>();
+   public final java.util.Set<Integer> deniedSubjects = new java.util.HashSet<>();
+   public final List<Integer> tokenCallers = new ArrayList<>();
+   public final List<JSONObject> loginEvents = new ArrayList<>();
+   public boolean moveTokenAfterUpdate;
+   public boolean failTokenDelete;
    private int nextUserPk = 100;
 
 
@@ -204,7 +210,7 @@ public class FakeAuthentik
    {
       JSONObject rs        = new JSONObject(user.toString());
       JSONArray  groupsObj = new JSONArray();
-      boolean    superuser = false;
+      boolean    superuser = user.optBoolean("is_superuser");
       for(JSONObject group : groups.values())
       {
          if(contains(group.getJSONArray("users"), user.getInt("pk")))
@@ -251,7 +257,27 @@ public class FakeAuthentik
       String path   = uri.getPath().replace("/api/v3", "");
       String method = request.getMethod();
       Map<String, List<String>> query = parseQuery(uri.getRawQuery());
+      if(path.equals("/application/o/token/"))
+      {
+         try
+         {
+            Map<String, List<String>> form = parseQuery(EntityUtils.toString(((HttpEntityEnclosingRequest) request).getEntity()));
+            String subject = first(form, "subject_token");
+            int pk = subject != null && subject.startsWith("subject:") ? Integer.parseInt(subject.substring(8)) : -1;
+            if(!users.containsKey(pk) || deniedSubjects.contains(pk))
+            {
+               return (ok(400, new JSONObject().put("error", "invalid_grant")));
+            }
+            return (ok(200, new JSONObject().put("access_token", "user-bearer:" + pk).put("expires_in", 120)));
+         }
+         catch(Exception e)
+         {
+            return (ok(400, new JSONObject().put("error", "invalid_request")));
+         }
+      }
       JSONObject body = body(request);
+      String authorization = request.getFirstHeader("Authorization") == null ? "" : request.getFirstHeader("Authorization").getValue();
+      int caller = authorization.startsWith("Bearer user-bearer:") ? Integer.parseInt(authorization.substring("Bearer user-bearer:".length())) : 5;
 
       if(!method.equals("GET"))
       {
@@ -259,6 +285,19 @@ public class FakeAuthentik
          writeBodies.add(body == null ? new JSONObject() : body);
       }
 
+      if(path.startsWith("/core/tokens/") && !path.equals("/core/tokens/") || path.equals("/core/tokens/") && method.equals("POST"))
+      {
+         return (tokenRequest(method, path, body, caller));
+      }
+      if(path.equals("/core/users/service_account/"))
+      {
+         int pk = nextUserPk++;
+         String name = body.getString("name");
+         user(pk, name, "", "service_account", true);
+         String identifier = "service-account-" + name + "-password";
+         capExpiry(seedToken(identifier, pk, "app_password", body.getString("expires")));
+         return (ok(201, new JSONObject().put("username", name).put("user_pk", pk).put("user_uid", UUID.randomUUID().toString()).put("token", tokenKeys.get(identifier))));
+      }
       if(method.equals("GET"))
       {
          return (get(path, query));
@@ -449,7 +488,16 @@ public class FakeAuthentik
       }
       if(path.equals("/core/tokens/"))
       {
-         List<JSONObject> rs = new ArrayList<>(tokens.getOrDefault(first(query, "user__username"), List.of()));
+         List<JSONObject> rs = new ArrayList<>();
+         if(query.containsKey("user__username"))
+         {
+            rs.addAll(tokens.getOrDefault(first(query, "user__username"), List.of()));
+         }
+         else
+         {
+            tokens.values().forEach(rs::addAll);
+         }
+         rs.replaceAll(this::renderToken);
          String intent = first(query, "intent");
          if(intent != null)
          {
@@ -480,11 +528,143 @@ public class FakeAuthentik
          JSONObject invitation = invitations.get(path.split("/")[4]);
          return (invitation == null ? FixtureActionUtil.response(404, "{}") : ok(200, invitation));
       }
-      if(path.equals("/events/events/") || path.equals("/managed/blueprints/") || path.equals("/core/applications/"))
+      if(path.equals("/events/events/"))
+      {
+         return (page(loginEvents));
+      }
+      if(path.equals("/managed/blueprints/") || path.equals("/core/applications/"))
       {
          return (page(new ArrayList<>()));
       }
       return (FixtureActionUtil.response(404, "{\"detail\":\"Not found.\"}"));
+   }
+
+
+
+   /*******************************************************************************
+    ** Seed an app password or API token with an independent fake key.
+    *******************************************************************************/
+   public JSONObject seedToken(String identifier, int owner, String intent, String expires)
+   {
+      JSONObject token = new JSONObject().put("identifier", identifier).put("user", owner).put("intent", intent)
+         .put("description", "Test access").put("expiring", true).put("expires", expires).put("managed", JSONObject.NULL);
+      tokens.computeIfAbsent(users.get(owner).getString("username"), k -> new ArrayList<>()).add(token);
+      tokenKeys.put(identifier, UUID.randomUUID().toString() + UUID.randomUUID());
+      return (token);
+   }
+
+
+
+   /*******************************************************************************
+    ** Metadata never contains a key, including list and detail responses.
+    *******************************************************************************/
+   private JSONObject renderToken(JSONObject token)
+   {
+      JSONObject result = new JSONObject(token.toString());
+      if(token.has("user") && users.containsKey(token.getInt("user")))
+      {
+         result.put("user_obj", render(users.get(token.getInt("user"))));
+      }
+      return (result);
+   }
+
+
+
+   /*******************************************************************************
+    ** Authentik 2026.8.3 caller ownership, PATCH defaults, caps and key access.
+    *******************************************************************************/
+   private QHttpResponse tokenRequest(String method, String path, JSONObject body, int caller)
+   {
+      tokenCallers.add(caller);
+      if(path.equals("/core/tokens/") && method.equals("POST"))
+      {
+         int owner = render(users.get(caller)).optBoolean("is_superuser") ? body.optInt("user", caller) : caller;
+         JSONObject token = seedToken(body.getString("identifier"), owner, body.optString("intent", "api"), body.optString("expires", java.time.Instant.now().plusSeconds(1800).toString()));
+         token.put("description", body.optString("description"));
+         capExpiry(token);
+         return (ok(201, renderToken(token)));
+      }
+      String identifier = path.split("/")[3];
+      JSONObject token = tokens.values().stream().flatMap(List::stream).filter(t -> identifier.equals(t.optString("identifier"))).findFirst().orElse(null);
+      if(token == null)
+      {
+         return (ok(404, new JSONObject()));
+      }
+      if(path.endsWith("/view_key/"))
+      {
+         return (token.optInt("user") == caller ? ok(200, new JSONObject().put("key", tokenKeys.get(identifier))) : ok(403, new JSONObject()));
+      }
+      if(method.equals("GET"))
+      {
+         return (ok(200, renderToken(token)));
+      }
+      if(caller != 5 && token.optInt("user") != caller)
+      {
+         return (ok(403, new JSONObject()));
+      }
+      if(method.equals("DELETE"))
+      {
+         if(failTokenDelete)
+         {
+            return (ok(400, new JSONObject().put("detail", "delete refused")));
+         }
+         tokens.values().forEach(list -> list.removeIf(t -> identifier.equals(t.optString("identifier"))));
+         tokenKeys.remove(identifier);
+         return (ok(204, null));
+      }
+      if(path.endsWith("/set_key/"))
+      {
+         tokenKeys.put(identifier, body.getString("key"));
+      }
+      else if(method.equals("PATCH"))
+      {
+         // validate_user runs for explicitly supplied user; setdefault is later.
+         if(body.has("user") && body.getInt("user") != token.getInt("user"))
+         {
+            return (ok(400, new JSONObject().put("user", "User cannot be changed")));
+         }
+         token.put("intent", body.optString("intent", "api")).put("user", body.optInt("user", caller));
+         if(body.has("expires"))
+         {
+            token.put("expires", body.getString("expires"));
+         }
+         token.put("expiring", body.optBoolean("expiring", token.optBoolean("expiring")));
+         capExpiry(token);
+      }
+      if(moveTokenAfterUpdate)
+      {
+         token.put("user", 4).put("intent", "api");
+      }
+      return (ok(200, renderToken(token)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Group ancestry controls app-password lifetime, otherwise thirty minutes.
+    *******************************************************************************/
+   private void capExpiry(JSONObject token)
+   {
+      java.time.Instant now = java.time.Instant.now();
+      long seconds = 1800;
+      if("app_password".equals(token.optString("intent")))
+      {
+         com.kingsrook.qbits.authentik.permissions.GroupGraph graph = com.kingsrook.qbits.authentik.permissions.GroupGraph.fromGroups(groups.values());
+         for(String pk : graph.groupsOfUser(token.getInt("user")))
+         {
+            for(com.kingsrook.qbits.authentik.permissions.GroupGraph.Node group : graph.selfAndAncestors(pk))
+            {
+               String lifetime = groups.get(group.pk()).getJSONObject("attributes").optString("goauthentik.io/user/token-maximum-lifetime");
+               if(lifetime.matches("days=[0-9]+"))
+               {
+                  seconds = Math.max(seconds, Long.parseLong(lifetime.substring(5)) * 86400);
+               }
+            }
+         }
+      }
+      java.time.Instant cap = now.plusSeconds(seconds);
+      java.time.Instant requested = java.time.Instant.parse(token.getString("expires"));
+      token.put("expires", "api".equals(token.optString("intent")) || requested.isAfter(cap) ? cap.toString() : requested.toString());
    }
 
 
