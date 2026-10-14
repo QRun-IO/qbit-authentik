@@ -46,14 +46,30 @@ public class AuthentikQBitConfig implements QBitConfig
 {
    /** Features implemented in this release. Others are refused by validate(). */
    public static final Set<AuthentikFeature> AVAILABLE_FEATURES = EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE);
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE, AuthentikFeature.TOKENS);
 
    /** Features that change Authentik data; they need a local backend for the audit trail. */
    public static final Set<AuthentikFeature> WRITE_FEATURES = EnumSet.of(AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE);
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE, AuthentikFeature.TOKENS);
 
    private static final Pattern APP_KEY_PATTERN = Pattern.compile("[a-z0-9][a-z0-9-]{0,48}[a-z0-9]");
    private static final Pattern PREFIX_PATTERN  = Pattern.compile("[a-zA-Z][a-zA-Z0-9]{0,30}");
+
+   private Boolean tokensEnabled = null;
+   private Integer tokenMaxDaysUser = 90;
+   private Integer tokenMaxDaysServiceAccount = 365;
+   private List<String> tokenProtectedGroups = new ArrayList<>(List.of("authentik Admins", "identity-admins"));
+   private Boolean tokenTwoPersonApproval = false;
+   private Boolean tokenScopesEnabled = false;
+   private String tokenBrokerClientId = "${env.AUTHENTIK_TOKEN_BROKER_CLIENT_ID}";
+   private String tokenBrokerClientSecret = "${env.AUTHENTIK_TOKEN_BROKER_CLIENT_SECRET}";
+   private String tokenEndpointUrl = null;
+   private String appPublicUrl = null;
+   private String authentikPublicUrl = null;
+   private String appClientId = null;
+   private Integer tokenUnusedDays = 60;
+   private String serviceAccountTokenLifetime = "days=365";
+   private com.kingsrook.qbits.authentik.client.AuthentikSubjectTokenSource subjectTokenSource = new com.kingsrook.qbits.authentik.client.OAuth2SubjectTokenSource();
 
    private String                baseUrl;
    private String                apiToken;
@@ -106,6 +122,19 @@ public class AuthentikQBitConfig implements QBitConfig
    @Override
    public void validate(QInstance qInstance, List<String> errors)
    {
+      if(tokenMaxDaysUser == null || tokenMaxDaysUser < 1)
+      {
+         errors.add("tokenMaxDaysUser must be at least 1");
+      }
+      if(tokenMaxDaysServiceAccount == null || tokenMaxDaysServiceAccount < 1)
+      {
+         errors.add("tokenMaxDaysServiceAccount must be at least 1");
+      }
+      if(tokenUnusedDays == null || tokenUnusedDays < 1)
+      {
+         errors.add("tokenUnusedDays must be at least 1");
+      }
+
       if(!StringUtils.hasContent(baseUrl))
       {
          errors.add("baseUrl is required (the Authentik host root, e.g. https://auth.example.com)");
@@ -422,6 +451,11 @@ public class AuthentikQBitConfig implements QBitConfig
     *******************************************************************************/
    public boolean hasFeature(AuthentikFeature feature)
    {
+      if(feature == AuthentikFeature.TOKENS)
+      {
+         return (!Boolean.TRUE.equals(readOnly) && Boolean.TRUE.equals(getTokensEnabled()) && features != null
+            && features.stream().anyMatch(WRITE_FEATURES::contains));
+      }
       return (features != null && features.contains(feature));
    }
 
@@ -454,6 +488,19 @@ public class AuthentikQBitConfig implements QBitConfig
    public String toString()
    {
       return ("AuthentikQBitConfig{baseUrl=" + baseUrl + ", appKey=" + appKey + ", tableNamePrefix=" + tableNamePrefix
+         + ", tokensEnabled=" + tokensEnabled
+         + ", tokenMaxDaysUser=" + tokenMaxDaysUser
+         + ", tokenMaxDaysServiceAccount=" + tokenMaxDaysServiceAccount
+         + ", tokenProtectedGroups=" + tokenProtectedGroups
+         + ", tokenTwoPersonApproval=" + tokenTwoPersonApproval
+         + ", tokenScopesEnabled=" + tokenScopesEnabled
+         + ", tokenBrokerClientId=" + tokenBrokerClientId
+         + ", tokenEndpointUrl=" + tokenEndpointUrl
+         + ", appPublicUrl=" + appPublicUrl
+         + ", authentikPublicUrl=" + authentikPublicUrl
+         + ", appClientId=" + appClientId
+         + ", tokenUnusedDays=" + tokenUnusedDays
+         + ", serviceAccountTokenLifetime=" + serviceAccountTokenLifetime
          + ", features=" + features + ", readOnly=" + readOnly + ", apiToken=" + (StringUtils.hasContent(apiToken) ? "******" : "(unset)") + "}");
    }
 
@@ -1353,6 +1400,474 @@ public class AuthentikQBitConfig implements QBitConfig
    public AuthentikQBitConfig withHostPermissionSource(com.kingsrook.qbits.authentik.permissions.AuthentikHostPermissionSource hostPermissionSource)
    {
       this.hostPermissionSource = hostPermissionSource;
+      return (this);
+   }
+
+
+
+
+   /*******************************************************************************
+    ** Getter for tokensEnabled.
+    *******************************************************************************/
+   public Boolean getTokensEnabled()
+   {
+      return (tokensEnabled == null ? !"false".equalsIgnoreCase(String.valueOf(resolve("${env.AUTHENTIK_QBIT_TOKENS}")).trim()) : tokensEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokensEnabled.
+    *******************************************************************************/
+   public void setTokensEnabled(Boolean tokensEnabled)
+   {
+      this.tokensEnabled = tokensEnabled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokensEnabled.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokensEnabled(Boolean tokensEnabled)
+   {
+      this.tokensEnabled = tokensEnabled;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenMaxDaysUser.
+    *******************************************************************************/
+   public Integer getTokenMaxDaysUser()
+   {
+      return (tokenMaxDaysUser);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenMaxDaysUser.
+    *******************************************************************************/
+   public void setTokenMaxDaysUser(Integer tokenMaxDaysUser)
+   {
+      this.tokenMaxDaysUser = tokenMaxDaysUser;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenMaxDaysUser.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenMaxDaysUser(Integer tokenMaxDaysUser)
+   {
+      this.tokenMaxDaysUser = tokenMaxDaysUser;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenMaxDaysServiceAccount.
+    *******************************************************************************/
+   public Integer getTokenMaxDaysServiceAccount()
+   {
+      return (tokenMaxDaysServiceAccount);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenMaxDaysServiceAccount.
+    *******************************************************************************/
+   public void setTokenMaxDaysServiceAccount(Integer tokenMaxDaysServiceAccount)
+   {
+      this.tokenMaxDaysServiceAccount = tokenMaxDaysServiceAccount;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenMaxDaysServiceAccount.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenMaxDaysServiceAccount(Integer tokenMaxDaysServiceAccount)
+   {
+      this.tokenMaxDaysServiceAccount = tokenMaxDaysServiceAccount;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenProtectedGroups.
+    *******************************************************************************/
+   public List<String> getTokenProtectedGroups()
+   {
+      return (tokenProtectedGroups);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenProtectedGroups.
+    *******************************************************************************/
+   public void setTokenProtectedGroups(List<String> tokenProtectedGroups)
+   {
+      this.tokenProtectedGroups = tokenProtectedGroups;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenProtectedGroups.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenProtectedGroups(List<String> tokenProtectedGroups)
+   {
+      this.tokenProtectedGroups = tokenProtectedGroups;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenTwoPersonApproval.
+    *******************************************************************************/
+   public Boolean getTokenTwoPersonApproval()
+   {
+      return (tokenTwoPersonApproval);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenTwoPersonApproval.
+    *******************************************************************************/
+   public void setTokenTwoPersonApproval(Boolean tokenTwoPersonApproval)
+   {
+      this.tokenTwoPersonApproval = tokenTwoPersonApproval;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenTwoPersonApproval.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenTwoPersonApproval(Boolean tokenTwoPersonApproval)
+   {
+      this.tokenTwoPersonApproval = tokenTwoPersonApproval;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenScopesEnabled.
+    *******************************************************************************/
+   public Boolean getTokenScopesEnabled()
+   {
+      return (tokenScopesEnabled);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenScopesEnabled.
+    *******************************************************************************/
+   public void setTokenScopesEnabled(Boolean tokenScopesEnabled)
+   {
+      this.tokenScopesEnabled = tokenScopesEnabled;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenScopesEnabled.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenScopesEnabled(Boolean tokenScopesEnabled)
+   {
+      this.tokenScopesEnabled = tokenScopesEnabled;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenBrokerClientId.
+    *******************************************************************************/
+   public String getTokenBrokerClientId()
+   {
+      return (resolve(tokenBrokerClientId));
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenBrokerClientId.
+    *******************************************************************************/
+   public void setTokenBrokerClientId(String tokenBrokerClientId)
+   {
+      this.tokenBrokerClientId = tokenBrokerClientId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenBrokerClientId.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenBrokerClientId(String tokenBrokerClientId)
+   {
+      this.tokenBrokerClientId = tokenBrokerClientId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenBrokerClientSecret.
+    *******************************************************************************/
+   @JsonIgnore
+   public String getTokenBrokerClientSecret()
+   {
+      return (resolve(tokenBrokerClientSecret));
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenBrokerClientSecret.
+    *******************************************************************************/
+   public void setTokenBrokerClientSecret(String tokenBrokerClientSecret)
+   {
+      this.tokenBrokerClientSecret = tokenBrokerClientSecret;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenBrokerClientSecret.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenBrokerClientSecret(String tokenBrokerClientSecret)
+   {
+      this.tokenBrokerClientSecret = tokenBrokerClientSecret;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenEndpointUrl.
+    *******************************************************************************/
+   public String getTokenEndpointUrl()
+   {
+      return (tokenEndpointUrl == null ? getBaseUrl().replaceAll("/+$", "") + "/application/o/token/" : resolve(tokenEndpointUrl));
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenEndpointUrl.
+    *******************************************************************************/
+   public void setTokenEndpointUrl(String tokenEndpointUrl)
+   {
+      this.tokenEndpointUrl = tokenEndpointUrl;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenEndpointUrl.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenEndpointUrl(String tokenEndpointUrl)
+   {
+      this.tokenEndpointUrl = tokenEndpointUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for appPublicUrl.
+    *******************************************************************************/
+   public String getAppPublicUrl()
+   {
+      return (resolve(appPublicUrl));
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for appPublicUrl.
+    *******************************************************************************/
+   public void setAppPublicUrl(String appPublicUrl)
+   {
+      this.appPublicUrl = appPublicUrl;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for appPublicUrl.
+    *******************************************************************************/
+   public AuthentikQBitConfig withAppPublicUrl(String appPublicUrl)
+   {
+      this.appPublicUrl = appPublicUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for authentikPublicUrl.
+    *******************************************************************************/
+   public String getAuthentikPublicUrl()
+   {
+      return (authentikPublicUrl == null ? getBaseUrl() : resolve(authentikPublicUrl));
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for authentikPublicUrl.
+    *******************************************************************************/
+   public void setAuthentikPublicUrl(String authentikPublicUrl)
+   {
+      this.authentikPublicUrl = authentikPublicUrl;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for authentikPublicUrl.
+    *******************************************************************************/
+   public AuthentikQBitConfig withAuthentikPublicUrl(String authentikPublicUrl)
+   {
+      this.authentikPublicUrl = authentikPublicUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for appClientId.
+    *******************************************************************************/
+   public String getAppClientId()
+   {
+      return (resolve(appClientId));
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for appClientId.
+    *******************************************************************************/
+   public void setAppClientId(String appClientId)
+   {
+      this.appClientId = appClientId;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for appClientId.
+    *******************************************************************************/
+   public AuthentikQBitConfig withAppClientId(String appClientId)
+   {
+      this.appClientId = appClientId;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for tokenUnusedDays.
+    *******************************************************************************/
+   public Integer getTokenUnusedDays()
+   {
+      return (tokenUnusedDays);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for tokenUnusedDays.
+    *******************************************************************************/
+   public void setTokenUnusedDays(Integer tokenUnusedDays)
+   {
+      this.tokenUnusedDays = tokenUnusedDays;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for tokenUnusedDays.
+    *******************************************************************************/
+   public AuthentikQBitConfig withTokenUnusedDays(Integer tokenUnusedDays)
+   {
+      this.tokenUnusedDays = tokenUnusedDays;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for serviceAccountTokenLifetime.
+    *******************************************************************************/
+   public String getServiceAccountTokenLifetime()
+   {
+      return (serviceAccountTokenLifetime);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for serviceAccountTokenLifetime.
+    *******************************************************************************/
+   public void setServiceAccountTokenLifetime(String serviceAccountTokenLifetime)
+   {
+      this.serviceAccountTokenLifetime = serviceAccountTokenLifetime;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for serviceAccountTokenLifetime.
+    *******************************************************************************/
+   public AuthentikQBitConfig withServiceAccountTokenLifetime(String serviceAccountTokenLifetime)
+   {
+      this.serviceAccountTokenLifetime = serviceAccountTokenLifetime;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for subjectTokenSource.
+    *******************************************************************************/
+   @JsonIgnore
+   public com.kingsrook.qbits.authentik.client.AuthentikSubjectTokenSource getSubjectTokenSource()
+   {
+      return (subjectTokenSource);
+   }
+
+
+
+   /*******************************************************************************
+    ** Setter for subjectTokenSource.
+    *******************************************************************************/
+   public void setSubjectTokenSource(com.kingsrook.qbits.authentik.client.AuthentikSubjectTokenSource subjectTokenSource)
+   {
+      this.subjectTokenSource = subjectTokenSource;
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for subjectTokenSource.
+    *******************************************************************************/
+   public AuthentikQBitConfig withSubjectTokenSource(com.kingsrook.qbits.authentik.client.AuthentikSubjectTokenSource subjectTokenSource)
+   {
+      this.subjectTokenSource = subjectTokenSource;
       return (this);
    }
 

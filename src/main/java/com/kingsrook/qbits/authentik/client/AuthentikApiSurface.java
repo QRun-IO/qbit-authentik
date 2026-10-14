@@ -58,6 +58,12 @@ public final class AuthentikApiSurface
    {
       List<Operation> rs = new ArrayList<>();
       rs.add(new Operation("get", "/admin/version/", Set.of()));
+      rs.add(new Operation("post", "/core/tokens/", Set.of()));
+      rs.add(new Operation("patch", "/core/tokens/{key}/", Set.of()));
+      rs.add(new Operation("delete", "/core/tokens/{key}/", Set.of()));
+      rs.add(new Operation("get", "/core/tokens/{key}/view_key/", Set.of()));
+      rs.add(new Operation("post", "/core/tokens/{key}/set_key/", Set.of()));
+      rs.add(new Operation("post", "/core/users/service_account/", Set.of()));
 
       ///////////////////////////////////////////////////////////
       // virtual membership table, group graph, drift report  //
