@@ -147,7 +147,7 @@ public final class AuthentikTokenScopes
             {
                return (Optional.of(TokenScope.marker("invalid", Mode.DENY_ALL)));
             }
-            return (runtime.getTokenScopeCache().getResultThrowing(identifier, id ->
+            return (runtime.getTokenScopeCache().getResultThrowing(identifier, id -> lookupAsSystem(instance, () ->
             {
                APIBackendMetaData api = (APIBackendMetaData) backend;
                AuthentikActionUtil util = (AuthentikActionUtil) QCodeLoader.getAdHoc(BaseAPIActionUtil.class, api.getActionUtil());
@@ -166,11 +166,69 @@ public final class AuthentikTokenScopes
                }
                QRecord row = new TokenScopeStore(runtime.getConfig()).find(id);
                return (row == null ? TokenScope.marker(id, Mode.UNSCOPED) : TokenScope.from(id, row));
-            }));
+            })));
          }
       }
       // A default token claim must never silently lose enforcement if the qbit is missing.
       return (claims.has("qqq_token") ? Optional.of(TokenScope.marker(claims.optString("qqq_token"), Mode.DENY_ALL)) : Optional.empty());
+   }
+
+
+
+   /*******************************************************************************
+    ** A lookup step that may throw.
+    *******************************************************************************/
+   @FunctionalInterface
+   private interface Lookup
+   {
+      /***************************************************************************
+       ** Run the lookup.
+       ***************************************************************************/
+      TokenScope get() throws Exception;
+   }
+
+
+
+   /*******************************************************************************
+    ** The scope lookup runs while a session is still being built (no user yet),
+    ** so it reads Authentik and the scope row as the internal system session,
+    ** then restores the caller's context.
+    *******************************************************************************/
+   private static TokenScope lookupAsSystem(QInstance instance, Lookup lookup) throws QException
+   {
+      QInstance                                         previousInstance = QContext.getQInstance();
+      com.kingsrook.qqq.backend.core.model.session.QSession previousSession  = QContext.getQSession();
+      try
+      {
+         if(previousInstance == null)
+         {
+            QContext.init(instance, new com.kingsrook.qqq.backend.core.model.session.QSystemUserSession());
+         }
+         else
+         {
+            QContext.setQSession(new com.kingsrook.qqq.backend.core.model.session.QSystemUserSession());
+         }
+         return (lookup.get());
+      }
+      catch(QException e)
+      {
+         throw (e);
+      }
+      catch(Exception e)
+      {
+         throw (new QException("Token scope lookup failed", e));
+      }
+      finally
+      {
+         if(previousInstance == null)
+         {
+            QContext.clear();
+         }
+         else
+         {
+            QContext.setQSession(previousSession);
+         }
+      }
    }
 
 
