@@ -91,7 +91,9 @@ public final class AuthentikProcesses
       /** Selected approval requests. */
       APPROVALS,
       /** Selected policy records (authentik_policy); the target is the record's group. */
-      POLICIES
+      POLICIES,
+      /** Tokens, keyed by identifier. */
+      TOKENS
    }
 
    /*******************************************************************************
@@ -138,6 +140,28 @@ public final class AuthentikProcesses
 
       String users  = AuthentikTables.USER;
       String groups = AuthentikTables.GROUP;
+
+      List<QFieldMetaData> createTokenFields = new ArrayList<>(List.of(
+         new QFieldMetaData("description", QFieldType.STRING).withIsRequired(true),
+         new QFieldMetaData("expiresInDays", QFieldType.INTEGER).withIsRequired(true).withDefaultValue(30)));
+      if(Boolean.TRUE.equals(config.getTokenScopesEnabled()))
+      {
+         createTokenFields.add(new QFieldMetaData("readOnly", QFieldType.BOOLEAN));
+         createTokenFields.add(new QFieldMetaData("apps", QFieldType.TEXT).withLabel("Apps (names, one per line)"));
+         createTokenFields.add(new QFieldMetaData("tables", QFieldType.TEXT).withLabel("Tables (names, one per line)"));
+      }
+      createTokenFields.add(reason);
+      defs.add(new Def("createToken", "Create Token", AdminAction.CREATE_TOKEN, Kind.CREATE, AuthentikTables.TOKEN, "key", false,
+         createTokenFields, "Creates a token for you. The key is shown once, on the next screen."));
+      defs.add(new Def("rotateToken", "Rotate Token", AdminAction.ROTATE_TOKEN, Kind.TOKENS, AuthentikTables.TOKEN, "key", false, List.of(reason), null));
+      defs.add(new Def("revokeToken", "Revoke Token", AdminAction.REVOKE_TOKEN, Kind.TOKENS, AuthentikTables.TOKEN, "key_off", false, List.of(reason), null));
+      defs.add(new Def("extendToken", "Extend Expiry", AdminAction.EXTEND_TOKEN, Kind.TOKENS, AuthentikTables.TOKEN, "event", false, List.of(
+         new QFieldMetaData("expiresInDays", QFieldType.INTEGER).withIsRequired(true), reason), null));
+      defs.add(new Def("createServiceAccount", "Create Service Account", AdminAction.CREATE_SERVICE_ACCOUNT, Kind.CREATE, users, "person_add", false, List.of(
+         new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true),
+         new QFieldMetaData("groups", QFieldType.TEXT).withLabel("Groups (names, one per line)"),
+         new QFieldMetaData("expiresInDays", QFieldType.INTEGER).withIsRequired(true).withDefaultValue(365), reason),
+         "Creates a service account with one app password, shown once."));
 
       defs.add(new Def("createUser", "Create User", AdminAction.CREATE_USER, Kind.CREATE, users, "person_add", false, List.of(
          new QFieldMetaData("username", QFieldType.STRING).withLabel("Username").withIsRequired(true),
@@ -219,7 +243,8 @@ public final class AuthentikProcesses
       defs.removeIf(def -> def.action() != null && !config.hasFeature(def.action().getFeature()));
       defs.removeIf(def -> (def.action() == AdminAction.DELETE_USER && !config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.USERS))
          || (def.action() == AdminAction.DELETE_GROUP && !config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.GROUPS)));
-      if(!config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.GROUPS) || !config.getTwoPersonApproval())
+      if((!config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.GROUPS) || !config.getTwoPersonApproval())
+         && !(config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.TOKENS) && Boolean.TRUE.equals(config.getTokenTwoPersonApproval())))
       {
          defs.removeIf(def -> def.kind() == Kind.APPROVALS);
       }
@@ -291,10 +316,20 @@ public final class AuthentikProcesses
       process.setLabel(def.label());
       process.setTableName(table);
       process.setIcon(new QIcon(def.icon()));
-      process.setPermissionRules((def.action() == null ? IdentityPermission.APPROVE : def.action().getPermission()).rules());
+      IdentityPermission permission = def.action() == null ? IdentityPermission.APPROVE : def.action().getPermission();
+      // Null means self-service; the table still controls the record-action entry.
+      if(permission != null)
+      {
+         process.setPermissionRules(permission.rules());
+      }
       switch(def.kind())
       {
          case CREATE -> process.setMaxInputRecords(0);
+         case TOKENS ->
+         {
+            process.setMinInputRecords(1);
+            process.setMaxInputRecords(def.action() == AdminAction.REVOKE_TOKEN ? AuthentikAdmin.MAX_BULK : 1);
+         }
          case USERS, GROUP_USERNAMES, GROUPS, INVITATIONS, APPROVALS, POLICIES ->
          {
             process.setMinInputRecords(1);
@@ -377,6 +412,11 @@ public final class AuthentikProcesses
          case SEND_RECOVERY_EMAIL -> w("password reset email will be sent", "password reset emails will be sent", "password reset email was sent", "password reset emails were sent");
          case RESET_MFA -> w("user's MFA will be reset", "users' MFA will be reset", "user's MFA was reset", "users' MFA were reset");
          case REVOKE_APP_PASSWORDS -> w("user's app passwords will be revoked", "users' app passwords will be revoked", "user's app passwords were revoked", "users' app passwords were revoked");
+         case CREATE_TOKEN -> w("token will be created", "tokens will be created", "token was created", "tokens were created");
+         case ROTATE_TOKEN -> w("token will be rotated", "tokens will be rotated", "token was rotated", "tokens were rotated");
+         case REVOKE_TOKEN -> w("token will be revoked", "tokens will be revoked", "token was revoked", "tokens were revoked");
+         case EXTEND_TOKEN -> w("expiry will be extended", "expiries will be extended", "expiry was extended", "expiries were extended");
+         case CREATE_SERVICE_ACCOUNT -> w("service account will be created", "service accounts will be created", "service account was created", "service accounts were created");
          case REVOKE_SESSIONS -> w("user's sessions will be revoked", "users' sessions will be revoked", "user's sessions were revoked", "users' sessions were revoked");
       };
    }
@@ -447,6 +487,7 @@ public final class AuthentikProcesses
             AdminRequest request = withParams(AdminRequest.of(def.action(), String.valueOf(record.getValue("pk") != null ? record.getValue("pk") : record.getValue("uuid")), reason), def, input);
             rs.add("generatePolicy".equals(def.key()) ? admin.withGeneratedPolicy(request) : request);
          }
+         case TOKENS -> rs.add(withParams(AdminRequest.of(def.action(), record.getValueString("identifier"), reason), def, input));
          case POLICIES -> rs.add(withParams(AdminRequest.of(def.action(), record.getValueString("groupPk"), reason), def, input));
          default ->
          {
@@ -469,6 +510,16 @@ public final class AuthentikProcesses
       if(def.action() == AdminAction.SAVE_POLICY && !"generatePolicy".equals(def.key()) && input.getValue(AuthentikAdmin.POLICY_DOCUMENT) != null)
       {
          request.with(AuthentikAdmin.POLICY_DOCUMENT, input.getValueString(AuthentikAdmin.POLICY_DOCUMENT));
+      }
+      if(def.action() == AdminAction.CREATE_TOKEN)
+      {
+         for(String field : com.kingsrook.qbits.authentik.admin.TokenScopeStore.SCOPE_FIELDS)
+         {
+            if(input.getValue(field) != null)
+            {
+               request.with(field, input.getValue(field));
+            }
+         }
       }
       for(QFieldMetaData field : def.fields())
       {
@@ -857,6 +908,7 @@ public final class AuthentikProcesses
             if(def.kind() == Kind.APPROVALS)
             {
                AuthentikAdmin.AdminResult result = "approve".equals(def.key()) ? admin.approve(record.getValue("id")) : admin.reject(record.getValue("id"));
+               result = deliver(output, result);
                tally(result, w);
                output.getRecords().add(record);
                continue;
@@ -878,10 +930,41 @@ public final class AuthentikProcesses
                {
                   result = admin.execute(request);
                }
+               result = deliver(output, result);
                tally(result, w);
                output.getRecords().add(record);
                pace(admin);
             }
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Send the one-time key only through the response-only adapter.
+       *******************************************************************************/
+      private AuthentikAdmin.AdminResult deliver(RunBackendStepOutput output, AuthentikAdmin.AdminResult result)
+      {
+         com.kingsrook.qbits.authentik.admin.OneTimeKey key = result.takeSecret();
+         if(key == null)
+         {
+            return (result);
+         }
+         if(TokenKeyDelivery.tryDeliver(output, key))
+         {
+            result.delivered();
+            return (result);
+         }
+         try
+         {
+            result.discardSecret();
+            return (new AuthentikAdmin.AdminResult(false, false, false,
+               "The key could not be shown: this QQQ version cannot return one-time values. The token was revoked; nothing was kept.", null));
+         }
+         catch(QException e)
+         {
+            return (new AuthentikAdmin.AdminResult(false, false, false,
+               "The key could not be shown. Cleanup failed: the old key may no longer work and the new key is lost. Revoke or rotate the token in Authentik.", null));
          }
       }
 

@@ -42,6 +42,7 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.UniqueKey;
  *******************************************************************************/
 public final class AuthentikLocalTables
 {
+   public static final String TOKEN_SCOPE = "token_scope";
    public static final String ADMIN_ACTION        = "admin_action";
    public static final String APPROVAL_REQUEST    = "approval_request";
    public static final String POLICY              = "policy";
@@ -267,6 +268,42 @@ public final class AuthentikLocalTables
    private static QFieldMetaData ro(String name, QFieldType type)
    {
       return (new QFieldMetaData(name, type).withIsEditable(false));
+   }
+
+
+
+   /*******************************************************************************
+    ** Non-secret scope metadata only (DESIGN section 13.5).
+    *******************************************************************************/
+   public static QTableMetaData tokenScope(AuthentikQBitConfig config)
+   {
+      QTableMetaData table = base(config, TOKEN_SCOPE, "Token Scopes", "key", IdentityPermission.TOKENS_MANAGE)
+         .withPermissionRules(com.kingsrook.qbits.authentik.security.TokenReadPermission.rules())
+         .withRecordLabelFormatAndFields("%s", "tokenIdentifier")
+         .withUniqueKey(new UniqueKey("tokenIdentifier"))
+         .withAuditRules(new QAuditRules().withAuditLevel(AuditLevel.RECORD))
+         .withField(ro("tokenIdentifier", QFieldType.STRING).withMaxLength(255))
+         .withField(ro("ownerUsername", QFieldType.STRING).withMaxLength(255))
+         .withField(ro("ownerPk", QFieldType.INTEGER))
+         .withField(ro("readOnly", QFieldType.BOOLEAN))
+         .withField(ro("createdBy", QFieldType.STRING).withMaxLength(255));
+      table.getFields().remove("createDate");
+      table.getFields().remove("modifyDate");
+      for(String name : List.of("apps", "tables", "processes", "reports", "widgets", "operationIds"))
+      {
+         table.withField(ro(name, QFieldType.TEXT));
+      }
+      for(String name : List.of("createdAt", "rotatedAt"))
+      {
+         table.withField(ro(name, QFieldType.DATE_TIME));
+      }
+      ////////////////////////////////////////////////////////////////////////
+      // explicit column names: a camel-to-snake mapping would give         //
+      // last_reminder7d, while docs/schema.sql (and hosts) use _7d / _1d   //
+      ////////////////////////////////////////////////////////////////////////
+      table.withField(ro("lastReminder7d", QFieldType.DATE_TIME).withBackendName("last_reminder_7d"));
+      table.withField(ro("lastReminder1d", QFieldType.DATE_TIME).withBackendName("last_reminder_1d"));
+      return (table);
    }
 
 }

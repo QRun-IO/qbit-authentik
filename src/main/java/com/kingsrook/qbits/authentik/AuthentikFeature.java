@@ -26,6 +26,9 @@ public enum AuthentikFeature
    /** Read-only tables: users, groups, memberships, roles, applications, bindings, blueprints, sessions, events. */
    READ,
 
+   /** Access tokens (DESIGN section 13). */
+   TOKENS,
+
    /** Create, invite, edit, deactivate users (phase 3). */
    USERS,
 

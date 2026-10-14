@@ -400,12 +400,13 @@ public final class AuthentikTables
 
    /*******************************************************************************
     ** /core/tokens/ (identifier). Metadata only: there is NO key field, and the
-    ** service account is never given token-key permissions. Needs audit.read.
+    ** service account never reads token keys. Auditors and token managers may read.
     *******************************************************************************/
    static AuthentikTableSpec tokens()
    {
       AuthentikTableSpec spec = new AuthentikTableSpec(TOKEN, "Tokens", "key", "/core/tokens/", "identifier")
          .withReadPermission(IdentityPermission.AUDIT_READ)
+         .withAlternativeReadPermission(IdentityPermission.TOKENS_MANAGE)
          .withDefaultOrdering("identifier")
          .withRecordLabelFields("identifier");
       spec.withField(new AuthentikFieldSpec("identifier", "Identifier", QFieldType.STRING, string("identifier")).withSearchable().withOrdering("identifier"));
@@ -414,6 +415,14 @@ public final class AuthentikTables
       spec.withField(new AuthentikFieldSpec("description", "Description", QFieldType.STRING, string("description")));
       spec.withField(new AuthentikFieldSpec("expires", "Expires", QFieldType.DATE_TIME, instant("expires")));
       spec.withField(new AuthentikFieldSpec("expiring", "Expiring", QFieldType.BOOLEAN, bool("expiring")).withFilter(QCriteriaOperator.EQUALS, "expiring"));
+      spec.withField(new AuthentikFieldSpec("ownerPk", "Owner Id", QFieldType.INTEGER, intAt("user_obj", "pk")));
+      spec.withField(new AuthentikFieldSpec("ownerType", "Owner Type", QFieldType.STRING, at("user_obj", "type")));
+      spec.withField(new AuthentikFieldSpec("ownerName", "Owner", QFieldType.STRING, at("user_obj", "name")));
+      spec.withField(new AuthentikFieldSpec("managed", "Managed", QFieldType.STRING, string("managed")));
+      spec.withField(new AuthentikFieldSpec("lastUsed", "Last Used", QFieldType.DATE_TIME, o -> null));
+      spec.withField(new AuthentikFieldSpec("lastUsedNote", "Last Used Note", QFieldType.STRING, o -> null));
+      spec.withField(new AuthentikFieldSpec("createdAt", "Created", QFieldType.DATE_TIME, o -> null));
+      spec.withField(new AuthentikFieldSpec("scopeSummary", "Scope", QFieldType.STRING, o -> null));
       return (spec);
    }
 

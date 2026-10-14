@@ -68,3 +68,26 @@ CREATE TABLE authentik_policy
    authentik_fingerprint VARCHAR(64),
    CONSTRAINT uk_authentik_policy_group_pk UNIQUE (group_pk)
 );
+
+
+-- Token metadata only (DESIGN section 13.5). No key or key hash is stored.
+CREATE TABLE authentik_token_scope
+(
+   id                SERIAL PRIMARY KEY,
+   token_identifier  VARCHAR(255) NOT NULL,
+   owner_username    VARCHAR(255),
+   owner_pk          INTEGER,
+   read_only         BOOLEAN,
+   apps              TEXT,
+   tables            TEXT,
+   processes         TEXT,
+   reports           TEXT,
+   widgets           TEXT,
+   operation_ids     TEXT,
+   created_by        VARCHAR(255),
+   created_at        TIMESTAMP WITH TIME ZONE,
+   rotated_at        TIMESTAMP WITH TIME ZONE,
+   last_reminder_7d  TIMESTAMP WITH TIME ZONE,
+   last_reminder_1d  TIMESTAMP WITH TIME ZONE,
+   CONSTRAINT uk_authentik_token_scope_identifier UNIQUE (token_identifier)
+);

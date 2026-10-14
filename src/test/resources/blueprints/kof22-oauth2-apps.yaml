@@ -13,6 +13,29 @@ metadata:
   labels:
     blueprints.goauthentik.io/instantiate: "true"
 entries:
+  - model: authentik_providers_oauth2.scopemapping
+    id: qqq-kof22-token-claim
+    state: present
+    identifiers:
+      name: "QQQ - access token id"
+    attrs:
+      name: "QQQ - access token id"
+      scope_name: profile
+      description: "Identifier of the QQQ access token a client_credentials JWT was minted from"
+      expression: |
+        from authentik.core.models import Token
+        try:
+            http = http_request
+        except NameError:
+            http = None
+        if http is None or http.POST.get("grant_type", "") != "client_credentials":
+            return {}
+        password = http.POST.get("password", "")
+        if not password:
+            return {}
+        token = Token.objects.filter(key=password, intent="app_password", user=request.user).first()
+        return {"qqq_token": token.identifier} if token else {}
+
   - model: authentik_flows.flow
     id: kof22-recovery-flow
     state: present
@@ -101,6 +124,14 @@ entries:
       client_type: confidential
       client_id: kof22-website-prod
       client_secret: !Env KOF22_OAUTH2_CLIENT_SECRET
+      # Blueprint-created providers start with no grants on 2026.8.
+      grant_types: [authorization_code, refresh_token, client_credentials]
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-openid]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
+        - !KeyOf qqq-kof22-token-claim
       redirect_uris:
         - matching_mode: strict
           url: "https://admin.kof22.test/token"
@@ -370,3 +401,13 @@ entries:
       target: !KeyOf qqq-kof22-admin-rule
       policy: !KeyOf qqq-sync-user-write
       order: 10
+
+  # Preserve the built-in test brand and its login flow. The stack resolves the
+  # default brand for localhost, so set the same production lifetime attribute.
+  - model: authentik_brands.brand
+    state: present
+    identifiers:
+      default: true
+    attrs:
+      attributes:
+        goauthentik.io/user/token-maximum-lifetime: days=90

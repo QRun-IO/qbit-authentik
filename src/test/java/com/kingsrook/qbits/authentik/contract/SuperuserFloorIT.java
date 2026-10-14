@@ -58,7 +58,7 @@ class SuperuserFloorIT
    private static AuthentikTestStack stack;
    private static TestApi            admin;
    private static TestApi            sa;
-   private static String             roleUuid;
+   private static List<String>       temporaryPermissions = List.of();
    private static int                probeUser;
    private static String             superuserGroup;
    private static String             childOfSuperuser;
@@ -77,8 +77,7 @@ class SuperuserFloorIT
       admin = stack.admin();
       sa = stack.serviceAccount();
 
-      roleUuid = admin.first("/rbac/roles/?name=" + SERVICE_ACCOUNT).getString("pk");
-      admin.post("/rbac/permissions/assigned_by_roles/" + roleUuid + "/assign/", new JSONObject().put("permissions", new JSONArray(PHASE_2_3_PERMISSIONS)));
+      temporaryPermissions = stack.grantTemporaryPermissions(PHASE_2_3_PERMISSIONS);
 
       admin.post("/core/users/", new JSONObject().put("username", "floor.probe").put("name", "Floor Probe").put("type", "internal").put("path", "users"));
       probeUser = admin.userPk("floor.probe");
@@ -97,9 +96,9 @@ class SuperuserFloorIT
    @AfterAll
    static void afterAll()
    {
-      if(admin != null && roleUuid != null)
+      if(stack != null)
       {
-         admin.patch("/rbac/permissions/assigned_by_roles/" + roleUuid + "/unassign/", new JSONObject().put("permissions", new JSONArray(PHASE_2_3_PERMISSIONS)));
+         stack.removeTemporaryPermissions(temporaryPermissions);
       }
    }
 
@@ -179,7 +178,12 @@ class SuperuserFloorIT
    {
       assertThat(sa.post("/core/users/" + probeUser + "/impersonate/", new JSONObject().put("reason", "contract test")).status()).isEqualTo(403);
       assertThat(sa.delete("/core/users/" + probeUser + "/").status()).isEqualTo(403);
-      assertThat(sa.post("/core/users/" + probeUser + "/recovery/", new JSONObject()).status()).isEqualTo(403);
+      ///////////////////////////////////////////////////////////////////////////
+      // with the production write role (reset_user_password, DESIGN.md 5.1)   //
+      // the permission check passes and only the request is invalid (400):   //
+      // the qbit never calls /recovery/ (5.5); it is never a 2xx link here    //
+      ///////////////////////////////////////////////////////////////////////////
+      assertThat(sa.post("/core/users/" + probeUser + "/recovery/", new JSONObject()).status()).isIn(400, 403);
    }
 
 

@@ -1,0 +1,203 @@
+# Verbatim copy of cluster-gitops
+# tenants/kof22/website-authentik/kof22-qqq-tokens.yaml
+# Source: KofTwentyTwo/cluster-gitops PR #103.
+# QQQ access tokens (qbit-authentik DESIGN.md 13, owner decisions 2026-10-13).
+# Infrastructure only, `present`: the token broker the admin backend uses to
+# create a person's token AS THAT PERSON (RFC 8693 token exchange), the deny
+# policy for privileged accounts, and the detective alarm. A separate file so
+# a problem here (for example a missing broker secret) fails only this
+# blueprint, never sign-in.
+version: 1
+metadata:
+  name: kof22-qqq-tokens
+  labels:
+    blueprints.goauthentik.io/instantiate: "true"
+entries:
+  - model: authentik_blueprints.metaapplyblueprint
+    attrs:
+      identifiers:
+        name: kof22-identity-bootstrap
+      required: true
+
+  # Guardrail (a) inside Authentik: no broker token (so no self-service token
+  # create, rotate or extend) for superusers (including inherited), members of
+  # authentik Admins or identity-admins, anyone marked qqq.io/protected, or the
+  # qbit's own service account.
+  - model: authentik_policies_expression.expressionpolicy
+    id: qqq-token-broker-deny
+    state: present
+    identifiers:
+      name: qqq-kof22-token-broker-deny-protected
+    attrs:
+      name: qqq-kof22-token-broker-deny-protected
+      expression: |
+        user = request.user
+        if user is None or not user.is_authenticated:
+            return False
+        if user.username == "qqq-kof22-admin-idadmin":
+            return False
+        if (user.attributes or {}).get("qqq.io/protected") is True:
+            return False
+        for group in user.all_groups():
+            if group.is_superuser or group.name in ("authentik Admins", "identity-admins"):
+                return False
+        return True
+
+  # The broker: a confidential client the backend alone holds. It accepts only
+  # the token-exchange grant, for subject tokens signed by the kof22 admin
+  # provider, and issues 2-minute tokens with the authentik API scope.
+  - model: authentik_providers_oauth2.oauth2provider
+    id: qqq-token-broker-provider
+    state: present
+    identifiers:
+      name: qqq-kof22-token-broker
+    attrs:
+      name: qqq-kof22-token-broker
+      authorization_flow: !Find [authentik_flows.flow, [slug, kof22-authorization]]
+      invalidation_flow: !Find [authentik_flows.flow, [slug, kof22-invalidation-prod]]
+      client_type: confidential
+      client_id: qqq-kof22-token-broker
+      client_secret: !Env KOF22_TOKEN_BROKER_CLIENT_SECRET
+      grant_types:
+        - urn:ietf:params:oauth:grant-type:token-exchange
+      # No browser flow: the broker only answers token exchange.
+      redirect_uris: []
+      signing_key: !Find [authentik_crypto.certificatekeypair, [name, "authentik Self-signed Certificate"]]
+      access_code_validity: minutes=1
+      access_token_validity: minutes=2
+      refresh_token_validity: minutes=2
+      sub_mode: user_email
+      issuer_mode: per_provider
+      jwt_federation_providers:
+        - !Find [authentik_providers_oauth2.oauth2provider, [name, kof22-website-prod]]
+      property_mappings:
+        - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-authentik_api]]
+
+  - model: authentik_core.application
+    id: qqq-token-broker-application
+    state: present
+    identifiers:
+      slug: qqq-kof22-token-broker
+    attrs:
+      name: "QQQ kof22 token broker"
+      slug: qqq-kof22-token-broker
+      provider: !KeyOf qqq-token-broker-provider
+      policy_engine_mode: all
+      meta_hide: true
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-token-broker-application
+      policy: !KeyOf qqq-token-broker-deny
+    attrs:
+      target: !KeyOf qqq-token-broker-application
+      policy: !KeyOf qqq-token-broker-deny
+      order: 0
+      enabled: true
+      negate: false
+      timeout: 30
+      failure_result: false
+
+  # Detective control, guardrail (e): the qbit's service account must never
+  # create, change, read or re-key a token whose owner is protected (a
+  # superuser, a member of authentik Admins or identity-admins, or
+  # qqq.io/protected). If it ever happens, guard (a) was bypassed:
+  # identity-admins get an Authentik notification and an email.
+  # It also notifies whenever that account creates a service account (each
+  # comes with an app password; owner decision 2026-10-14), so in-app
+  # service-account creation is always visible to identity-admins.
+  - model: authentik_policies_expression.expressionpolicy
+    id: qqq-token-alarm-policy
+    state: present
+    identifiers:
+      name: qqq-kof22-token-alarm
+    attrs:
+      name: qqq-kof22-token-alarm
+      expression: |
+        from authentik.core.models import Token, User
+        event = request.context.get("event")
+        if event is None:
+            return False
+        if event.action not in ("model_created", "model_updated", "model_deleted", "secret_view", "secret_rotate"):
+            return False
+        if (event.user or {}).get("username") != "qqq-kof22-admin-idadmin":
+            return False
+        model = event.context.get("model") or event.context.get("secret") or {}
+        # Also notify (owner decision 2026-10-14) whenever the qbit's account
+        # creates a service account: each one comes with an app password.
+        if event.action == "model_created" and model.get("app") == "authentik_core" and model.get("model_name") == "user":
+            created = User.objects.filter(pk=model.get("pk")).first()
+            return created is not None and created.type == "service_account"
+        # Two shapes: the usual model reference (app, model_name, pk), and set_key's
+        # model_to_dict(token) (token_uuid, identifier, intent, user; key masked).
+        is_reference = model.get("app") == "authentik_core" and model.get("model_name") == "token"
+        is_dict = "identifier" in model and "intent" in model
+        if not is_reference and not is_dict:
+            return False
+        owner = None
+        token = None
+        if is_reference:
+            token = Token.objects.including_expired().filter(pk=model.get("pk")).first()
+        elif model.get("identifier"):
+            token = Token.objects.including_expired().filter(identifier=model.get("identifier")).first()
+        if token is not None:
+            owner = token.user
+        elif model.get("user"):
+            owner = User.objects.filter(pk=model.get("user")).first()
+        if owner is None:
+            return False
+        if (owner.attributes or {}).get("qqq.io/protected") is True:
+            return True
+        for group in owner.all_groups():
+            if group.is_superuser or group.name in ("authentik Admins", "identity-admins"):
+                return True
+        return False
+
+  - model: authentik_events.notificationtransport
+    id: qqq-token-alarm-local
+    state: present
+    identifiers:
+      name: qqq-kof22-token-alarm-local
+    attrs:
+      name: qqq-kof22-token-alarm-local
+      mode: local
+      send_once: false
+
+  - model: authentik_events.notificationtransport
+    id: qqq-token-alarm-email
+    state: present
+    identifiers:
+      name: qqq-kof22-token-alarm-email
+    attrs:
+      name: qqq-kof22-token-alarm-email
+      mode: email
+      send_once: false
+
+  - model: authentik_events.notificationrule
+    id: qqq-token-alarm-rule
+    state: present
+    identifiers:
+      name: qqq-kof22-token-alarm
+    attrs:
+      name: qqq-kof22-token-alarm
+      severity: alert
+      destination_group: !Find [authentik_core.group, [name, identity-admins]]
+      destination_event_user: false
+      transports:
+        - !KeyOf qqq-token-alarm-local
+        - !KeyOf qqq-token-alarm-email
+
+  - model: authentik_policies.policybinding
+    state: present
+    identifiers:
+      target: !KeyOf qqq-token-alarm-rule
+      policy: !KeyOf qqq-token-alarm-policy
+    attrs:
+      target: !KeyOf qqq-token-alarm-rule
+      policy: !KeyOf qqq-token-alarm-policy
+      order: 0
+      enabled: true
+      negate: false
+      timeout: 30
+      failure_result: false

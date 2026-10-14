@@ -146,15 +146,19 @@ class BootstrapBlueprintIT
       JSONObject stage = admin.first("/stages/email/?name=kof22-recovery-email");
       assertThat(sa.get("/stages/email/" + stage.getString("pk") + "/").status()).isEqualTo(200);
 
-      ///////////////////////////////////////////////////
-      // and nothing beyond the phase 0/1 read set     //
-      ///////////////////////////////////////////////////
-      JSONArray tokens = sa.getOk("/core/tokens/?page_size=100").getJSONArray("results");
-      for(int i = 0; i < tokens.length(); i++)
+      // The production v1 role reads all token metadata but never other keys.
+      assertThat(sa.get("/core/tokens/?page_size=1").status()).isEqualTo(200);
+      assertThat(sa.get("/core/tokens/" + AuthentikTestStack.SA_TOKEN_ID + "/view_key/").status()).isEqualTo(403);
+      TestApi.Response group = sa.post("/core/groups/", new JSONObject().put("name", "bootstrap-write-probe"));
+      assertThat(group.status()).isEqualTo(201);
+      try
       {
-         assertThat(tokens.getJSONObject(i).getJSONObject("user_obj").getString("username")).as("only its own tokens are visible").isEqualTo(SERVICE_ACCOUNT);
+         assertThat(sa.delete("/core/groups/" + group.json().getString("pk") + "/").status()).isEqualTo(403);
       }
-      assertThat(sa.post("/core/groups/", new JSONObject().put("name", "should-not-exist")).status()).isEqualTo(403);
+      finally
+      {
+         assertThat(admin.delete("/core/groups/" + group.json().getString("pk") + "/").status()).isEqualTo(204);
+      }
    }
 
 

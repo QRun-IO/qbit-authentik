@@ -377,6 +377,16 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     *******************************************************************************/
    public JSONObject write(WriteAuthorization authorization, String method, String pathAndQuery, JSONObject body) throws QException
    {
+      return (writeAs(token(), authorization, method, pathAndQuery, body));
+   }
+
+
+
+   /*******************************************************************************
+    ** Explicit bearer for an authorized token action, through the same send seam.
+    *******************************************************************************/
+   public JSONObject writeAs(String bearer, WriteAuthorization authorization, String method, String pathAndQuery, JSONObject body) throws QException
+   {
       if(authorization == null)
       {
          throw (new QPermissionDeniedException("Authentik data can only be changed through the guard."));
@@ -386,6 +396,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          throw (new QException("Bad Authentik path"));
       }
 
+      checkAuthorization(authorization);
       String url = runtime().getConfig().getApiRoot() + pathAndQuery;
       HttpRequestBase request = switch(method)
       {
@@ -401,7 +412,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
       try
       {
-         QHttpResponse response = execute(request);
+         QHttpResponse response = execute(request, bearer, false);
          if(response.getStatusCode() != null && response.getStatusCode() == 404)
          {
             throw (new QUserFacingException("Authentik no longer has that record (it may have been removed in the Authentik admin UI)."));
@@ -417,6 +428,65 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       {
          runtime().invalidateCache();
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** Read token metadata or its new key as its owner; never use the read cache.
+    *******************************************************************************/
+   public JSONObject getAs(String bearer, WriteAuthorization auth, String path) throws QException
+   {
+      checkAuthorization(auth);
+      if(path == null || !path.startsWith("/core/tokens/") || path.contains("..") || path.contains("?"))
+      {
+         throw (new QException("Bad token path"));
+      }
+      QHttpResponse response = execute(new HttpGet(runtime().getConfig().getApiRoot() + path), bearer, false);
+      try
+      {
+         return (response.getStatusCode() == 404 ? null : new JSONObject(response.getContent()));
+      }
+      catch(JSONException e)
+      {
+         throw (new QUserFacingException("Authentik returned an invalid token response."));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Exchange through the shared throttle/send seam with no service bearer.
+    *******************************************************************************/
+   public JSONObject exchangeToken(WriteAuthorization auth, HttpPost request) throws QException
+   {
+      checkAuthorization(auth);
+      if(!request.getURI().toString().equals(runtime().getConfig().getTokenEndpointUrl()))
+      {
+         throw (new QException("Bad token endpoint"));
+      }
+      try
+      {
+         return (new JSONObject(execute(request, null, true).getContent()));
+      }
+      catch(JSONException e)
+      {
+         throw (new QUserFacingException("Authentik refused to act as you (invalid_response)"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Revalidate the authorization against the current session and config.
+    *******************************************************************************/
+   private void checkAuthorization(WriteAuthorization auth) throws QException
+   {
+      if(auth == null || !java.util.Objects.equals(auth.getOperator(), runtime().getGuard().operatorEmail()))
+      {
+         throw (new QPermissionDeniedException("Authentik data can only be changed through the guard."));
+      }
+      runtime().getGuard().authorize(com.kingsrook.qbits.authentik.admin.AdminAction.valueOf(auth.getAction()));
    }
 
 
@@ -733,6 +803,10 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
                record.setDisplayValue("isSuperuserInherited", UNAVAILABLE);
             }
          }
+         else if(AuthentikTables.TOKEN.equals(spec.getName()))
+         {
+            AuthentikTokenActivity.enrich(this, record);
+         }
          return (record);
       }
       catch(JSONException | IllegalArgumentException e)
@@ -765,7 +839,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       {
          throw (new QUserFacingException("More than " + MAX_SWEEP_OBJECTS + " Authentik groups; the group graph is not supported at this size."));
       }
-      GroupGraph graph = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat());
+      GroupGraph graph = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat(), runtime.getPolicyCatalog());
       if(cache)
       {
          runtime.getGroupGraphCache().storeResult("all", graph);
@@ -814,7 +888,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
       }
       List<JSONObject> groups = getAllPages("/core/groups/?include_users=true&include_parents=false&include_children=false&ordering=name", MAX_SWEEP_OBJECTS);
-      GroupGraph       graph  = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat());
+      GroupGraph       graph  = GroupGraph.fromGroups(groups, runtime.getConfig().getPolicyFormat(), runtime.getPolicyCatalog());
       if(cache)
       {
          runtime.getGroupGraphCache().storeResult("members", graph);
@@ -1233,12 +1307,21 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     *******************************************************************************/
    public QHttpResponse execute(HttpRequestBase request) throws QException
    {
+      return (execute(request, token(), false));
+   }
+
+
+
+   /*******************************************************************************
+    ** Shared request loop; exchange responses and all token traffic stay secret.
+    *******************************************************************************/
+   private QHttpResponse execute(HttpRequestBase request, String token, boolean exchange) throws QException
+   {
       String path       = pathOf(request.getURI().toString());
       int    attempts   = 0;
       int    backoffMs  = INITIAL_BACKOFF_MS;
-      String token      = token();
 
-      if(!StringUtils.hasContent(token))
+      if(!exchange && !StringUtils.hasContent(token))
       {
          throw (new QException("The Authentik API token is not configured (apiToken resolved to an empty value)."));
       }
@@ -1247,11 +1330,14 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       {
          attempts++;
          runtime().getThrottle().acquire();
-         request.setHeader("Authorization", "Bearer " + token);
+         if(!exchange)
+         {
+            request.setHeader("Authorization", "Bearer " + token);
+         }
          request.setHeader("Accept", "application/json");
          if(request instanceof HttpEntityEnclosingRequest)
          {
-            request.setHeader("Content-Type", "application/json");
+            request.setHeader("Content-Type", exchange ? "application/x-www-form-urlencoded" : "application/json");
          }
 
          long          start = System.currentTimeMillis();
@@ -1262,7 +1348,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          }
          catch(Exception e)
          {
-            String message = AuthentikRedactor.redactText(e.getMessage(), token);
+            String message = exchange || AuthentikRedactor.isSensitivePath(path) ? "Sensitive request failed" : AuthentikRedactor.redactText(e.getMessage(), token);
             LOG.warn("Authentik API call failed", logPair("method", request.getMethod()), logPair("path", path), logPair("error", message));
             if(attempts < MAX_RETRIES && "GET".equals(request.getMethod()))
             {
@@ -1275,7 +1361,10 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
          int status = response.getStatusCode() == null ? 0 : response.getStatusCode();
          LOG.info("Authentik API call", logPair("method", request.getMethod()), logPair("path", path), logPair("status", status), logPair("millis", System.currentTimeMillis() - start));
-         logOutboundCall(request, path, response, token);
+         if(!exchange)
+         {
+            logOutboundCall(request, path, response, token);
+         }
          checkVersionOnce(status);
 
          if(status == 429 && attempts <= MAX_RETRIES)
@@ -1294,6 +1383,23 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          if((status >= 200 && status < 300) || status == 404)
          {
             return (response);
+         }
+         if(exchange)
+         {
+            String error = "exchange_failed";
+            try
+            {
+               String code = new JSONObject(response.getContent()).optString("error");
+               if(List.of("invalid_grant", "access_denied", "invalid_client", "invalid_request", "unsupported_grant_type", "invalid_scope").contains(code))
+               {
+                  error = code;
+               }
+            }
+            catch(JSONException ignored)
+            {
+               // Never echo an untrusted broker error body.
+            }
+            throw (new QUserFacingException("Authentik refused to act as you (" + error + ")"));
          }
          throw (mapError(request, path, status, response.getContent(), token));
       }

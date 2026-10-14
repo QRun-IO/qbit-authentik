@@ -36,9 +36,9 @@ import org.json.JSONObject;
 
 
 /*******************************************************************************
- ** The qbit's own enforcement point (DESIGN.md section 5.3). QQQ core actions
- ** do not enforce permissions for non-HTTP callers (QRun-IO/qqq#1061), so every
- ** call into AuthentikActionUtil is checked here first:
+ ** The qbit's own enforcement point (DESIGN.md section 5.3). Core actions now
+ ** enforce permissions (QRun-IO/qqq#1061); direct AuthentikActionUtil calls and
+ ** Authentik-specific rules still need this guard:
  ** - reads need the table's authentik.* permission (system sessions may read,
  **   for the mirror sync);
  ** - sensitive fields need authentik.audit.read;
@@ -80,7 +80,7 @@ public class AuthentikGuard
          return;
       }
       requireUser(session);
-      if(!has(session, spec.getReadPermission()))
+      if(!has(session, spec.getReadPermission()) && !(spec.getAlternativeReadPermission() != null && has(session, spec.getAlternativeReadPermission())))
       {
          throw (new QPermissionDeniedException("You do not have permission to view " + spec.getLabel() + "."));
       }
@@ -130,9 +130,13 @@ public class AuthentikGuard
       {
          throw (new QPermissionDeniedException(action.getLabel() + " is not enabled (feature " + action.getFeature() + ")."));
       }
-      if(!has(session, action.getPermission()))
+      if(action.getPermission() != null && !has(session, action.getPermission()))
       {
          throw (new QPermissionDeniedException("You do not have permission to do this (" + action.getPermission().getShortName() + ")."));
+      }
+      if(action == AdminAction.CREATE_SERVICE_ACCOUNT && !has(session, IdentityPermission.USERS_MANAGE))
+      {
+         throw (new QPermissionDeniedException("Creating a service account also needs authentik.users.manage."));
       }
       return (new WriteAuthorization(action.name(), operatorEmail()));
    }

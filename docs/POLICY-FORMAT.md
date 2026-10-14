@@ -31,12 +31,12 @@ A **policy** grants QQQ permissions to the members of an Authentik group. It is 
 | `PolicyVersion` | string, semver | Must equal the supported version (`policyVersion`, default `1.0.0`) |
 | `Statement` | array of statements | May be empty (grants nothing) |
 | `Statement[].Effect` | string | `Allow` (the only effect in 1.0.0) |
-| `Statement[].Action` | array of strings | Each one of `hasAccess`, `read`, `insert`, `edit`, `delete`, `*` |
+| `Statement[].Action` | array of strings | Each one of `hasAccess`, `read`, `insert`, `edit`, `delete`, `*`, or a table feature name registered for every listed resource |
 | `Statement[].Resource` | array of strings | Each one a QQQ permission base name matching `[A-Za-z0-9_]+`: a table, process, app, report or widget name (or its custom `permissionBaseName`) |
 
 ## Meaning
 
-Each statement grants `{resource}.{action}` for every resource and action it lists. `*` stands for all five actions. The result is the union over all statements, and over all of the user's groups.
+Each statement grants `{resource}.{action}` for every resource and action it lists. `*` stands for the five standard actions only; it never includes table features. The result is the union over all statements, and over all of the user's groups.
 
 | Action | QQQ permission | Applies to |
 |---|---|---|
@@ -45,10 +45,14 @@ Each statement grants `{resource}.{action}` for every resource and action it lis
 | `insert` | `{name}.insert` | tables |
 | `edit` | `{name}.edit` | tables |
 | `delete` | `{name}.delete` | tables |
+| registered feature (e.g. `analyze`, `comment`) | `{name}.{feature}` | tables that register that feature, including `HAS_ACCESS` and `READ_WRITE` tables |
 
 Examples:
 - `{"Action": ["read"], "Resource": ["cms_page"]}` grants `cms_page.read`.
 - `{"Action": ["*"], "Resource": ["cms_page"]}` grants `cms_page.hasAccess`, `cms_page.read`, `cms_page.insert`, `cms_page.edit` and `cms_page.delete`.
+- `{"Action": ["analyze", "comment"], "Resource": ["person"]}` grants `person.analyze` and `person.comment` when both features are registered for `person`.
+
+Features are generic strings, discovered by matching `PermissionsHelper.getAllAvailablePermissions(qInstance)` entries to the table's effective permission base name. Examples include `analyze` from qbit-data-analysis and `comment`, `attach`, `tag`, `share`, `task`, `assign` from qbit-collaboration. The feature label comes from `AvailablePermission.permissionType`. Every feature grant is explicit, so registering a new feature never broadens an existing `"*"` policy. This matching rule also exposes the available `write` permission of `READ_WRITE` tables as an explicit named action; it is not part of `*`.
 
 A grant that QQQ never checks (for example `hasAccess` on a table with insert/edit/delete permissions) is harmless.
 
@@ -63,7 +67,7 @@ A document grants **nothing**, and the parser logs a warning, when any of these 
 - `Statement` is present but not an array, or a statement is not an object
 - a statement's `Effect` is not `Allow` (including `Deny`, which is not supported yet)
 - `Action` or `Resource` is missing or not an array of strings
-- an action is not one of the six above
+- an action is neither a standard action, `*`, nor a feature registered for every listed resource
 - a resource does not match `[A-Za-z0-9_]+`
 
 There is no partial credit: one bad statement voids the whole document. When the qbit reads policies from the group graph, each group's document is parsed on its own, so one bad group voids only that group. In the merged token claim, one bad statement voids the claim.
@@ -71,7 +75,7 @@ There is no partial credit: one bad statement voids the whole document. When the
 ## Canonical form
 
 The qbit always writes the canonical form:
-- one statement per action that is granted, in the order `hasAccess`, `read`, `insert`, `edit`, `delete`
+- one statement per action that is granted, in the order `hasAccess`, `read`, `insert`, `edit`, `delete`, then feature names sorted alphabetically (existing documents retain their byte-for-byte canonical form)
 - each statement lists its resources sorted
 - no `*`
 - stored on the group as a compact JSON **string**
@@ -99,7 +103,9 @@ Authentik puts the merged document into the token through a scope mapping. Steps
 4. Register the customizer in your app:
    - `AuthentikPolicyClaimMapper` on its own, or
    - `AuthentikGroupPermissionMapper`, which also reads the claim and the group graph, or
-   - your own customizer, calling `PolicyPermissions.fromClaims(claims, config.getPolicyFormat())`.
+   - your own customizer, calling `PolicyPermissions.fromClaims(claims, config.getPolicyFormat(), PolicyCatalog.of(qInstance))`.
+
+The catalog-aware overloads of `PolicyParser`, `PolicyGenerator`, `PolicyPermissions`, `PolicyStore.fingerprint` and `GroupGraph.fromGroups` support features. The older overloads without a catalog continue to accept only standard actions. Both bundled mappers and the editor pass the catalog, as do group-policy resolution and access comparison. This qbit consumes the existing available-permission API without compiling against the `TableFeaturePermissionsMetaData` hook (absent from the pinned RC.5 release); features become available when the host's core supplies those entries.
 
 The mapping merges the statements of every group in `request.user.all_groups()` (direct groups and their ancestors) whose document has the right spec and version. It always emits a document, with an empty `Statement` array when the user has no policies.
 

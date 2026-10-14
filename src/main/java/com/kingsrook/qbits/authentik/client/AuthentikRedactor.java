@@ -37,10 +37,10 @@ public final class AuthentikRedactor
 
    /** Path fragments whose request and response bodies are never logged. */
    private static final List<String> SENSITIVE_PATH_FRAGMENTS = List.of(
-      "/recovery", "/recovery_email", "/set_password", "/set_password_hash", "/core/tokens/", "/service_account", "/impersonate", "/view_key", "/set_key");
+      "/application/o/token/", "/recovery", "/recovery_email", "/set_password", "/set_password_hash", "/core/tokens/", "/service_account", "/impersonate", "/view_key", "/set_key");
 
    private static final Pattern SECRET_JSON_VALUE = Pattern.compile(
-      "(\"(?:key|token|link|password|secret|client_secret|password_hash|recovery_link)\"\\s*:\\s*)\"((?:[^\"\\\\]|\\\\.)*)\"", Pattern.CASE_INSENSITIVE);
+      "(\"(?:key|token|access_token|subject_token|link|password|secret|client_secret|password_hash|recovery_link)\"\\s*:\\s*)\"((?:[^\"\\\\]|\\\\.)*)\"", Pattern.CASE_INSENSITIVE);
 
    private static final Pattern BEARER = Pattern.compile("(?i)(bearer\\s+)[A-Za-z0-9._~+/=-]+");
 

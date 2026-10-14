@@ -18,6 +18,7 @@ package com.kingsrook.qbits.authentik.admin;
 
 
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +28,12 @@ import com.kingsrook.qbits.authentik.policy.PolicyEditorWidget;
 import com.kingsrook.qbits.authentik.policy.PolicyFormat;
 import com.kingsrook.qbits.authentik.policy.PolicyGenerator;
 import com.kingsrook.qbits.authentik.policy.PolicyParser;
+import com.kingsrook.qbits.authentik.permissions.AccessComparison;
+import com.kingsrook.qbits.authentik.permissions.AuthentikGroupPermissionMapper;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.actions.dashboard.RenderWidgetAction;
+import com.kingsrook.qqq.backend.core.actions.permissions.AvailablePermission;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionsHelper;
 import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
@@ -42,10 +47,13 @@ import com.kingsrook.qqq.backend.core.model.actions.widgets.RenderWidgetOutput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QComponentType;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QFrontendStepMetaData;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.processes.implementations.etl.streamedwithfrontend.StreamedETLWithFrontendProcess;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -94,6 +102,44 @@ class PolicyEditorTest
       QueryInput input = new QueryInput();
       input.setTableName(t.config.applyTablePrefix(AuthentikLocalTables.POLICY));
       return (new QueryAction().execute(input).getRecords());
+   }
+
+
+
+   /*******************************************************************************
+    ** Save, reload, resolve and compare a feature using simulated core metadata.
+    ** The subset rule still requires the operator to hold the explicit grant.
+    *******************************************************************************/
+   @Test
+   void featurePolicyFlowsThroughEditorAndMapper() throws Exception
+   {
+      List<AvailablePermission> available = new ArrayList<>(PermissionsHelper.getAllAvailablePermissions(t.qInstance));
+      available.add(new AvailablePermission().withName("cms_page.analyze").withObjectType("Table").withObjectName("Pages").withPermissionType("Analyze"));
+      try(MockedStatic<PermissionsHelper> helper = Mockito.mockStatic(PermissionsHelper.class, Mockito.CALLS_REAL_METHODS))
+      {
+         helper.when(() -> PermissionsHelper.getAllAvailablePermissions(t.qInstance)).thenReturn(available);
+         String document = PAGE_READ_EDIT.replace("\"read\",\"edit\"", "\"analyze\"");
+         assertThat(save("kof-website-publishers", document).message()).contains("do not hold yourself");
+         t.authentik.groupByName("identity-admins").getJSONObject("attributes").put("qqq.io/policy", document);
+         t.admin().getUtil().getRuntime().invalidateCache();
+         AuthentikAdmin.AdminResult saved = save("kof-website-publishers", document);
+         assertThat(saved.ok()).as(saved.message()).isTrue();
+         assertThat(policyRows().get(0).getValueInteger("permissionCount")).isEqualTo(1);
+         PolicyEditorWidget.Data widget = PolicyEditorWidget.load(t.config, t.authentik.pk("kof-website-publishers"));
+         assertThat(widget.getDocument()).contains("\"Action\": [\"analyze\"]");
+         assertThat(widget.getDocumentProblem()).isNull();
+         assertThat(widget.getChangedInAuthentik()).isFalse();
+         assertThat(save("kof-website-publishers", document).noChange()).isTrue();
+         assertThat(t.admin().getUtil().groupGraph().byName("kof-website-publishers").policyPermissions()).containsExactly("cms_page.analyze");
+         assertThat(AccessComparison.run(t.config, t.admin().getUtil(), t.admin().getUtil().getRuntime().getPermissionCatalog()))
+            .anyMatch(row -> row.username().equals("operator") && row.after().contains("cms_page.analyze"));
+
+         QSession session = new QSession();
+         JSONObject claims = new JSONObject().put("groups", List.of("kof-website-publishers")).put("sub", "1")
+            .put("qqq_policy", new JSONObject(document));
+         new AuthentikGroupPermissionMapper().customizeSession(t.qInstance, session, Map.of("jwtPayloadJsonObject", claims));
+         assertThat(session.getPermissions()).contains("cms_page.analyze");
+      }
    }
 
 

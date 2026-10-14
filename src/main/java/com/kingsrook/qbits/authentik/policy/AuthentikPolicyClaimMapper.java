@@ -92,15 +92,21 @@ public class AuthentikPolicyClaimMapper implements QAuthenticationModuleCustomiz
       if(claims == null)
       {
          LOG.info("No policy claim in the token; no policy permissions added", logPair("claim", format.claim()));
+         com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.apply(qInstance, qSession, any);
+         com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.apply(qInstance, qSession,
+            context == null ? null : PolicyPermissions.asClaims(context.get(PolicyPermissions.ACCESS_TOKEN_CONTEXT_KEY)));
          return;
       }
 
-      Set<String> permissions = new TreeSet<>(PolicyPermissions.fromClaims(claims, format));
+      Set<String> permissions = new TreeSet<>(PolicyPermissions.fromClaims(claims, format, qInstance == null ? null : PolicyCatalog.of(qInstance)));
       if(qSession.getPermissions() != null)
       {
          permissions.addAll(qSession.getPermissions());
       }
       qSession.setPermissions(permissions);
+      com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.apply(qInstance, qSession, any);
+      com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.apply(qInstance, qSession,
+         context == null ? null : PolicyPermissions.asClaims(context.get(PolicyPermissions.ACCESS_TOKEN_CONTEXT_KEY)));
    }
 
 

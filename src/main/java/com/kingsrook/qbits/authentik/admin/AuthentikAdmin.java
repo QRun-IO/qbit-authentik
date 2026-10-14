@@ -108,6 +108,7 @@ public class AuthentikAdmin
    private final AuthentikQBitConfig  config;
    private final AuthentikGuard       guard;
    private final AdminActionAuditor   auditor;
+   private final AuthentikTokens tokens;
 
    private Operator       operator;
    private GroupGraph     graph;
@@ -141,8 +142,150 @@ public class AuthentikAdmin
     ** @param message  what happened, for the operator
     ** @param eventPk  the Authentik audit event, when posted
     *******************************************************************************/
-   public record AdminResult(boolean ok, boolean pending, boolean noChange, String message, String eventPk)
+   public static final class AdminResult
    {
+      private final boolean ok;
+      private final boolean pending;
+      private final boolean noChange;
+      private final String message;
+      private final String eventPk;
+      private transient OneTimeKey secret;
+      private transient SecretCleanup cleanup;
+
+      /*******************************************************************************
+       ** Construct a result without a secret.
+       *******************************************************************************/
+      public AdminResult(boolean ok, boolean pending, boolean noChange, String message, String eventPk)
+      {
+         this.ok = ok;
+         this.pending = pending;
+         this.noChange = noChange;
+         this.message = message;
+         this.eventPk = eventPk;
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for ok.
+       *******************************************************************************/
+      public boolean ok()
+      {
+         return (ok);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for pending.
+       *******************************************************************************/
+      public boolean pending()
+      {
+         return (pending);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for noChange.
+       *******************************************************************************/
+      public boolean noChange()
+      {
+         return (noChange);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for message.
+       *******************************************************************************/
+      public String message()
+      {
+         return (message);
+      }
+
+
+
+      /*******************************************************************************
+       ** Getter for eventPk.
+       *******************************************************************************/
+      public String eventPk()
+      {
+         return (eventPk);
+      }
+
+
+
+      /*******************************************************************************
+       ** Attach a response-only secret and its emergency cleanup.
+       *******************************************************************************/
+      public AdminResult withSecret(OneTimeKey key, SecretCleanup cleanup)
+      {
+         this.secret = key;
+         this.cleanup = cleanup;
+         return (this);
+      }
+
+
+
+      /*******************************************************************************
+       ** Take the secret exactly once; no serializer getter is exposed.
+       *******************************************************************************/
+      public OneTimeKey takeSecret()
+      {
+         OneTimeKey key = secret;
+         secret = null;
+         return (key);
+      }
+
+
+
+      /*******************************************************************************
+       ** Revoke a newly issued credential when response delivery fails.
+       *******************************************************************************/
+      public void discardSecret() throws QException
+      {
+         if(cleanup != null)
+         {
+            cleanup.run();
+            cleanup = null;
+         }
+      }
+
+
+
+      /*******************************************************************************
+       ** Drop the action-scoped cleanup (which may hold an exchanged bearer).
+       *******************************************************************************/
+      public void delivered()
+      {
+         cleanup = null;
+      }
+
+
+
+      /*******************************************************************************
+       ** No secret or usage text in diagnostics.
+       *******************************************************************************/
+      @Override
+      public String toString()
+      {
+         return ("AdminResult{ok=" + ok + ", pending=" + pending + ", message=" + message + "}");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Action-local cleanup, never serialized or retained in process state.
+    *******************************************************************************/
+   @FunctionalInterface
+   public interface SecretCleanup
+   {
+      /*******************************************************************************
+       ** Discard the credential after a delivery failure.
+       *******************************************************************************/
+      void run() throws QException;
    }
 
 
@@ -157,6 +300,7 @@ public class AuthentikAdmin
       this.config = runtime.getConfig();
       this.guard = runtime.getGuard();
       this.auditor = new AdminActionAuditor(config);
+      this.tokens = new AuthentikTokens(this);
    }
 
 
@@ -272,6 +416,7 @@ public class AuthentikAdmin
 
       return switch(action)
       {
+         case CREATE_TOKEN, ROTATE_TOKEN, REVOKE_TOKEN, EXTEND_TOKEN, CREATE_SERVICE_ACCOUNT -> tokens.plan(plan);
          case CREATE_USER -> planCreateUser(plan, request);
          case INVITE_USER -> planInvite(plan, request);
          case CANCEL_INVITATION -> planCancelInvitation(plan, request);
@@ -299,7 +444,12 @@ public class AuthentikAdmin
     *******************************************************************************/
    public AdminResult execute(AdminRequest request) throws QException
    {
+      if(request.action().getFeature() == com.kingsrook.qbits.authentik.AuthentikFeature.TOKENS)
+      {
+         request.params().remove("approved");
+      }
       runtime.invalidateCache();
+      operator = null;
       graph = null;
       membersGraph = null;
       userFacts = null;
@@ -314,6 +464,16 @@ public class AuthentikAdmin
     *******************************************************************************/
    public AdminResult execute(AdminPlan plan, String approver) throws QException
    {
+      if(plan.getRequest().action().getFeature() == com.kingsrook.qbits.authentik.AuthentikFeature.TOKENS)
+      {
+         if(approver == null)
+         {
+            plan.getRequest().params().remove("approved");
+         }
+         operator = null;
+         graph = null;
+         plan = plan(plan.getRequest());
+      }
       String      correlationId = UUID.randomUUID().toString();
       String      operatorName  = guard.operatorEmail();
       AdminAction action        = plan.getRequest().action();
@@ -335,9 +495,18 @@ public class AuthentikAdmin
       Serializable       auditId       = auditor.begin(plan, correlationId, operatorName, AuthentikLocalTables.ActionStatus.RUNNING, approver);
 
       String message;
+      AdminResult tokenResult = null;
       try
       {
-         message = perform(plan, authorization, correlationId);
+         if(action.getFeature() == com.kingsrook.qbits.authentik.AuthentikFeature.TOKENS)
+         {
+            tokenResult = tokens.perform(plan, authorization);
+            message = tokenResult.message();
+         }
+         else
+         {
+            message = perform(plan, authorization, correlationId);
+         }
       }
       catch(Exception e)
       {
@@ -363,7 +532,13 @@ public class AuthentikAdmin
       {
          LOG.warn("Could not mark the audit row succeeded", logPair("id", auditId));
       }
-      return (new AdminResult(true, false, false, message, eventPk));
+      AdminResult result = new AdminResult(true, false, false, message, eventPk);
+      if(tokenResult != null)
+      {
+         result.withSecret(tokenResult.takeSecret(), tokenResult.cleanup);
+         tokenResult.delivered();
+      }
+      return (result);
    }
 
 
@@ -1092,8 +1267,8 @@ public class AuthentikAdmin
       try
       {
          String submitted = request.str(POLICY_DOCUMENT);
-         newPermissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format).permissions() : new TreeSet<>();
-         canonical = PolicyGenerator.generate(newPermissions, format);
+         newPermissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format, runtime.getPolicyCatalog()).permissions() : new TreeSet<>();
+         canonical = PolicyGenerator.generate(newPermissions, format, runtime.getPolicyCatalog());
       }
       catch(PolicyParseException e)
       {
@@ -1107,7 +1282,7 @@ public class AuthentikAdmin
       {
          try
          {
-            oldPermissions.addAll(PolicyParser.parseStrict(stored, format).permissions());
+            oldPermissions.addAll(PolicyParser.parseStrict(stored, format, runtime.getPolicyCatalog()).permissions());
          }
          catch(PolicyParseException e)
          {
@@ -1213,7 +1388,7 @@ public class AuthentikAdmin
       PolicyFormat format    = config.getPolicyFormat();
       Set<String>  policy    = new TreeSet<>();
       Object       stored    = group.optJSONObject("attributes") == null ? null : group.getJSONObject("attributes").opt(format.attribute());
-      policy.addAll(PolicyParser.parse(stored, format));
+      policy.addAll(PolicyParser.parse(stored, format, runtime.getPolicyCatalog()));
 
       Set<String> expressible = runtime.getPolicyCatalog().permissionNames();
       Set<String> extras      = new TreeSet<>();
@@ -1235,7 +1410,7 @@ public class AuthentikAdmin
       }
       try
       {
-         request.with(POLICY_DOCUMENT, PolicyGenerator.toCompact(PolicyGenerator.generate(policy, format)));
+         request.with(POLICY_DOCUMENT, PolicyGenerator.toCompact(PolicyGenerator.generate(policy, format, runtime.getPolicyCatalog())));
       }
       catch(PolicyParseException e)
       {
@@ -1679,7 +1854,7 @@ public class AuthentikAdmin
     ** group, and the operator holds everything it confers (the subset rule),
     ** including app access. Returns the refusal text, or null.
     *******************************************************************************/
-   private String checkGroupGrantable(GroupGraph.Node node) throws QException
+   String checkGroupGrantable(GroupGraph.Node node) throws QException
    {
       if(graph().isSuperuserInherited(node.pk()))
       {
@@ -2011,8 +2186,8 @@ public class AuthentikAdmin
       try
       {
          String submitted = request.str(POLICY_DOCUMENT);
-         permissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format).permissions() : new TreeSet<>();
-         canonical = PolicyGenerator.generate(permissions, format);
+         permissions = StringUtils.hasContent(submitted) ? PolicyParser.parseStrict(submitted, format, runtime.getPolicyCatalog()).permissions() : new TreeSet<>();
+         canonical = PolicyGenerator.generate(permissions, format, runtime.getPolicyCatalog());
       }
       catch(PolicyParseException e)
       {
@@ -2047,7 +2222,7 @@ public class AuthentikAdmin
       try
       {
          PolicyStore.save(config, request.targetKey(), fresh.optString("name"), canonical, permissions.size(), guard.operatorEmail(),
-            permissions.isEmpty() ? null : PolicyStore.fingerprint(compact, format));
+            permissions.isEmpty() ? null : PolicyStore.fingerprint(compact, format, runtime.getPolicyCatalog()));
       }
       catch(Exception e)
       {

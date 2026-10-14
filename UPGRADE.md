@@ -1,5 +1,27 @@
 # Upgrading qbit-authentik
 
+## QQQ 4.1.0-RC.6 baseline (#20 / F19)
+
+Hosts should align their QQQ dependencies with the released `qqq-bom-pom:4.1.0-RC.6`
+and use Java 21. The historical `qqq-snapshot` profile and `qqq.snapshot.version`
+property names remain, but the imported core version is a release, not a SNAPSHOT.
+Core actions now enforce permissions and field security locks for non-HTTP callers
+(QRun-IO/qqq#1061, #1062); callers must supply an appropriately authorized session.
+The qbit keeps its guards, scope checks and sensitive-field stripping because they
+also protect direct backend calls and implement Authentik-specific rules.
+No qbit configuration, stored policy format or schema changes are introduced.
+
+The build adopts `qbit-build-parent:2.1.0` with `qbit.guardrails.enforce=true`.
+The expired #1136 test stand-in is removed: tests now register features through
+`TableFeaturePermissionsMetaData` and discover them through the real
+`PermissionsHelper.getAllAvailablePermissions`, as production hosts do. The
+unused explicit permission-source overload in `PolicyCatalog` is removed.
+Duplicate shared-base entries, replacement registrations and malformed suffixes
+remain covered. Hosts should register feature suffixes, labels and table
+applicability through the core metadata API; no synthetic catalog is needed.
+Client-channel attribution and identity/credential channel restrictions remain
+separate follow-up work.
+
 ## Permissions renamed `identity.*` → `authentik.*` (unreleased → first release)
 
 The qbit's permissions follow the same owner naming rule (2026-10-12) and now

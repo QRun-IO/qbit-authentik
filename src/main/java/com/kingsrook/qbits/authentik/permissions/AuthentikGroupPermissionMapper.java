@@ -17,6 +17,9 @@
 package com.kingsrook.qbits.authentik.permissions;
 
 
+import java.io.Serializable;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -27,6 +30,7 @@ import java.util.TreeSet;
 import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
 import com.kingsrook.qbits.authentik.client.AuthentikRedactor;
+import com.kingsrook.qbits.authentik.policy.PolicyCatalog;
 import com.kingsrook.qbits.authentik.policy.PolicyFormat;
 import com.kingsrook.qbits.authentik.policy.PolicyPermissions;
 import com.kingsrook.qbits.authentik.security.BootstrapOperators;
@@ -116,7 +120,8 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       //////////////////////////////////////////////////////////////////////////
       AuthentikRuntime runtime = runtime();
       PolicyFormat     format  = runtime == null ? PolicyFormat.DEFAULT : runtime.getConfig().getPolicyFormat();
-      permissions.addAll(PolicyPermissions.fromClaims(PolicyPermissions.claimsWithPolicy(context, format), format));
+      permissions.addAll(PolicyPermissions.fromClaims(PolicyPermissions.claimsWithPolicy(context, format), format,
+         runtime == null ? (qInstance == null ? null : PolicyCatalog.of(qInstance)) : runtime.getPolicyCatalog()));
 
       if(runtime != null)
       {
@@ -165,6 +170,133 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
          permissions.addAll(qSession.getPermissions());
       }
       qSession.setPermissions(permissions);
+      com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.apply(qInstance, qSession, claims);
+   }
+
+
+
+   /*******************************************************************************
+    ** Automated sessions have no claims. Resolve their email idReference to one
+    ** active API user before trusting any groups or immutable bootstrap id.
+    *******************************************************************************/
+   @Override
+   public void customizeAutomatedSessionForUser(QInstance qInstance, QSession session, Serializable userId)
+   {
+      AuthentikRuntime runtime = runtime();
+      Set<String> permissions = new TreeSet<>();
+      String email = userId == null ? "" : userId.toString().trim();
+      try
+      {
+         JSONObject found = null;
+         int matches = 0;
+         List<JSONObject> users = email.isEmpty() ? List.of() : client(qInstance).getAllPages(
+            "/core/users/?email=" + URLEncoder.encode(email, StandardCharsets.UTF_8) + "&include_groups=true&include_roles=false", 10);
+         for(JSONObject user : users)
+         {
+            if(email.equalsIgnoreCase(user.optString("email", "").trim()))
+            {
+               found = user;
+               matches++;
+            }
+         }
+         // A bounded, possibly truncated lookup cannot prove uniqueness.
+         if(users.size() < 10 && matches == 1 && found.optBoolean("is_active", false))
+         {
+            List<String> groups = new ArrayList<>();
+            JSONArray groupObjects = found.optJSONArray("groups_obj");
+            if(groupObjects != null)
+            {
+               for(int i = 0; i < groupObjects.length(); i++)
+               {
+                  groups.add(groupObjects.getJSONObject(i).getString("name"));
+               }
+            }
+            else if(found.opt("groups") instanceof JSONArray groupPks && !groupPks.isEmpty())
+            {
+               GroupGraph graph = client(qInstance).groupGraph();
+               for(int i = 0; i < groupPks.length(); i++)
+               {
+                  GroupGraph.Node group = graph.byPk(groupPks.getString(i));
+                  if(group != null)
+                  {
+                     groups.add(group.name());
+                  }
+               }
+            }
+            String pk = found.optString("pk", "");
+            String sub = runtime != null && runtime.getConfig().getResolvedBootstrapSubjects().contains(pk) ? pk : found.optString("uuid", pk);
+            String userEmail = found.getString("email").trim();
+            boolean verified = found.optBoolean("email_verified", false);
+            permissions.addAll(resolve(qInstance, groups, sub, userEmail, verified));
+            if(runtime != null)
+            {
+               permissions.addAll(AccessComparison.staticPermissions(runtime.getConfig(), groups));
+               permissions = automatedSessionPermissions(qInstance, runtime, permissions, groups, sub, userEmail, verified);
+            }
+         }
+         else
+         {
+            LOG.info("Automated session has no unique active Authentik user; granting only the static fallbacks");
+         }
+      }
+      catch(Exception e)
+      {
+         permissions.clear();
+         // Exception messages can contain the lookup email; log only the type.
+         LOG.warn("Authentik could not be read for an automated session; granting only the static fallbacks", logPair("errorType", e.getClass().getSimpleName()));
+      }
+      if(runtime != null)
+      {
+         permissions.addAll(AccessComparison.staticPermissions(runtime.getConfig(), List.of()));
+      }
+      if(session.getPermissions() != null)
+      {
+         permissions.addAll(session.getPermissions());
+      }
+      session.setPermissions(permissions);
+   }
+
+
+
+   /*******************************************************************************
+    ** Mirror the sign-in cut-over floor without changing the claims path.
+    *******************************************************************************/
+   private Set<String> automatedSessionPermissions(QInstance qInstance, AuthentikRuntime runtime, Set<String> permissions,
+      List<String> groups, String sub, String email, boolean verified)
+   {
+      runtime.markMapperInvoked();
+      AccessComparison.State state;
+      try
+      {
+         state = AccessComparison.state(runtime, client(qInstance));
+      }
+      catch(Exception e)
+      {
+         state = new AccessComparison.State(AccessComparison.Status.BLOCKED, "The cut-over guard could not run", java.time.Instant.now());
+      }
+      if(state.enforced())
+      {
+         return (permissions);
+      }
+      Set<String> floor = new TreeSet<>(AccessComparison.staticPermissions(runtime.getConfig(), groups));
+      for(String group : groups)
+      {
+         floor.addAll(staticGroupPermissions.getOrDefault(group, List.of()));
+      }
+      if(!runtime.getConfig().getResolvedBootstrapSubjects().isEmpty() && isBootstrap(qInstance, runtime, sub, email, verified))
+      {
+         for(IdentityPermission permission : IdentityPermission.values())
+         {
+            floor.add(permission.getSessionPermission());
+         }
+      }
+      AuthentikHostPermissionSource source = runtime.getConfig().getHostPermissionSource();
+      if(source != null)
+      {
+         floor.addAll(source.userPermissions(email, groups));
+      }
+      LOG.warn("Policies are not enforced for this automated session; granting today's access", logPair("status", state.status()));
+      return (floor);
    }
 
 

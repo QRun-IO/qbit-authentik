@@ -67,4 +67,18 @@ class AuthentikRedactorTest
       assertThat(AuthentikRedactor.isSensitivePath(null)).isFalse();
    }
 
+
+   /*******************************************************************************
+    ** Broker and one-time credential fields are masked even in unrelated text.
+    *******************************************************************************/
+   @Test
+   void allTokenFieldsAreMasked()
+   {
+      for(String name : java.util.List.of("key", "token", "access_token", "subject_token", "client_secret"))
+      {
+         String json = new org.json.JSONObject().put(name, "credential-to-hide").toString();
+         assertThat(AuthentikRedactor.redactText("prefix " + json + " suffix", null)).doesNotContain("credential-to-hide").contains("******");
+      }
+   }
+
 }

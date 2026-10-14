@@ -61,7 +61,7 @@ class AuthentikAppTest
       assertThat(app.getChildren()).extracting(c -> c.getName())
          .containsExactly("authentik_user", "authentik_invitation", "authentik_group", "authentik_application", "authentik_approval_request", "authentik_admin_action");
       assertThat(app.getSections()).extracting(s -> s.getLabel()).containsExactly("People", "Access", "Activity");
-      assertThat(app.getWidgets()).containsExactly("authentikHome", "authentikDriftReport");
+      assertThat(app.getWidgets()).containsExactly("authentikHome", "authentikAccessTokens", "authentikDriftReport");
 
       for(String subTable : List.of("authentik_group_member", "authentik_session", "authentik_token", "authentik_event", "authentik_policy_binding", "authentik_role", "authentik_blueprint"))
       {
@@ -169,14 +169,14 @@ class AuthentikAppTest
          {
             try
             {
-               return (Files.readString(p).contains("util.write(") || Files.readString(p).contains(".write(auth"));
+               return (Files.readString(p).contains("util.write(") || Files.readString(p).contains(".write(auth") || Files.readString(p).contains("util.writeAs("));
             }
             catch(IOException e)
             {
                throw (new IllegalStateException(e));
             }
          }).toList();
-         assertThat(callers).extracting(p -> p.getFileName().toString()).containsExactly("AuthentikAdmin.java");
+         assertThat(callers).extracting(p -> p.getFileName().toString()).containsExactlyInAnyOrder("AuthentikAdmin.java", "AuthentikTokens.java");
       }
    }
 

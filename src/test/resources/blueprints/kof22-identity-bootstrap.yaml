@@ -41,6 +41,53 @@ entries:
         - authentik_events.add_event
         - authentik_blueprints.view_blueprintinstance
 
+        # v1 write permissions (qbit-authentik DESIGN.md 5.1): never enable_group_superuser, view_token_key, impersonate, delete_user
+        - authentik_core.add_user
+        - authentik_core.change_user
+        - authentik_core.reset_user_password
+        - authentik_core.add_group
+        - authentik_core.change_group
+        - authentik_core.add_user_to_group
+        - authentik_core.remove_user_from_group
+        - authentik_core.view_token
+        - authentik_core.delete_token
+        # QQQ access tokens (qbit-authentik DESIGN.md 13, owner decisions
+        # 2026-10-13). Guardrails, because token permissions are model-wide:
+        # - view_token_key is NOT granted. add_token IS granted, and is safe: for a
+        #   non-superuser, POST /core/tokens/ always creates the token for the
+        #   CALLER (TokenViewSet.perform_create), so it can never mint a token for
+        #   someone else. Authentik needs it for POST /core/users/service_account/
+        #   (add_user + add_token) and for POST .../set_key/ (POST object
+        #   permission = add_token, plus set_token_key). Verified on 2026.8.3.
+        #   People's tokens are created AS THAT PERSON through the
+        #   qqq-kof22-token-broker exchange (kof22-qqq-tokens.yaml), whose deny
+        #   policy refuses superusers, authentik Admins, identity-admins,
+        #   qqq.io/protected and this service account.
+        # - change_token extends expiry; every PATCH sends intent, user and
+        #   expires (Authentik's serializer defaults would otherwise turn an app
+        #   password into an API token or move it to this account), and the qbit
+        #   re-reads the token afterwards.
+        # - set_token_key rotates SERVICE-ACCOUNT app passwords only; the qbit
+        #   refuses protected owners before the call, and the
+        #   qqq-kof22-token-alarm rule (kof22-qqq-tokens.yaml) notifies
+        #   identity-admins if this account ever touches a protected user's token.
+        - authentik_core.add_token
+        - authentik_core.change_token
+        - authentik_core.set_token_key
+        - authentik_core.delete_authenticatedsession
+        - authentik_stages_authenticator_totp.view_totpdevice
+        - authentik_stages_authenticator_totp.delete_totpdevice
+        - authentik_stages_authenticator_static.view_staticdevice
+        - authentik_stages_authenticator_static.delete_staticdevice
+        - authentik_stages_authenticator_webauthn.view_webauthndevice
+        - authentik_stages_authenticator_webauthn.delete_webauthndevice
+        - authentik_stages_authenticator_email.view_emaildevice
+        - authentik_stages_authenticator_email.delete_emaildevice
+        - authentik_stages_authenticator_sms.view_smsdevice
+        - authentik_stages_authenticator_sms.delete_smsdevice
+        - authentik_stages_authenticator_duo.view_duodevice
+        - authentik_stages_authenticator_duo.delete_duodevice
+
   # The qbit service account. Its API token is minted once by hand (never here).
   - model: authentik_core.user
     state: created

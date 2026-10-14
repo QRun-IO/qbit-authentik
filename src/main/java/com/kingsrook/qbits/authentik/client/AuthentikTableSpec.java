@@ -41,6 +41,7 @@ public class AuthentikTableSpec
    private final Map<String, AuthentikFieldSpec> fields                = new LinkedHashMap<>();
    private final List<NameValuePair>             defaultListParams     = new ArrayList<>();
    private final List<NameValuePair>             defaultGetParams      = new ArrayList<>();
+   private IdentityPermission                    alternativeReadPermission;
    private IdentityPermission                    readPermission        = IdentityPermission.USERS_READ;
    private String                                defaultOrdering;
    private List<String>                          recordLabelFields     = new ArrayList<>();
@@ -296,6 +297,36 @@ public class AuthentikTableSpec
    public String getRequiredFilterField()
    {
       return (requiredFilterField);
+   }
+
+
+   /*******************************************************************************
+    ** Add a second permission that also permits reads.
+    *******************************************************************************/
+   public AuthentikTableSpec withAlternativeReadPermission(IdentityPermission permission)
+   {
+      alternativeReadPermission = permission;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the optional alternative permission.
+    *******************************************************************************/
+   public IdentityPermission getAlternativeReadPermission()
+   {
+      return (alternativeReadPermission);
+   }
+
+
+
+   /*******************************************************************************
+    ** Token tables need OR rules in core as well as in the API guard.
+    *******************************************************************************/
+   public com.kingsrook.qqq.backend.core.model.metadata.permissions.QPermissionRules readRules()
+   {
+      return (alternativeReadPermission == null ? readPermission.rules() : com.kingsrook.qbits.authentik.security.TokenReadPermission.rules());
    }
 
 }

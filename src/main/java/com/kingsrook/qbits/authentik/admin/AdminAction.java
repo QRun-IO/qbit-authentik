@@ -27,6 +27,13 @@ import com.kingsrook.qbits.authentik.security.IdentityPermission;
  *******************************************************************************/
 public enum AdminAction
 {
+   // Null permission means self-service: AuthentikTokens verifies the live owner.
+   // Processes add no permission beyond their table; cross-owner actions require TOKENS_MANAGE.
+   CREATE_TOKEN("Create token", "token", null, AuthentikFeature.TOKENS, Confirmation.CONFIRM),
+   ROTATE_TOKEN("Rotate token", "token", null, AuthentikFeature.TOKENS, Confirmation.CONFIRM),
+   REVOKE_TOKEN("Revoke token", "token", null, AuthentikFeature.TOKENS, Confirmation.CONFIRM),
+   EXTEND_TOKEN("Extend expiry", "token", null, AuthentikFeature.TOKENS, Confirmation.CONFIRM),
+   CREATE_SERVICE_ACCOUNT("Create service account", "user", IdentityPermission.TOKENS_MANAGE, AuthentikFeature.TOKENS, Confirmation.CONFIRM),
    CREATE_USER("Create user", "user", IdentityPermission.USERS_MANAGE, AuthentikFeature.USERS, Confirmation.CONFIRM),
    INVITE_USER("Invite user", "invitation", IdentityPermission.USERS_MANAGE, AuthentikFeature.USERS, Confirmation.CONFIRM),
    EDIT_USER("Edit user", "user", IdentityPermission.USERS_MANAGE, AuthentikFeature.USERS, Confirmation.CONFIRM),

@@ -46,10 +46,13 @@ public class AuthentikRuntime
    private final AuthentikFilterMapper           filterMapper = new AuthentikFilterMapper();
    private final Memoization<String, String>     responseCache;
    private final Memoization<String, GroupGraph> groupGraphCache;
+   private final Memoization<String, com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.TokenScope> tokenScopeCache = new Memoization<>(Duration.ofSeconds(60));
+   private final Memoization<String, Map<String, java.time.Instant>> tokenActivityCache = new Memoization<>(Duration.ofMinutes(5));
    private volatile java.util.Set<String>        permissionCatalog;
    private volatile PolicyCatalog                policyCatalog;
    private volatile AccessComparison.State       mapperState;
    private volatile boolean                      mapperInvoked;
+   private com.kingsrook.qbits.authentik.admin.AuthentikTokenAlerts.Sink tokenAlerts = new com.kingsrook.qbits.authentik.admin.AuthentikTokenAlerts()::send;
    private final Map<String, AuthentikTableSpec> specsByTableName = new ConcurrentHashMap<>();
 
 
@@ -130,6 +133,8 @@ public class AuthentikRuntime
    public void invalidateCache()
    {
       responseCache.clear();
+      tokenScopeCache.clear();
+      tokenActivityCache.clear();
       groupGraphCache.clear();
    }
 
@@ -280,4 +285,37 @@ public class AuthentikRuntime
          mapperState = null;
       }
    }
+   /*******************************************************************************
+    ** Token claims are cached independently of the general list TTL.
+    *******************************************************************************/
+   public Memoization<String, com.kingsrook.qbits.authentik.security.AuthentikTokenScopes.TokenScope> getTokenScopeCache()
+   {
+      return (tokenScopeCache);
+   }
+
+   /*******************************************************************************
+    ** Login-event aggregation is shared by every token record in this runtime.
+    *******************************************************************************/
+   public Memoization<String, Map<String, java.time.Instant>> getTokenActivityCache()
+   {
+      return (tokenActivityCache);
+   }
+
+   /*******************************************************************************
+    ** Optional Alerts delivery, replaceable by a host or a capturing test sink.
+    *******************************************************************************/
+   public com.kingsrook.qbits.authentik.admin.AuthentikTokenAlerts.Sink getTokenAlerts()
+   {
+      return (tokenAlerts);
+   }
+
+   /*******************************************************************************
+    ** Install a sink for this runtime only.
+    *******************************************************************************/
+   public AuthentikRuntime withTokenAlerts(com.kingsrook.qbits.authentik.admin.AuthentikTokenAlerts.Sink sink)
+   {
+      tokenAlerts = java.util.Objects.requireNonNull(sink);
+      return (this);
+   }
+
 }

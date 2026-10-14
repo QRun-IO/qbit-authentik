@@ -106,7 +106,7 @@ public final class PolicyEditorWidget
             /////////////////////////////////////////////////////////////////
             // canonical form of what is stored (unknown resources survive) //
             /////////////////////////////////////////////////////////////////
-            data.withDocument(PolicyGenerator.toPretty(PolicyGenerator.canonical(stored, format)));
+            data.withDocument(PolicyGenerator.toPretty(PolicyGenerator.canonical(stored, format, runtime.getPolicyCatalog())));
          }
          catch(PolicyParseException e)
          {
@@ -117,7 +117,7 @@ public final class PolicyEditorWidget
       QRecord row = PolicyStore.find(config, groupPk);
       if(row != null)
       {
-         data.withChangedInAuthentik(!Objects.equals(row.getValueString("authentikFingerprint"), PolicyStore.fingerprint(stored, format)));
+         data.withChangedInAuthentik(!Objects.equals(row.getValueString("authentikFingerprint"), PolicyStore.fingerprint(stored, format, runtime.getPolicyCatalog())));
       }
       return (data);
    }

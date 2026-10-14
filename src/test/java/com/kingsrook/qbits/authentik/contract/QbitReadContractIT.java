@@ -275,7 +275,7 @@ class QbitReadContractIT
       assertThat(badDate.status()).isEqualTo(400);
       FixtureRecorder.record("error-400-bad-filter", badDate.body());
 
-      TestApi.Response forbidden = sa.post("/core/groups/", new JSONObject().put("name", "x"));
+      TestApi.Response forbidden = sa.get("/core/tokens/" + AuthentikTestStack.SA_TOKEN_ID + "/view_key/");
       assertThat(forbidden.status()).isEqualTo(403);
       FixtureRecorder.record("error-403", forbidden.body());
 
