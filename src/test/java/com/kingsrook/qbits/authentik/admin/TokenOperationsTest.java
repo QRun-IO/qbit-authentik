@@ -197,7 +197,11 @@ class TokenOperationsTest
       token("external", 3, 5);
       util.getRuntime().withTokenAlerts(new AuthentikTokenAlerts()::send);
       AuthentikTokenReminders.run(util, now);
-      assertThat(new TokenScopeStore(t.config).find("external")).isNull();
+      //////////////////////////////////////////////////////////////////////
+      // RC.6 core has the notification SPI: the reminder goes out through //
+      // QAlerts.notify and is recorded for dedupe                         //
+      //////////////////////////////////////////////////////////////////////
+      assertThat(new TokenScopeStore(t.config).find("external")).isNotNull();
       //////////////////////////////////////////////////////////////////////
       // core QAlerts exists from RC.5: guard incidents always have a path //
       //////////////////////////////////////////////////////////////////////

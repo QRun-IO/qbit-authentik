@@ -17,6 +17,11 @@
 package com.kingsrook.qbits.authentik.admin;
 
 
+import com.kingsrook.qqq.backend.core.alerts.AlertSeverity;
+import com.kingsrook.qqq.backend.core.alerts.AlertSignal;
+import com.kingsrook.qqq.backend.core.alerts.NotificationAudience;
+import com.kingsrook.qqq.backend.core.alerts.NotificationSignal;
+import com.kingsrook.qqq.backend.core.alerts.QAlerts;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 
 
@@ -61,48 +66,41 @@ public class AuthentikTokenAlerts
 
 
    /*******************************************************************************
-    ** Guard incidents are raised through core QAlerts (RC.5+); owner reminders
-    ** through core QAlerts.notify (qqq#1125) when the QQQ version has it.
+    ** Guard incidents are raised through core QAlerts; owner reminders through
+    ** core QAlerts.notify (qqq#1125, QQQ 4.1.0-RC.6+). Never another qbit's API.
     *******************************************************************************/
    public boolean send(Notice notice)
    {
       try
       {
-         Class<?> alerts = Class.forName("com.kingsrook.qqq.backend.core.alerts.QAlerts");
          if("high".equals(notice.severity()))
          {
-            Class<?> signalType = Class.forName("com.kingsrook.qqq.backend.core.alerts.AlertSignal");
-            Object signal = signalType.getConstructor(String.class).newInstance("authentik.token.guard-bypass");
-            signalType.getMethod("withDedupKey", String.class).invoke(signal, notice.key());
-            signalType.getMethod("withTitle", String.class).invoke(signal, "Access token guard bypass");
-            signalType.getMethod("withSummary", String.class).invoke(signal, notice.message());
-            Class<?> severity = Class.forName("com.kingsrook.qqq.backend.core.alerts.AlertSeverity");
-            signalType.getMethod("withSeverity", severity).invoke(signal, severity.getField("CRITICAL").get(null));
-            alerts.getMethod("raise", signalType).invoke(null, signal);
+            QAlerts.raise(new AlertSignal("authentik.token.guard-bypass")
+               .withDedupKey(notice.key())
+               .withTitle("Access token guard bypass")
+               .withSummary(notice.message())
+               .withSeverity(AlertSeverity.CRITICAL));
             return (true);
          }
-         //////////////////////////////////////////////////////////////////////
-         // owner reminders go through CORE's notification SPI (bell and      //
-         // email via whichever alerts producer is installed), never through //
-         // another qbit's classes (guardrail G1).                            //
-         // STAND-IN(core=QRun-IO/qqq#1125, removeBy=4.1.0-RC.7): reflection  //
-         // until the qbit's QQQ version has NotificationSignal.              //
-         //////////////////////////////////////////////////////////////////////
-         Class<?> signalType   = Class.forName("com.kingsrook.qqq.backend.core.alerts.NotificationSignal");
-         Class<?> audienceType = Class.forName("com.kingsrook.qqq.backend.core.alerts.NotificationAudience");
-         Object   signal       = signalType.getConstructor(String.class).newInstance("Access token expiry reminder");
-         signalType.getMethod("withBody", String.class).invoke(signal, notice.message());
-         signalType.getMethod("withSourceName", String.class).invoke(signal, "authentik");
-         signalType.getMethod("withSourceKey", String.class).invoke(signal, notice.key());
-         signalType.getMethod("withAudience", audienceType).invoke(signal, audienceType.getMethod("user", String.class).invoke(null, notice.recipient()));
-         alerts.getMethod("notify", signalType).invoke(null, signal);
+
+         ///////////////////////////////////////////////////////////////////
+         // owner reminders: core's notification SPI (bell and email via  //
+         // whichever alerts producer the host installed; qqq#1125)       //
+         ///////////////////////////////////////////////////////////////////
+         QAlerts.notify(new NotificationSignal("Access token expiry reminder")
+            .withBody(notice.message())
+            .withSourceName("authentik")
+            .withSourceKey(notice.key())
+            .withAudience(NotificationAudience.user(notice.recipient())));
          return (true);
       }
-      catch(ReflectiveOperationException | LinkageError e)
+      catch(RuntimeException e)
       {
-         // Optional dependency absent or incompatible. Never log the payload.
+         ///////////////////////////////////////////////////////////
+         // never fail the caller; never log the notice payload   //
+         ///////////////////////////////////////////////////////////
+         LOG.info("Access-token notification delivery failed; notification skipped.");
+         return (false);
       }
-      LOG.info("Access-token notification delivery is unavailable; notification skipped.");
-      return (false);
    }
 }
