@@ -137,7 +137,7 @@ class AuthentikAppTest
       RenderWidgetOutput output = ((AbstractWidgetRenderer) new AuthentikHomeWidget.Renderer()).render(input);
       String html = ((RawHTML) output.getWidgetData()).getHtml();
 
-      assertThat(html).contains("Needs attention", "People", "Groups and permissions", "Recent changes", "Connection");
+      assertThat(html).contains("Needs attention", "People", "Groups and permissions", "Recent changes", "Health", "System Health");
       assertThat(html).contains("Active</dt><dd style=\"margin:0;\">4<");
       assertThat(html).contains("Inactive</dt><dd style=\"margin:0;\">1<");
       assertThat(html).contains("Service accounts</dt><dd style=\"margin:0;\">2<");
@@ -150,6 +150,28 @@ class AuthentikAppTest
       t.loginAs(AuthentikTestSupport.OPERATOR, IdentityPermission.USERS_READ);
       String withoutAudit = ((RawHTML) new AuthentikHomeWidget.Renderer().render(input).getWidgetData()).getHtml();
       assertThat(withoutAudit).contains("needs the authentik.audit.read permission");
+   }
+
+
+
+   /*******************************************************************************
+    ** Home reads the persisted central component and links directly to its record.
+    *******************************************************************************/
+   @Test
+   void centralHealthRollup() throws Exception
+   {
+      AdminTestSupport t = AdminTestSupport.create();
+      new com.kingsrook.qqq.backend.core.health.HealthMetaDataProvider().defineAll(t.qInstance, AdminTestSupport.LOCAL, table -> { });
+      com.kingsrook.qqq.backend.core.modules.backend.implementations.memory.MemoryRecordStore.getInstance().insert(
+         new com.kingsrook.qqq.backend.core.model.actions.tables.insert.InsertInput().withTableName("health_component")
+            .withRecord(new com.kingsrook.qqq.backend.core.model.data.QRecord().withValue("id", 7).withValue("name", "authentik").withValue("status", "DEGRADED")), true);
+      AuthentikTestSupport.loginWithPermissions(t.qInstance, java.util.Set.of("health.read"));
+      AuthentikHomeData data = AuthentikHomeData.load(t.config);
+      assertThat(data.getHealthStatus()).isEqualTo("DEGRADED");
+      assertThat(AuthentikHomeView.render(data)).contains("Authentik: DEGRADED", "href=\"/app/health_component/7\"")
+         .doesNotContain("Policies at sign-in", "Version</dt>");
+      AuthentikTestSupport.loginWithPermissions(t.qInstance, java.util.Set.of());
+      assertThat(AuthentikHomeData.load(t.config).getHealthStatus()).isEqualTo("UNKNOWN");
    }
 
 

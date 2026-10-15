@@ -58,4 +58,24 @@ public class AuthentikTokenBroker
       }
       return (bearer);
    }
+
+
+
+   /*******************************************************************************
+    ** Request client credentials for health, then discard the bearer immediately.
+    *******************************************************************************/
+   public void probeClientCredentials(AuthentikActionUtil util) throws QException
+   {
+      AuthentikQBitConfig config = util.getRuntime().getConfig();
+      HttpPost request = new HttpPost(config.getTokenEndpointUrl());
+      request.setEntity(new UrlEncodedFormEntity(List.of(
+         new BasicNameValuePair("grant_type", "client_credentials"),
+         new BasicNameValuePair("client_id", config.getTokenBrokerClientId()),
+         new BasicNameValuePair("client_secret", config.getTokenBrokerClientSecret()),
+         new BasicNameValuePair("scope", "goauthentik.io/api")), StandardCharsets.UTF_8));
+      if(util.requestBrokerCredentials(request).optString("access_token", "").isBlank())
+      {
+         throw (new QUserFacingException("Authentik broker returned no access token"));
+      }
+   }
 }

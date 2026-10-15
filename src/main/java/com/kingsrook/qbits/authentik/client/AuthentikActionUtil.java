@@ -64,6 +64,7 @@ import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
 import org.apache.http.Header;
 import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.NameValuePair;
+import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpDelete;
 import org.apache.http.client.methods.HttpGet;
@@ -75,7 +76,6 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.util.EntityUtils;
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -116,6 +116,8 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    /** Display value for derived fields when the group graph cannot be read. */
    public static final String UNAVAILABLE = "Unavailable (Authentik groups could not be read)";
 
+   private java.time.Instant deadline;
+
    private EffectivePermissionResolver resolverForCall;
 
 
@@ -134,6 +136,94 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       BaseAPIActionUtil util = QCodeLoader.getAdHoc(BaseAPIActionUtil.class, backend.getActionUtil());
       util.setBackendMetaData(backend);
       return ((AuthentikActionUtil) util);
+   }
+
+
+
+   /*******************************************************************************
+    ** Bound this dedicated health client; ordinary action clients are unchanged.
+    *******************************************************************************/
+   public AuthentikActionUtil withHealthDeadline(java.time.Instant deadline) throws QException
+   {
+      runtime().getGuard().checkHealth();
+      this.deadline = java.util.Objects.requireNonNull(deadline);
+      remainingMillis();
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Remaining health budget; zero must never become an unlimited HTTP timeout.
+    *******************************************************************************/
+   private int remainingMillis() throws QException
+   {
+      long remaining = deadline == null ? Integer.MAX_VALUE : java.time.Duration.between(java.time.Instant.now(), deadline).toMillis();
+      if(remaining <= 0 || (deadline != null && Thread.currentThread().isInterrupted()))
+      {
+         throw (new QException("Authentik health deadline exceeded"));
+      }
+      return ((int) Math.min(Integer.MAX_VALUE, remaining));
+   }
+
+
+
+   /*******************************************************************************
+    ** Configured zero means unlimited normally, but health always has a deadline.
+    *******************************************************************************/
+   private static int healthTimeout(int remaining, int configured)
+   {
+      return (configured <= 0 ? remaining : Math.min(remaining, configured));
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep retry delays inside the health budget and preserve cancellation.
+    *******************************************************************************/
+   private void retrySleep(long millis) throws QException
+   {
+      if(deadline == null)
+      {
+         SleepUtils.sleep(millis, java.util.concurrent.TimeUnit.MILLISECONDS);
+         return;
+      }
+      if(millis >= remainingMillis())
+      {
+         throw (new QException("Authentik health deadline exceeded"));
+      }
+      try
+      {
+         Thread.sleep(millis);
+      }
+      catch(InterruptedException e)
+      {
+         Thread.currentThread().interrupt();
+         throw (new QException("Authentik health check interrupted"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Read the service account API token metadata through the existing paged path.
+    *******************************************************************************/
+   public List<JSONObject> getServiceAccountApiTokens() throws QException
+   {
+      runtime().getGuard().checkHealth();
+      return (getAllPages("/core/tokens/?intent=api&user__username=" + java.net.URLEncoder.encode(
+         runtime().getConfig().getEffectiveServiceAccountUsername(), StandardCharsets.UTF_8), 50));
+   }
+
+
+
+   /*******************************************************************************
+    ** Broker credentials use the same secret-safe request loop as token exchange.
+    *******************************************************************************/
+   JSONObject requestBrokerCredentials(HttpPost request) throws QException
+   {
+      runtime().getGuard().checkHealth();
+      return (brokerResponse(request));
    }
 
 
@@ -463,6 +553,16 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    public JSONObject exchangeToken(WriteAuthorization auth, HttpPost request) throws QException
    {
       checkAuthorization(auth);
+      return (brokerResponse(request));
+   }
+
+
+
+   /*******************************************************************************
+    ** Parse a broker response without exposing its body.
+    *******************************************************************************/
+   private JSONObject brokerResponse(HttpPost request) throws QException
+   {
       if(!request.getURI().toString().equals(runtime().getConfig().getTokenEndpointUrl()))
       {
          throw (new QException("Bad token endpoint"));
@@ -826,7 +926,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    public GroupGraph groupGraph() throws QException
    {
       AuthentikRuntime runtime = runtime();
-      boolean          cache   = runtime.getConfig().getGroupCacheTtlSeconds() != null && runtime.getConfig().getGroupCacheTtlSeconds() > 0;
+      boolean          cache   = deadline == null && runtime.getConfig().getGroupCacheTtlSeconds() != null && runtime.getConfig().getGroupCacheTtlSeconds() > 0;
       if(cache)
       {
          Optional<GroupGraph> cached = runtime.getGroupGraphCache().getMemoizedResult("all").map(m -> m.getResult());
@@ -880,7 +980,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    public GroupGraph groupGraphWithMembers() throws QException
    {
       AuthentikRuntime runtime = runtime();
-      boolean          cache   = runtime.getConfig().getGroupCacheTtlSeconds() != null && runtime.getConfig().getGroupCacheTtlSeconds() > 0;
+      boolean          cache   = deadline == null && runtime.getConfig().getGroupCacheTtlSeconds() != null && runtime.getConfig().getGroupCacheTtlSeconds() > 0;
       if(cache)
       {
          Optional<GroupGraph> cached = runtime.getGroupGraphCache().getMemoizedResult("members").map(m -> m.getResult());
@@ -1302,7 +1402,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
    private String getBody(String url, boolean nullOn404) throws QException
    {
       AuthentikRuntime runtime = runtime();
-      if(runtime.isCacheEnabled())
+      if(deadline == null && runtime.isCacheEnabled())
       {
          Optional<String> cached = runtime.getResponseCache().getMemoizedResult(url).map(m -> m.getResult());
          if(cached.isPresent())
@@ -1322,7 +1422,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       }
 
       String body = response.getContent();
-      if(runtime.isCacheEnabled() && body != null)
+      if(deadline == null && runtime.isCacheEnabled() && body != null)
       {
          runtime.getResponseCache().storeResult(url, body);
       }
@@ -1376,7 +1476,20 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       while(true)
       {
          attempts++;
-         runtime().getThrottle().acquire();
+         remainingMillis();
+         if(deadline == null)
+         {
+            runtime().getThrottle().acquire();
+         }
+         else
+         {
+            runtime().getThrottle().acquire(deadline);
+            int remaining = remainingMillis();
+            request.setConfig(RequestConfig.custom()
+               .setConnectTimeout(healthTimeout(remaining, runtime().getConfig().getConnectTimeoutMillis()))
+               .setConnectionRequestTimeout(healthTimeout(remaining, runtime().getConfig().getConnectTimeoutMillis()))
+               .setSocketTimeout(healthTimeout(remaining, runtime().getConfig().getSocketTimeoutMillis())).build());
+         }
          if(!exchange)
          {
             request.setHeader("Authorization", "Bearer " + token);
@@ -1392,6 +1505,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          try
          {
             response = send(request);
+            remainingMillis();
          }
          catch(Exception e)
          {
@@ -1399,7 +1513,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
             LOG.warn("Authentik API call failed", logPair("method", request.getMethod()), logPair("path", path), logPair("error", message));
             if(attempts < MAX_RETRIES && "GET".equals(request.getMethod()))
             {
-               SleepUtils.sleep(backoffMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+               retrySleep(backoffMs);
                backoffMs *= 2;
                continue;
             }
@@ -1412,17 +1526,20 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
          {
             logOutboundCall(request, path, response, token);
          }
-         checkVersionOnce(status);
+         if(deadline == null)
+         {
+            checkVersionOnce(status);
+         }
 
          if(status == 429 && attempts <= MAX_RETRIES)
          {
-            SleepUtils.sleep(retryAfterMillis(response, backoffMs), java.util.concurrent.TimeUnit.MILLISECONDS);
+            retrySleep(retryAfterMillis(response, backoffMs));
             backoffMs *= 2;
             continue;
          }
          if(status >= 500 && attempts < MAX_RETRIES && "GET".equals(request.getMethod()))
          {
-            SleepUtils.sleep(backoffMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+            retrySleep(backoffMs);
             backoffMs *= 2;
             continue;
          }

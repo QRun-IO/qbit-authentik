@@ -14,7 +14,7 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the approved spec, QRun-IO/qqq#1065)
 | **Policies** | IAM-style policy documents on groups (`qqq.io/policy`, format in [docs/POLICY-FORMAT.md](docs/POLICY-FORMAT.md)), edited with a matrix of the app's apps, tables, processes and reports and a live JSON preview (Next UI widget `AUTHENTIK_POLICY_EDITOR`). At sign-in they become QQQ permissions through `AuthentikGroupPermissionMapper`, or through the token claim with `AuthentikPolicyClaimMapper`. Parsing fails closed. |
 | **Safety** | Operators can only grant permissions they hold themselves. No self-edits. Break-glass, the service account and superusers are untouchable, and superuser groups cannot be managed. The last administrator cannot be removed. Granting `authentik.*` needs a second person. Destructive actions need a reason and a typed confirmation. A change made in the Authentik UI after you opened a form is detected, not overwritten. |
 | **Audit** | Every attempt is a row in `authentik_admin_action` (written before the call), and Authentik's own event log gets a `custom_qqq_admin_action` event naming the human operator. |
-| **Screens** | A home dashboard (what needs attention, people, groups, recent changes, connection), standard tables with full record screens, and every action as a table or record action with the usual Review and Result steps. Nothing is in the nav except the main tables. |
+| **Screens** | A home dashboard (what needs attention, people, groups, recent changes, central health), standard tables with full record screens, and every action as a table or record action with the usual Review and Result steps. Nothing is in the nav except the main tables. |
 
 Everything is a standard QQQ table, action and widget, so it works in any QQQ UI and over the QQQ API.
 
@@ -92,7 +92,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Item | What to do |
 |---|---|
 | Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
-| QQQ version | QQQ 4.1.0-RC.7 (released BOM, no core SNAPSHOT). Java 21. |
+| QQQ version | QQQ 4.1.0-RC.8 (released BOM, including the core health SPI). Java 21. |
 | Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
 | Tables | Create `authentik_admin_action`, `authentik_approval_request` and `authentik_token_scope` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
@@ -137,6 +137,29 @@ Service-account creation merges `goauthentik.io/user/token-maximum-lifetime` int
 
 Service-account creation and rotation need `add_token` (verified on Authentik 2026.8.3 by `TokenContractIT`).
 
+## Health checks
+
+The producer registers these central checks when Authentik is configured. All use
+component `authentik`, category `IDENTITY`, and a 10-second timeout. They reuse the
+API client and drift diagnostics, honor the runner deadline, and record only safe
+version, expiry-day, and finding-code details.
+
+| Name | Kind | Interval |
+| --- | --- | --- |
+| `authentik.api` | DEPENDENCY | 300 seconds |
+| `authentik.api_token` | DEPENDENCY | 21600 seconds |
+| `authentik.mapper` | DEPENDENCY | 21600 seconds |
+| `authentik.token_broker` | DEPENDENCY | 300 seconds |
+
+The broker check uses a client-credentials grant and discards the returned bearer;
+it reports UNKNOWN when broker credentials are not configured. Token metadata must
+identify one API token; ambiguous tokens or an unavailable expiry report UNKNOWN.
+The Identity home links its central status to System Health. The configuration
+`driftReport` widget remains available. Disable checks centrally with
+`health_check.enabled`; no Authentik table fields are added.
+
+These registrations use the core health SPI released in QQQ 4.1.0-RC.8; no
+SNAPSHOT override or enforcer skip is needed.
 
 ## In-app help
 

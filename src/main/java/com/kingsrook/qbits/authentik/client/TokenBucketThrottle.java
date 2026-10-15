@@ -91,6 +91,30 @@ public class TokenBucketThrottle
 
 
    /*******************************************************************************
+    ** Reserve a token only when the health deadline permits the throttle delay.
+    *******************************************************************************/
+   public void acquire(java.time.Instant deadline) throws com.kingsrook.qqq.backend.core.exceptions.QException
+   {
+      long waitNanos;
+      synchronized(this)
+      {
+         refill();
+         waitNanos = (long) Math.ceil(Math.max(0, 1 - tokens) / tokensPerNano);
+         if(Thread.currentThread().isInterrupted() || waitNanos >= java.time.Duration.between(java.time.Instant.now(), deadline).toNanos())
+         {
+            throw (new com.kingsrook.qqq.backend.core.exceptions.QException("Authentik health deadline exceeded"));
+         }
+         tokens -= 1;
+      }
+      if(waitNanos > 0)
+      {
+         nanoSleeper.accept(waitNanos);
+      }
+   }
+
+
+
+   /*******************************************************************************
     ** Tokens currently available (may be negative while callers are waiting).
     *******************************************************************************/
    public synchronized double getAvailableTokens()
