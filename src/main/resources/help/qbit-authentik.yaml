@@ -1,0 +1,957 @@
+bundle: qbit-authentik
+version: 0.1.0-SNAPSHOT
+layer: QBIT
+entries:
+- key: app:authentikAdmin;slot:help
+  summary: Review Authentik accounts, groups, application access and identity administration.
+  content: |
+    Identity shows the accounts, groups and applications held in Authentik, the service that signs people in to this application. The directory data is read from Authentik with the host's configured caching, and Authentik stays the source of truth. Changes made in Authentik itself are equally valid, and nothing here overwrites them blindly.
+
+    **Read only by default.** Out of the box you can look but not change anything. The change actions (creating and editing users and groups, resetting passwords, revoking sessions, editing policies) appear only when writes are switched on for this site. When they are off, those buttons are absent, not just disabled. Deleting a user or group needs a second switch and is off unless it was turned on deliberately.
+
+    Some details, such as sessions, tokens, events and raw attributes, need the audit permission. You need the permission to read users to open this app.
+- key: table:authentik_application;slot:help
+  summary: The apps that people sign in to through Authentik, and who is allowed to open them.
+  content: |
+    Each row is an application set up in Authentik. Open one to see its provider, how it is launched and, under **Who can open it (policy bindings)**, the rules that decide which groups or users may use it.
+
+    This list is read only. Applications are managed in Authentik, not here.
+
+    **How rows get created:** Define applications in Authentik; you can inspect their live state here. An empty list means no applications match your query and visible scope.
+- key: table:authentik_application;section:details
+  summary: The application's name, address, provider and library settings.
+- key: table:authentik_application;section:bindings
+  summary: The rules that allow or deny groups and users from opening this application.
+- key: table:authentik_application;field:slug
+  summary: The application's short address name inside Authentik.
+- key: table:authentik_application;field:name
+  summary: The application's display name in Authentik.
+- key: table:authentik_application;field:group
+  summary: The heading Authentik lists this application under in its library; often empty.
+- key: table:authentik_application;field:providerName
+  summary: The sign-in provider connected to this application, such as an OAuth2 or proxy provider.
+- key: table:authentik_application;field:policyEngineMode
+  summary: How the application's access rules combine.
+  content: |
+    Authentik uses **any** (one passing rule is enough) or **all** (every rule must pass). See the rules under **Who can open it (policy bindings)**.
+- key: table:authentik_application;field:launchUrl
+  summary: The address people are sent to when they open the application from Authentik.
+- key: table:authentik_application;field:publisher
+  summary: The publisher name shown for the application in Authentik; often empty.
+- key: table:authentik_application;field:hiddenFromLibrary
+  summary: Yes when the application is hidden from users' Authentik app library.
+  content: |
+    Hidden applications can still be opened directly.
+- key: table:authentik_application;field:bindingTarget
+  summary: Internal link used to list this application's access rules.
+- key: table:authentik_blueprint;slot:help
+  summary: The configuration files Authentik applies to set itself up, and whether each applied cleanly.
+  content: |
+    Blueprints are files that describe parts of Authentik, such as its groups and service accounts. Authentik applies them itself. This list shows each one's **{{label:authentik_blueprint.status}}**, whether it is **{{label:authentik_blueprint.enabled}}**, and when it was **{{label:authentik_blueprint.lastApplied}}**.
+
+    It is read only and for checking. A status that is not successful means something in Authentik's own setup needs attention.
+
+    **How rows get created:** Authentik discovers and applies blueprints; you can inspect their live status here. An empty list means no blueprint instances match your query.
+- key: table:authentik_blueprint;field:pk
+  summary: Authentik's internal id for the blueprint.
+- key: table:authentik_blueprint;field:name
+  summary: The blueprint's name.
+- key: table:authentik_blueprint;field:path
+  summary: Where Authentik finds the blueprint file.
+- key: table:authentik_blueprint;field:status
+  summary: Whether Authentik applied the blueprint successfully, as reported by Authentik.
+- key: table:authentik_blueprint;field:enabled
+  summary: Whether Authentik applies this blueprint automatically.
+- key: table:authentik_blueprint;field:lastApplied
+  summary: When Authentik last applied this blueprint.
+- key: table:authentik_event;slot:help
+  summary: 'Authentik''s activity log: sign-ins, failed logins, changes and other security events, newest first.'
+  content: |
+    Use this to answer who did what and when: a login, a password reset, a group change, or something an admin did from this app. Each row names the **{{label:authentik_event.action}}**, who did it, from which **{{label:authentik_event.clientIp}}**, and what it touched. **{{label:authentik_event.context}}** holds the raw detail.
+
+    The list is read only and needs the audit permission. On a user, the **History** section shows just that person's events. Authentik deletes old events on its own schedule, shown in **{{label:authentik_event.expires}}**.
+
+    **How rows get created:** Authentik records security events; you can inspect the live event log here. An empty list means no events match your query.
+- key: table:authentik_event;field:pk
+  summary: Authentik's internal id for the event.
+- key: table:authentik_event;field:created
+  summary: When the event happened.
+- key: table:authentik_event;field:action
+  summary: What happened, in Authentik's own terms, such as login, login failed, model created or model updated.
+- key: table:authentik_event;field:username
+  summary: The account that did it, where known.
+- key: table:authentik_event;field:userPk
+  summary: The Authentik number of the account that did it.
+- key: table:authentik_event;field:app
+  summary: The part of Authentik that recorded the event.
+- key: table:authentik_event;field:clientIp
+  summary: The network address the request came from.
+- key: table:authentik_event;field:modelApp
+  summary: For changes, which part of Authentik owns the thing that changed.
+- key: table:authentik_event;field:modelName
+  summary: For changes, the kind of thing that changed, such as user or group.
+- key: table:authentik_event;field:modelPk
+  summary: For changes, the id of the thing that changed.
+- key: table:authentik_event;field:modelLabel
+  summary: For changes, the name of the thing that changed.
+- key: table:authentik_event;field:authorizedApp
+  summary: For sign-ins, the application the person was signing in to.
+- key: table:authentik_event;field:context
+  summary: The raw details Authentik recorded with the event, as JSON text.
+- key: table:authentik_event;field:expires
+  summary: When Authentik will delete this event from its log.
+- key: table:authentik_group_member;slot:help
+  summary: Which people belong to which Authentik groups, one row per person and group.
+  content: |
+    This is the list behind the **Members** section on a group and the **Memberships** section on a user. It is read only. To change who is in a group you use the **{{label:authentikAddMembers}}**, **{{label:authentikRemoveMembers}}**, **{{label:authentikAddToGroup}}** or **{{label:authentikRemoveFromGroup}}** actions, which are present only when writes are enabled.
+
+    **How rows get created:** Membership rows are assembled live from Authentik. Use the membership actions to add or remove people. An empty list means no memberships match your query.
+- key: table:authentik_group_member;field:groupName
+  summary: The group the person belongs to.
+- key: table:authentik_group_member;field:username
+  summary: The member's sign-in username.
+- key: table:authentik_group_member;field:name
+  summary: The member's full name.
+- key: table:authentik_group_member;field:email
+  summary: The member's email address.
+- key: table:authentik_group_member;field:isActive
+  summary: Whether the member's account can currently sign in.
+- key: table:authentik_group_member;field:groupPk
+  summary: Authentik's internal id of the group.
+- key: table:authentik_group_member;field:userPk
+  summary: Authentik's number for the member's account.
+- key: table:authentik_group;slot:help
+  summary: The groups that decide what each person can do in this application and which applications they can open.
+  content: |
+    Access in this application comes from group membership. A group can grant specific application permissions and app sign-in, can sit under parent groups whose access it inherits, and can carry a written policy.
+
+    Open a group to see its members, the permissions it grants directly and the full set including inherited ones, and its policy.
+
+    You can inspect the details your permissions allow. These actions appear when their features and writes are enabled: **{{label:authentikCreateGroup}}**, **{{label:authentikEditGroup}}**, **{{label:authentikEditPermissions}}**, **Edit Policy**, **{{label:authentikGeneratePolicy}}**, **{{label:authentikAddMembers}}** and **{{label:authentikRemoveMembers}}**. Safeguards apply: you can only grant permissions you hold yourself, you cannot edit your own access, superuser groups cannot be managed, and granting identity administration rights needs a second person when two-person approval is enabled.
+
+    **How rows get created:** Create groups in Authentik or use Create Group when enabled. You read their live state from Authentik. An empty list means no groups match your query.
+- key: table:authentik_group;section:enforcement
+  summary: Whether saved policies currently take effect when people sign in.
+- key: table:authentik_group;section:details
+  summary: The group's name, parents, children, member count and superuser status.
+- key: table:authentik_group;section:permissions
+  summary: The application permissions and app sign-in this group grants, directly and by inheritance.
+- key: table:authentik_group;section:members
+  summary: The people in this group.
+- key: table:authentik_group;section:policy
+  summary: The written access policy saved on this group, if any.
+- key: table:authentik_group;section:attributes
+  summary: The raw extra settings stored on the group in Authentik; needs the audit permission.
+- key: table:authentik_group;field:pk
+  summary: Authentik's internal id for the group.
+- key: table:authentik_group;field:name
+  summary: The group's name.
+- key: table:authentik_group;field:isSuperuser
+  summary: Yes when this group itself gives its members full superuser rights in Authentik.
+  content: |
+    Superuser groups cannot be managed from here.
+- key: table:authentik_group;field:isSuperuserInherited
+  summary: Yes when this group, or any parent it inherits from, gives members superuser rights.
+- key: table:authentik_group;field:parentNames
+  summary: The groups this group inherits access from.
+- key: table:authentik_group;field:childNames
+  summary: The groups that inherit access from this one.
+- key: table:authentik_group;field:memberCount
+  summary: How many people are directly in this group.
+- key: table:authentik_group;field:memberUsername
+  summary: Filter for groups containing a given username; not shown.
+- key: table:authentik_group;field:permissions
+  summary: The application permissions this group grants directly, one per line.
+  content: |
+    These come from the group's permissions setting in Authentik. A permission looks like a screen or action name followed by what is allowed, for example read or has access.
+- key: table:authentik_group;field:effectivePermissions
+  summary: Everything this group grants once parent groups and the group's policy are included.
+  content: |
+    Use it to answer why a person has a permission. The permissions here are the full set for the group's members.
+- key: table:authentik_group;field:appAccess
+  summary: The applications the group's members may sign in to, one per line.
+- key: table:authentik_group;field:roleNames
+  summary: The Authentik roles attached to this group.
+- key: table:authentik_group;field:numPk
+  summary: Authentik's numeric id for the group; used internally.
+- key: table:authentik_group;field:parentPks
+  summary: The internal ids of the parent groups; used internally.
+- key: table:authentik_group;field:attributes
+  summary: The raw attributes stored on the group in Authentik, as JSON text.
+  content: |
+    Needs the audit permission. Permissions, app access and policy are kept here, so edit them with the actions rather than by hand.
+- key: table:authentik_policy_binding;slot:help
+  summary: The rules attached to an application that allow or deny specific groups or users from opening it.
+  content: |
+    Each binding points at a group or user (or a named policy) and says whether it grants or blocks access. They are evaluated in **{{label:authentik_policy_binding.order}}**, and the application's **Policy Engine Mode** decides how the results combine.
+
+    This list is read only and appears on an application under **Who can open it (policy bindings)**. Bindings are changed in Authentik.
+
+    **How rows get created:** Define application bindings in Authentik; you can inspect the live bindings here. An empty list means no bindings match your query.
+- key: table:authentik_policy_binding;field:pk
+  summary: Authentik's internal id for the binding.
+- key: table:authentik_policy_binding;field:target
+  summary: Internal id of the application the binding is attached to.
+- key: table:authentik_policy_binding;field:policyName
+  summary: The named policy the binding uses, when it is a policy rather than a group or user.
+- key: table:authentik_policy_binding;field:groupName
+  summary: The group this binding applies to, if it targets a group.
+- key: table:authentik_policy_binding;field:username
+  summary: The user this binding applies to, if it targets a person.
+- key: table:authentik_policy_binding;field:negate
+  summary: Yes when the rule is reversed, so it applies to everyone except the group or user named.
+- key: table:authentik_policy_binding;field:enabled
+  summary: Whether the rule is currently in force.
+- key: table:authentik_policy_binding;field:order
+  summary: The position of the rule; lower numbers are checked first.
+- key: table:authentik_policy_binding;field:expires
+  summary: When the rule stops applying, if it has an end date.
+- key: table:authentik_role;slot:help
+  summary: Authentik roles, which bundle Authentik's own admin rights and can be attached to groups.
+  content: |
+    A role controls what someone may do inside Authentik itself, not inside this application. Only roles created by people are listed; ones Authentik manages itself are left out.
+
+    This list is read only. Managing roles from here is not available.
+
+    **How rows get created:** Define roles in Authentik; you can inspect its live, unmanaged roles here. An empty list means no unmanaged roles match your query.
+- key: table:authentik_role;field:pk
+  summary: Authentik's internal id for the role.
+- key: table:authentik_role;field:name
+  summary: The role's name.
+- key: table:authentik_session;slot:help
+  summary: The sign-in sessions currently open in Authentik, with where and when each was last used.
+  content: |
+    A session is a signed-in browser or device. Use this to see who is signed in, from which address, and whether a session looks unfamiliar. A person's sessions also appear under **{{label:authentik_session}}** on their user record.
+
+    The list is read only and needs the audit permission. The **{{label:authentikRevokeSessions}}** action, which signs a person out everywhere, appears only when writes are switched on.
+
+    **How rows get created:** Authentik creates sessions when people sign in; you can inspect them live here. An empty list means no sessions match your query.
+- key: table:authentik_session;field:uuid
+  summary: Authentik's id for the session.
+- key: table:authentik_session;field:userPk
+  summary: The Authentik id of the person this sign-in session belongs to.
+- key: table:authentik_session;field:username
+  summary: The username of the person who owns this session.
+- key: table:authentik_session;field:lastIp
+  summary: The network address this session was last seen from.
+  content: |
+    Only people with the audit permission can open the Sessions list.
+- key: table:authentik_session;field:lastUserAgent
+  summary: The browser or device description sent with the session's most recent request.
+- key: table:authentik_session;field:lastUsed
+  summary: When the session was last used.
+- key: table:authentik_session;field:expires
+  summary: When the session ends by itself if it is not revoked first.
+- key: table:authentik_session;field:current
+  summary: Yes when this is the session you are using right now.
+- key: table:authentik_session;field:geoIp
+  summary: The approximate location Authentik worked out from the last IP address, when it has one.
+- key: table:authentik_session;field:asn
+  summary: The network provider Authentik matched to the last IP address, when it has one.
+- key: table:authentik_token;slot:help
+  summary: Details of Authentik tokens and app passwords. The secret key is never shown.
+  content: |
+    This list holds the details of access tokens and app passwords: who owns each one, what it is for and when it expires. The secret key is never stored or shown here.
+
+    It is read from Authentik, subject to the host's configured cache lifetime.
+
+    You need the audit permission (or the permission to manage tokens) to see it. You normally reach it from the **Tokens and app passwords** section on a person's record.
+
+    Token actions are available when the host enables token management and writes, and you have the required permissions.
+
+    **How rows get created:** Create tokens in Authentik or use Create Token when enabled. This list reads live token metadata, never keys. An empty list means no tokens match your query and visible scope.
+- key: table:authentik_token;field:identifier
+  summary: The token's unique name in Authentik, not its secret key.
+- key: table:authentik_token;field:intent
+  summary: What the token is for in Authentik, for example an API token or an app password.
+- key: table:authentik_token;field:username
+  summary: The username of the person who owns the token.
+- key: table:authentik_token;field:description
+  summary: The note whoever created the token gave it, to remember what it is used for.
+- key: table:authentik_token;field:expires
+  summary: When the token stops working.
+- key: table:authentik_token;field:expiring
+  summary: Yes when the token has an expiry date; No when it never expires.
+- key: table:authentik_user;slot:help
+  summary: Review people and service accounts within your configured Authentik user scope.
+  content: |
+    **{{label:authentik_user}}** lists the accounts in Authentik. It is read live (with caching configured by your host), so changes made in the Authentik admin screens show up here too. Authentik stays the source of truth.
+
+    Open a person to see their identity, groups and roles, sessions, tokens and recent history.
+
+    **Changing people** (create, edit, deactivate and reactivate, add to group, send a password reset, reset MFA, revoke app passwords, revoke sessions) only appears when changes are switched on for this site. Otherwise the Identity screens are read-only and every change must be made in Authentik itself.
+
+    Some accounts are protected and cannot be changed from here: Authentik superusers, the service account that connects this site to Authentik, internal service accounts, and any account marked protected. You also cannot change your own account.
+
+    Every change needs a reason and is recorded under **{{label:authentik_admin_action}}**.
+
+    **How rows get created:** Create accounts in Authentik or use the enabled user actions. You read their live state from Authentik. An empty list means no accounts match your query and configured user scope.
+- key: table:authentik_user;section:identity
+  summary: 'Who the person is: username, name, email, status, type and sign-in dates.'
+- key: table:authentik_user;section:access
+  summary: The groups and roles the person belongs to and the permissions they add up to in this app.
+- key: table:authentik_user;section:memberships
+  summary: The groups this person is a member of.
+- key: table:authentik_user;section:sessions
+  summary: The person's current sign-in sessions. Needs the audit permission.
+- key: table:authentik_user;section:tokens
+  summary: Details of the person's access tokens and app passwords, never the secret keys. Needs the audit permission.
+- key: table:authentik_user;section:events
+  summary: Recent things Authentik recorded for this person, such as sign-ins and changes. Needs the audit permission.
+- key: table:authentik_user;section:attributes
+  summary: Extra data stored on the person in Authentik, plus when their password last changed. Needs the audit permission.
+- key: table:authentik_user;field:pk
+  summary: The number Authentik uses to identify this person.
+- key: table:authentik_user;field:username
+  summary: "The name the person signs in with."
+  content: |
+    The name the person signs in with. Letters, digits and . _ @ + - only.
+- key: table:authentik_user;field:name
+  summary: The person's full name as shown in Authentik.
+- key: table:authentik_user;field:email
+  summary: The person's email address. Password reset emails are sent here.
+- key: table:authentik_user;field:isActive
+  summary: Yes if the person can sign in; deactivated accounts keep their history but cannot sign in.
+- key: table:authentik_user;field:type
+  summary: The kind of account in Authentik.
+  content: |
+    Values you can see here:
+    - **internal**: a normal member account.
+    - **external**: an account for someone outside the organisation.
+    - **service_account**: an account for a script or service rather than a person.
+- key: table:authentik_user;field:isSuperuser
+  summary: Yes if the account is an Authentik superuser, directly or through a parent group. Not editable here.
+- key: table:authentik_user;field:isProtected
+  summary: Yes if this account cannot be changed from this screen.
+  content: |
+    An account is protected when it is an Authentik superuser, the service account that connects this site to Authentik, an internal Authentik service account, listed as protected in the site's setup, or marked as protected in its attributes. Use the Authentik admin screens for these.
+- key: table:authentik_user;field:groupNames
+  summary: The groups the person is directly a member of.
+- key: table:authentik_user;field:roleNames
+  summary: The Authentik roles the person has through their groups.
+- key: table:authentik_user;field:lastLogin
+  summary: When the person last signed in. Blank if they never have.
+- key: table:authentik_user;field:dateJoined
+  summary: When the account was created in Authentik.
+- key: table:authentik_user;field:lastUpdated
+  summary: When the account was last changed in Authentik.
+- key: table:authentik_user;field:path
+  summary: The folder-like location of the account in Authentik, used to organise users.
+- key: table:authentik_user;field:uuid
+  summary: The unique identifier Authentik uses for this account.
+- key: table:authentik_user;field:qqqAttributes
+  summary: The Authentik attributes that start with qqq.io/, which this application reads for permissions and protection.
+- key: table:authentik_user;field:effectivePermissions
+  summary: The permissions this person ends up with in this app, added up from all their groups and parent groups.
+  content: |
+    This list is worked out when you open the record. Policies on groups only count here when policy enforcement is on (see **Policy Enforcement** on a group).
+- key: table:authentik_user;field:passwordChangeDate
+  summary: When the person last changed their password. Needs the audit permission.
+- key: table:authentik_user;field:attributes
+  summary: All extra data stored on the person in Authentik, as JSON. Needs the audit permission.
+  content: |
+    **{{label:authentikEditUser}}** can change attributes that do not start with qqq.io/ or goauthentik.io/. Those two prefixes are managed elsewhere.
+- key: table:authentik_admin_action;slot:help
+  summary: The audit trail of every change attempted from the Identity screens, successful or not.
+  content: |
+    **{{label:authentik_admin_action}}** records each attempt to change something in Authentik: who did it, what, to whom, why, and how it ended. A row is written before the call to Authentik is made, so failures and refusals are recorded too. Authentik's own event log also gets a matching entry naming the person who did it.
+
+    Use it to answer who changed someone's access and when, and to see the state before and after.
+
+    You need the audit permission to read it. Rows are written by the system only; you cannot add or edit them by hand.
+
+    **How rows get created:** Your administrative actions write audit records before making changes in Authentik. An empty list means no audit records match your query.
+- key: table:authentik_admin_action;field:correlationId
+  summary: An id shared by every record of the same attempt, to match it with Authentik's own log.
+- key: table:authentik_admin_action;field:actionName
+  summary: Which change was attempted, for example Edit User or Add To Group.
+- key: table:authentik_admin_action;field:operator
+  summary: The person who did it, shown by their sign-in email.
+- key: table:authentik_admin_action;field:reason
+  summary: The reason the person typed when they made the change.
+- key: table:authentik_admin_action;field:targetType
+  summary: 'What kind of thing was changed: a user, group, membership or similar.'
+- key: table:authentik_admin_action;field:targetKey
+  summary: The Authentik id of the thing that was changed.
+- key: table:authentik_admin_action;field:targetLabel
+  summary: The name of the thing that was changed, such as a username or group name.
+- key: table:authentik_admin_action;field:beforeText
+  summary: How the thing looked before the change.
+- key: table:authentik_admin_action;field:afterText
+  summary: How the thing looked after the change.
+- key: table:authentik_admin_action;field:status
+  summary: 'How the attempt ended: {{values:authentik_action_status}}.'
+  content: |
+    Values:
+    - **Waiting for approval**: needs a second person to approve it; nothing has been sent to Authentik.
+    - **Running**: in progress.
+    - **Succeeded**: done in Authentik.
+    - **Failed**: sent to Authentik but it did not work; see the error message.
+    - **Refused**: a safety rule or missing permission stopped it before anything was sent.
+- key: table:authentik_admin_action;field:errorMessage
+  summary: Why the attempt failed or was refused. Blank when it succeeded.
+- key: table:authentik_admin_action;field:authentikEventPk
+  summary: The id of the matching entry in Authentik's own event log, when one was written.
+- key: table:authentik_admin_action;field:approver
+  summary: The second person who approved the change, when approval was needed.
+- key: table:authentik_approval_request;slot:help
+  summary: Changes waiting for a second person to approve before they are sent to Authentik.
+  content: |
+    Some changes need two people, so one person cannot grant themselves power. When two-person approval is enabled, adding identity administration permissions requires approval. Your host can also require approval for policy changes. The first person's request waits here. Nothing has changed in Authentik yet.
+
+    A different person with the approve permission opens the request and runs **{{label:authentikApprove}}**, or **{{label:authentikReject}}**. You cannot approve your own request.
+
+    Requests expire after 24 hours; ask again if one has expired. When approved, the change is checked again against live data, so it can still fail if something changed in the meantime.
+
+    Waiting requests also show on the Identity home under **Needs attention**.
+
+    **How rows get created:** Changes requiring a second person create approval requests. An empty list means no requests match your query; completed requests remain recorded.
+- key: table:authentik_approval_request;field:actionName
+  summary: Which change is waiting for approval.
+- key: table:authentik_approval_request;field:targetKey
+  summary: The Authentik id of the thing the change applies to.
+- key: table:authentik_approval_request;field:targetLabel
+  summary: The name of the person or group the change applies to.
+- key: table:authentik_approval_request;field:summary
+  summary: A plain description of what will change if the request is approved.
+- key: table:authentik_approval_request;field:reason
+  summary: The reason the requester gave for the change.
+- key: table:authentik_approval_request;field:payloadJson
+  summary: The exact change that will be applied, saved so the approver applies what was requested.
+- key: table:authentik_approval_request;field:requester
+  summary: The person who asked for the change, shown by their sign-in email.
+- key: table:authentik_approval_request;field:approver
+  summary: The person who approved or rejected the request. Blank while it is still waiting.
+- key: table:authentik_approval_request;field:status
+  summary: 'Where the request stands: waiting, approved, rejected, expired or failed.'
+  content: |
+    Values:
+    - **Waiting for approval**: nobody has decided yet.
+    - **Approved and applied**: a second person approved it and the change was made.
+    - **Rejected**: a second person said no; nothing changed.
+    - **Expired**: nobody decided within 24 hours.
+    - **Approved but failed**: it was approved but the change could not be made; see the error message.
+- key: table:authentik_approval_request;field:expiresDate
+  summary: When the request lapses if nobody decides it. It is 24 hours after the request was made.
+- key: table:authentik_approval_request;field:decidedDate
+  summary: When the request was approved, rejected or marked expired.
+- key: table:authentik_approval_request;field:errorMessage
+  summary: Why an approved change failed, or the word expired. Blank otherwise.
+- key: table:authentik_policy;slot:help
+  summary: 'The saved policy of each group: a list of what its members may do in this app.'
+  content: |
+    A **policy** is a document saved on a group in Authentik. It lists the apps, tables, actions and reports the group's members may use, and what they may do (open, read, add, edit, delete). Members of the group, and of groups below it, receive those permissions when they sign in.
+
+    This list shows the last policy saved from this application for each group, with who saved it and when. Authentik holds the live document.
+
+    Saved policies only take effect at sign-in when policy enforcement is on. The banner on this screen says whether it is. When signed-in users receive changed permissions depends on the host's authentication and session configuration.
+
+    Use **{{label:authentikEditPolicyRecord}}** to change one. It needs the policies permission, and you can only grant permissions you hold yourself.
+
+    **How rows get created:** Saving a group policy records its document and author here. Authentik holds the live policy. An empty list means no saved policy records match your query.
+- key: table:authentik_policy;section:enforcement
+  summary: Whether saved policies are actually applied when people sign in.
+- key: table:authentik_policy;section:policy
+  summary: The group, how big its policy is, who saved it and the policy document itself.
+- key: table:authentik_policy;section:system
+  summary: Technical details kept by the system, including the check used to spot changes made in Authentik.
+- key: table:authentik_policy;field:groupPk
+  summary: The Authentik id of the group this policy belongs to.
+- key: table:authentik_policy;field:groupName
+  summary: The name of the group the policy is saved on.
+- key: table:authentik_policy;field:policyJson
+  summary: The policy document as it was last saved, in JSON.
+  content: |
+    The document lists statements. Each statement allows some actions (open, read, insert, edit, delete) on named apps, tables, actions, reports or widgets. Use **{{label:authentikEditPolicyRecord}}** to change it with tick boxes and a live preview instead of editing the JSON by hand. A document that is not valid grants nothing.
+- key: table:authentik_policy;field:statementCount
+  summary: How many statements the saved policy has.
+- key: table:authentik_policy;field:permissionCount
+  summary: How many separate permissions the saved policy grants in total.
+- key: table:authentik_policy;field:savedBy
+  summary: Who saved this policy last, shown by their sign-in email.
+- key: table:authentik_policy;field:savedDate
+  summary: When this policy was last saved from this application.
+- key: table:authentik_policy;field:authentikFingerprint
+  summary: A short code of the policy as saved, used to detect that someone changed it directly in Authentik.
+  content: |
+    When you open **{{label:authentikEditPolicyRecord}}**, the editor compares this code to what Authentik holds now. If they differ, someone changed the policy in Authentik, and you are asked to review it again instead of overwriting their change.
+- key: process:authentikCreateUser;slot:help
+  summary: Creates a new person in Authentik and, by default, emails them a link to set their own password.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage users.
+
+    You never set or see a password. If **Email them a link to set their own password** is ticked (the default), Authentik sends the person a link to choose one.
+
+    - The username may use letters, digits and . _ @ + - (up to 150 characters), and must not already exist.
+    - The email must be valid and not already used by another person.
+    - **{{label:authentik_group}}** adds them to existing groups straight away. You can only pick groups whose permissions you hold yourself.
+
+    Review shows what will be created before anything is sent to Authentik. Every run needs a reason and is recorded under **{{label:authentik_admin_action}}**.
+- key: process:authentikCreateUser;field:username
+  summary: "The unique sign-in name for the new person."
+  content: |
+    The sign-in name: letters, digits and . _ @ + - only, up to 150 characters, and not already taken.
+- key: process:authentikCreateUser;field:name
+  summary: The person's full name.
+- key: process:authentikCreateUser;field:email
+  summary: Their email address. The link to set a password is sent here, and it must not belong to another person.
+- key: process:authentikCreateUser;field:groups
+  summary: Groups to add them to, one group name per line. Optional.
+- key: process:authentikCreateUser;field:sendRecovery
+  summary: Tick to have Authentik email the person a link so they can set their own password. On by default.
+- key: process:authentikCreateUser;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikEditUser;slot:help
+  summary: Changes a person's username, name, email, path or other attributes in Authentik.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage users.
+
+    You can edit one person at a time. The form opens filled in with their current details; change what you need. Review shows exactly what will change.
+
+    - Attributes starting with qqq.io/ or goauthentik.io/ are managed elsewhere and cannot be changed here. Editing the other attributes also needs the audit permission.
+    - If someone changed this person in Authentik after you opened the form, the change is stopped and you are asked to review it again, rather than overwriting their work.
+    - Protected accounts, and your own account, cannot be edited here.
+- key: process:authentikEditUser;field:username
+  summary: The sign-in name. It must not already belong to another person.
+- key: process:authentikEditUser;field:name
+  summary: The person's full name. It cannot be empty.
+- key: process:authentikEditUser;field:email
+  summary: The person's email address. It must be valid and not used by another person.
+- key: process:authentikEditUser;field:path
+  summary: The folder-like location of the account in Authentik. It cannot be empty.
+- key: process:authentikEditUser;field:otherAttributes
+  summary: 'Extra attributes as a JSON object, for example {"department": "sales"}. Leave blank to keep them as they are.'
+- key: process:authentikEditUser;field:expectedFingerprint
+  summary: Filled in automatically. Used to detect that the person was changed in Authentik while you had this form open.
+- key: process:authentikEditUser;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikDeactivateUser;slot:help
+  summary: Stops selected people from signing in and ends their sessions. Nothing is deleted.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage users.
+
+    You can select up to 100 people. Deactivating signs them out immediately and keeps the account and its history. Use **{{label:authentikReactivateUser}}** to undo it.
+
+    To confirm, type the username. When you select several people, type the username of the first one. Tick **Also revoke their app passwords** to remove those too.
+
+    Protected accounts, service accounts that connect this site, superusers and your own account cannot be deactivated here. The last person able to manage memberships and permissions cannot be deactivated either: add another administrator first.
+- key: process:authentikDeactivateUser;field:revokeAppPasswords
+  summary: Also deletes the person's app passwords. Off by default.
+- key: process:authentikDeactivateUser;field:confirmText
+  summary: Type the person's username to confirm. With several people selected, type the first one's username.
+- key: process:authentikDeactivateUser;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikReactivateUser;slot:help
+  summary: Lets selected deactivated people sign in again.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage users.
+
+    You can select up to 100 people. Their groups and history are as they were. Protected accounts and your own account cannot be changed from here.
+- key: process:authentikReactivateUser;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikAddToGroup;slot:help
+  summary: Adds the selected people to one group.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage memberships.
+
+    Pick the group and give a reason. You can select up to 100 people. Above 25 people you must also type how many you selected.
+
+    You can only add people to a group whose permissions and app sign-in access you hold yourself. Superuser groups and the groups below them cannot be managed here, and protected accounts and your own account cannot be changed.
+
+    Review shows who will be added before anything is sent to Authentik. To add several people to a group from the group's own screen, use **{{label:authentikAddMembers}}**.
+- key: process:authentikAddToGroup;field:group
+  summary: The group to add the selected people to.
+- key: process:authentikAddToGroup;field:confirmText
+  summary: Type the number of people you selected. Only needed when you selected more than 25.
+- key: process:authentikAddToGroup;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikRemoveFromGroup;slot:help
+  summary: Removes the selected people from one group.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage memberships.
+
+    Pick the group and give a reason. You can select up to 100 people. Above 25 people you must also type how many you selected.
+
+    The last person able to manage memberships and permissions cannot be removed: add another administrator first. Superuser groups cannot be managed here, and protected accounts and your own account cannot be changed.
+
+    Use **{{label:authentikRevokeSessions}}** to end Authentik sessions. Permission refresh timing depends on your host.
+- key: process:authentikRemoveFromGroup;field:group
+  summary: The group to remove the selected people from.
+- key: process:authentikRemoveFromGroup;field:confirmText
+  summary: Type the number of people you selected. Only needed when you selected more than 25.
+- key: process:authentikRemoveFromGroup;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikSendPasswordReset;slot:help
+  summary: Has Authentik email each selected person a link to choose a new password.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to reset credentials.
+
+    You never see the link. The person must be active and have an email address, and the password email must be set up for this site, otherwise the run is refused for that person. You can select up to 100 people.
+- key: process:authentikSendPasswordReset;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikResetMfa;slot:help
+  summary: Removes every multi-factor sign-in device for the selected people.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to reset credentials.
+
+    Use it when someone has lost their phone or authenticator. Whether they must enroll another device depends on your Authentik sign-in flow. Type the username to confirm. It is recorded under **{{label:authentik_admin_action}}**.
+- key: process:authentikResetMfa;field:confirmText
+  summary: Type the person's username to confirm.
+- key: process:authentikResetMfa;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikRevokeAppPasswords;slot:help
+  summary: Deletes the selected people's app passwords. API tokens are not touched.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to reset credentials.
+
+    App passwords are long-lived passwords people create for scripts and other apps. Use this when one may have leaked. Type the username to confirm. It does not sign anyone out; use **{{label:authentikRevokeSessions}}** for that.
+- key: process:authentikRevokeAppPasswords;field:confirmText
+  summary: Type the person's username to confirm.
+- key: process:authentikRevokeAppPasswords;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikRevokeSessions;slot:help
+  summary: Signs the selected people out everywhere.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to revoke sessions.
+
+    Use it if an account may be compromised or its Authentik sessions should end. The person can sign in again unless deactivated. Existing host sessions and permission refresh timing depend on your host.
+- key: process:authentikRevokeSessions;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikCreateGroup;slot:help
+  summary: Creates a group in Authentik, with its parents, permissions and app sign-in access.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage groups.
+
+    A group's permissions apply to everyone in it and to the groups below it.
+
+    - **Parent groups** and group names must exist; a group name must not already exist.
+    - **QQQ permissions** and **App access** are optional and can be set later with **{{label:authentikEditPermissions}}**.
+    - You can only grant permissions you hold yourself. Granting identity administration permissions needs a second person when two-person approval is enabled.
+    - A group cannot be placed under a superuser group.
+- key: process:authentikCreateGroup;field:name
+  summary: The new group's name. It must not already exist.
+- key: process:authentikCreateGroup;field:parents
+  summary: Parent groups, one group name per line. Optional. Members of this group also get the parents' access.
+- key: process:authentikCreateGroup;field:permissions
+  summary: Named permissions the group grants, one per line. You can only list permissions you hold yourself.
+- key: process:authentikCreateGroup;field:appAccess
+  summary: Apps the group may sign in to, one app key per line. You can only list apps you can sign in to yourself.
+- key: process:authentikCreateGroup;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikEditGroup;slot:help
+  summary: Renames a group, changes its parent groups or its other attributes.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage groups.
+
+    You can edit one group at a time. The form opens filled in with the current values.
+
+    - Parent groups: one name per line. Write none to clear them. A group cannot be put below itself or its own descendants, and not under a superuser group.
+    - Changes that would leave nobody able to manage memberships and permissions are refused.
+    - If someone changed the group in Authentik after you opened the form, you are asked to review it again instead of overwriting their change.
+
+    To change what the group grants, use **{{label:authentikEditPermissions}}** or **Edit Policy**.
+- key: process:authentikEditGroup;field:name
+  summary: The group's name. It must not already belong to another group.
+- key: process:authentikEditGroup;field:parents
+  summary: Parent groups, one group name per line. Write none to clear them.
+- key: process:authentikEditGroup;field:otherAttributes
+  summary: Extra attributes as a JSON object. Leave blank to keep them as they are.
+- key: process:authentikEditGroup;field:expectedFingerprint
+  summary: Filled in automatically. Used to detect that the group was changed in Authentik while you had this form open.
+- key: process:authentikEditGroup;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikEditPermissions;slot:help
+  summary: Changes the named permissions and app sign-in access a group grants.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage permissions.
+
+    Both lists are one entry per line. They replace what the group has now, so Review shows what is added and removed.
+
+    - You can only add permissions you hold yourself, and give sign-in access only to apps you can sign in to yourself.
+    - When two-person approval is enabled, adding identity administration permissions requires approval, so the change waits under **{{label:authentik_approval_request}}**.
+    - Removing permissions is refused if nobody would be left able to manage memberships and permissions.
+    - Superuser groups cannot be managed here.
+
+    Permission refresh timing depends on your host. Use **{{label:authentikRevokeSessions}}** to end Authentik sessions.
+- key: process:authentikEditPermissions;field:permissions
+  summary: Named permissions the group grants, one per line. Replaces the current list.
+- key: process:authentikEditPermissions;field:appAccess
+  summary: Apps the group may sign in to, one app key per line. Replaces the current list.
+- key: process:authentikEditPermissions;field:expectedFingerprint
+  summary: Filled in automatically. Used to detect that the group was changed in Authentik while you had this form open.
+- key: process:authentikEditPermissions;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikEditPolicy;slot:help
+  summary: Opens the policy editor to choose what a group's members may do, then saves it to Authentik.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage policies.
+
+    Tick the apps, tables, actions and reports the group's members may use, and what they may do with each (open, read, insert, edit, delete). A live preview shows the policy document that will be saved. Members of the group, and of groups below it, receive these permissions when they sign in.
+
+    - You can only grant permissions you hold yourself.
+    - A document that is not valid grants nothing, and one that cannot be read back exactly is never saved.
+    - If someone changed the policy in Authentik after you opened it, you are asked to review it again instead of overwriting their change.
+    - The banner at the top says whether saved policies are enforced at sign-in. If not, saving still works but changes nothing yet.
+
+    Permission refresh timing depends on your host. Use **{{label:authentikRevokeSessions}}** to end Authentik sessions.
+- key: process:authentikEditPolicy;field:groupPk
+  summary: Filled in automatically with the group you opened.
+- key: process:authentikEditPolicy;field:expectedFingerprint
+  summary: Filled in automatically. Used to detect that the policy was changed in Authentik while you had this form open.
+- key: process:authentikEditPolicy;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikGeneratePolicy;slot:help
+  summary: Builds a group's policy from the access its members get today, so nothing is lost when policies are switched on.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage policies.
+
+    The generated policy is joined with the group's current policy, so nothing is removed. Named permissions this app has that a policy cannot express stay on the group's permissions list, and anything that cannot be written is listed as skipped.
+
+    Review shows the generated document and what changes before anything is saved to Authentik. Use it once per group when moving from fixed access to policy-based access. See **Compare Access** to check the result.
+- key: process:authentikGeneratePolicy;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikEditPolicyRecord;slot:help
+  summary: Opens the policy editor for this group's saved policy, then saves it to Authentik.
+  content: |
+    Works the same as **{{label:authentikEditPolicy}}** on a group. Only available when changes are switched on for this site. Needs the permission to manage policies.
+
+    Tick what members of the group, and of the groups below it, may do. A live preview shows the document that will be saved. You can only grant permissions you hold yourself, and you are asked to review again if someone changed the policy in Authentik meanwhile.
+
+    Saved policies only take effect at sign-in when enforcement is on; the banner says whether it is.
+- key: process:authentikEditPolicyRecord;field:groupPk
+  summary: Filled in automatically with the group this policy belongs to.
+- key: process:authentikEditPolicyRecord;field:expectedFingerprint
+  summary: Filled in automatically. Used to detect that the policy was changed in Authentik while you had this form open.
+- key: process:authentikEditPolicyRecord;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikAddMembers;slot:help
+  summary: Adds people to the selected group by typing their usernames.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage memberships.
+
+    Enter one username per line. You can add up to 100 people at a time; above 25 you must also type how many. The group must grant only permissions and app access you hold yourself, and superuser groups cannot be managed here. Protected accounts and your own account cannot be changed.
+
+    Review shows who will be added before anything is sent to Authentik. See also **{{label:authentikAddToGroup}}**, which starts from selected people.
+- key: process:authentikAddMembers;field:usernames
+  summary: The usernames to add, one per line.
+- key: process:authentikAddMembers;field:confirmText
+  summary: Type the number of people listed. Only needed when there are more than 25.
+- key: process:authentikAddMembers;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikRemoveMembers;slot:help
+  summary: Removes people from the selected group by typing their usernames.
+  content: |
+    Only available when changes are switched on for this site. Needs the permission to manage memberships.
+
+    Enter one username per line. You can remove up to 100 people at a time; above 25 you must also type how many. The last person able to manage memberships and permissions cannot be removed: add another administrator first. Superuser groups cannot be managed here.
+
+    Review shows who will be removed before anything is sent to Authentik. See also **{{label:authentikRemoveFromGroup}}**, which starts from selected people.
+- key: process:authentikRemoveMembers;field:usernames
+  summary: The usernames to remove, one per line.
+- key: process:authentikRemoveMembers;field:confirmText
+  summary: Type the number of people listed. Only needed when there are more than 25.
+- key: process:authentikRemoveMembers;field:reason
+  summary: Why you are making this change. It is saved in the audit trail.
+- key: process:authentikApprove;slot:help
+  summary: Applies a change a colleague asked for, after you check it.
+  content: |
+    Needs the approve permission. It only exists while two-person approval is on.
+
+    You must be a different person from the one who asked, and the request must still be waiting and under 24 hours old. The change is checked again against live data, under your own permissions, then sent to Authentik. If it can no longer be applied the request is marked as failed and nothing is changed.
+
+    The result is recorded under **{{label:authentik_admin_action}}** with both names.
+- key: process:authentikReject;slot:help
+  summary: Turns down a colleague's request. Nothing is changed in Authentik.
+  content: |
+    Needs the approve permission, and you must be a different person from the one who asked. The request is marked as rejected and stays in the list as a record.
+- key: widget:authentikHome;slot:label
+  summary: 'The Identity home: what needs attention, people and group counts, recent changes and the connection to Authentik.'
+  content: |
+    Needs attention shows waiting approval requests, drift report problems, a read-only notice, and an expiring Authentik connection token. Recent changes lists the latest 8 entries from Admin Actions and needs the audit permission.
+- key: widget:authentikPolicyEditor;slot:label
+  summary: 'The editor for a group''s policy: tick boxes for apps, tables, actions and reports, with a live document preview.'
+- key: widget:authentikPolicyEnforcement;slot:label
+  summary: A banner saying whether saved policies are enforced when people sign in.
+  content: |
+    Green and "Enforced" means saved policies decide people's permissions at sign-in. "Not enforced" means they are saved but ignored for now. The text says why, for example that enforcement is switched off, or that switching it on would take permissions away from current administrators.
+- key: widget:authentikCompareAccess;slot:label
+  summary: Shows, for every active person, the permissions they have today next to what saved policies would give them.
+  content: |
+    Needs the admin permission. Added shows what policies would give them that they lack today, and Removed shows what they would lose. Use it before switching policy enforcement on. Read only.
+- key: widget:authentikDriftReport;slot:label
+  summary: Health checks on the Authentik setup, with errors listed first.
+  content: |
+    Needs the admin permission. It checks the Authentik version, blueprints, the service account, a protected break-glass superuser, that at least one person can administer identities, group attributes, and the service account's activity. Each finding is OK, info, warning or error. A check that cannot run is reported as an error with an unknown result.
+- key: widget:authentik_user_memberships;slot:label
+  summary: The groups this person belongs to.
+- key: widget:authentik_user_sessions;slot:label
+  summary: The person's current sign-in sessions. Needs the audit permission.
+- key: widget:authentik_user_tokens;slot:label
+  summary: Details of the person's access tokens and app passwords, never the keys. Needs the audit permission.
+- key: widget:authentik_user_events;slot:label
+  summary: The latest events Authentik recorded for this person. Needs the audit permission.
+- key: widget:authentik_group_members;slot:label
+  summary: The people who are members of this group.
+- key: widget:authentik_group_policy;slot:label
+  summary: The saved policy for this group, with who saved it and when.
+- key: widget:authentik_application_bindings;slot:label
+  summary: The groups and people Authentik allows to open this application.
+- key: possibleValueSource:authentik_action_status;slot:help
+  summary: The outcomes an attempted change can have in the audit trail.
+  content: |
+    Values:
+    - **Waiting for approval**: a second person must approve it; nothing has been sent to Authentik.
+    - **Running**: in progress.
+    - **Succeeded**: the change was made.
+    - **Failed**: it was sent to Authentik but did not work.
+    - **Refused**: a safety rule or missing permission stopped it before anything was sent.
+- key: possibleValueSource:authentik_approval_status;slot:help
+  summary: The states an approval request can be in.
+  content: |
+    Values:
+    - **Waiting for approval**: nobody has decided yet.
+    - **Approved and applied**: a second person approved it and the change was made.
+    - **Rejected**: a second person said no; nothing changed.
+    - **Expired**: nobody decided within 24 hours.
+    - **Approved but failed**: it was approved but the change could not be made.
+- key: table:authentik_token;field:ownerPk
+  summary: 'The Authentik identifier of the token’s owner.'
+- key: table:authentik_token;field:ownerType
+  summary: 'Whether the token belongs to a person or a service account.'
+- key: table:authentik_token;field:ownerName
+  summary: 'The displayed name of the token’s owner.'
+- key: table:authentik_token;field:managed
+  summary: 'The management marker reported for this token.'
+- key: table:authentik_token;field:lastUsed
+  summary: 'The last usage time available for this token.'
+- key: table:authentik_token;field:lastUsedNote
+  summary: 'An explanation of the available token usage information.'
+- key: table:authentik_token;field:createdAt
+  summary: 'The creation time available for this token.'
+- key: table:authentik_token;field:scopeSummary
+  summary: 'A readable summary of the restrictions associated with this token.'
+- key: table:authentik_token_scope;slot:help
+  summary: 'Locally stored access restrictions and reminder history for an Authentik token.'
+  content: |
+    Use **{{label:authentik_token_scope}}** to inspect the restrictions associated with an access token. These records contain identifiers and scope metadata, not the credential itself. Read-only mode and selected resources can narrow the access already held by the token’s owner; they cannot grant additional permissions.
+
+    Scope records also track creation, rotation and expiry reminders. Review them alongside **Tokens** when investigating access. Token creation and rotation actions maintain this metadata, and an empty scope dimension means that dimension adds no restriction.
+
+    **How rows get created:** Token actions maintain local scope and reminder metadata here. An empty list means no token scope records match your query.
+- key: table:authentik_token_scope;field:tokenIdentifier
+  summary: 'The identifier of the Authentik token these restrictions belong to.'
+- key: table:authentik_token_scope;field:ownerUsername
+  summary: 'The username of the token’s owner.'
+- key: table:authentik_token_scope;field:ownerPk
+  summary: 'The Authentik identifier of the token’s owner.'
+- key: table:authentik_token_scope;field:readOnly
+  summary: 'Whether the token is restricted to read operations.'
+  content: |
+    Scopes narrow the token owner’s existing access; they cannot grant permissions the owner does not have. An empty dimension adds no restriction for that dimension. Resource restrictions and read-only mode are separate controls. Advanced process, report, widget and operation scopes are not offered by **Create Token**. Review **Tokens** and the scope summary when diagnosing unexpected access.
+- key: table:authentik_token_scope;field:createdBy
+  summary: 'Who created this token scope record.'
+- key: table:authentik_token_scope;field:apps
+  summary: 'The applications included in this token’s recorded scope.'
+  content: |
+    Scopes narrow the token owner’s existing access; they cannot grant permissions the owner does not have. An empty dimension adds no restriction for that dimension. Resource restrictions and read-only mode are separate controls. Advanced process, report, widget and operation scopes are not offered by **Create Token**. Review **Tokens** and the scope summary when diagnosing unexpected access.
+- key: table:authentik_token_scope;field:tables
+  summary: 'The tables included in this token’s recorded scope.'
+  content: |
+    Scopes narrow the token owner’s existing access; they cannot grant permissions the owner does not have. An empty dimension adds no restriction for that dimension. Resource restrictions and read-only mode are separate controls. Advanced process, report, widget and operation scopes are not offered by **Create Token**. Review **Tokens** and the scope summary when diagnosing unexpected access.
+- key: table:authentik_token_scope;field:processes
+  summary: 'The processes included in this token’s recorded scope.'
+  content: |
+    Scopes narrow the token owner’s existing access; they cannot grant permissions the owner does not have. An empty dimension adds no restriction for that dimension. Resource restrictions and read-only mode are separate controls. Advanced process, report, widget and operation scopes are not offered by **Create Token**. Review **Tokens** and the scope summary when diagnosing unexpected access.
+- key: table:authentik_token_scope;field:reports
+  summary: 'The reports included in this token’s recorded scope.'
+  content: |
+    Scopes narrow the token owner’s existing access; they cannot grant permissions the owner does not have. An empty dimension adds no restriction for that dimension. Resource restrictions and read-only mode are separate controls. Advanced process, report, widget and operation scopes are not offered by **Create Token**. Review **Tokens** and the scope summary when diagnosing unexpected access.
+- key: table:authentik_token_scope;field:widgets
+  summary: 'The widgets included in this token’s recorded scope.'
+  content: |
+    Scopes narrow the token owner’s existing access; they cannot grant permissions the owner does not have. An empty dimension adds no restriction for that dimension. Resource restrictions and read-only mode are separate controls. Advanced process, report, widget and operation scopes are not offered by **Create Token**. Review **Tokens** and the scope summary when diagnosing unexpected access.
+- key: table:authentik_token_scope;field:operationIds
+  summary: 'The individual operations included in this token’s recorded scope.'
+  content: |
+    Scopes narrow the token owner’s existing access; they cannot grant permissions the owner does not have. An empty dimension adds no restriction for that dimension. Resource restrictions and read-only mode are separate controls. Advanced process, report, widget and operation scopes are not offered by **Create Token**. Review **Tokens** and the scope summary when diagnosing unexpected access.
+- key: table:authentik_token_scope;field:createdAt
+  summary: 'When this token scope record was created.'
+- key: table:authentik_token_scope;field:rotatedAt
+  summary: 'When the token associated with this scope was last rotated.'
+- key: table:authentik_token_scope;field:lastReminder7d
+  summary: 'When the seven-day expiry reminder was last recorded.'
+- key: table:authentik_token_scope;field:lastReminder1d
+  summary: 'When the one-day expiry reminder was last recorded.'
+- key: process:authentikTokenReminders;slot:help
+  summary: 'Check approaching token expiries and issue the configured reminders.'
+  content: |
+    This background action checks tokens approaching their expiry and records reminder timing in **{{label:authentik_token_scope}}**. Use it to understand when owners were warned to renew or replace credentials. Reminders do not extend expiry or rotate a key automatically. Review **Tokens** for the current expiry, then use **{{label:authentikExtendToken}}**, **Rotate Token** or **Revoke Token** as appropriate for the credential.
+- key: process:authentikCreateToken;slot:help
+  summary: 'Create a personal access token with an expiry and optional access restrictions.'
+  content: |
+    Use **Create Token** to create an app-password token for your own account. Review the expiry and any available scope restrictions before submitting. Scopes can narrow your permissions but cannot grant new access. The credential is shown once after creation; keep it in your intended credential store. The **Tokens** list and **{{label:authentik_token_scope}}** retain metadata rather than a recoverable copy of that credential.
+- key: process:authentikRotateToken;slot:help
+  summary: 'Replace a token’s credential and invalidate the previous credential.'
+  content: |
+    Use **Rotate Token** when a credential needs replacement. Review the selected token and its ownership before continuing. Supported app-password tokens can be rotated; protected accounts require management in Authentik. Rotation invalidates the old credential, so update the consumers that use it. The new credential is shown once. Review **Tokens** and the recorded scope after completion.
+- key: process:authentikRevokeToken;slot:help
+  summary: 'Invalidate a selected token so it can no longer authenticate.'
+  content: |
+    Use **Revoke Token** when access is no longer needed or a token should stop working. Review the identifier and owner before submitting because any consumer relying on that token will lose access. Revocation also removes its local scope metadata. It does not delete the owner’s account. Review the resulting **Tokens** list to confirm the selected token is no longer available.
+- key: process:authentikExtendToken;slot:help
+  summary: 'Update the expiry of an eligible app-password token.'
+  content: |
+    Use **{{label:authentikExtendToken}}** when an existing eligible credential should remain valid for a longer allowed period. Review the owner and requested expiry before submitting. The action is limited to supported app-password tokens and permitted ownership; protected accounts are managed in Authentik. Extending resets expiry reminders but does not rotate the credential. Use **Rotate Token** when you need a replacement key.
+- key: process:authentikCreateServiceAccount;slot:help
+  summary: 'Create a service account with checked group access and an expiring app password.'
+  content: |
+    Use **Create Service Account** for an integration that needs its own identity. Review the account name, requested groups and expiry before proceeding. Group checks and protection rules still apply. The account receives an app-password credential that is shown once, so store it for the intended integration. Inspect the resulting account and **Tokens** after creation, and use **Rotate Token** for later credential replacement.
+- key: widget:authentikAccessTokens;slot:label
+  summary: 'Access tokens and their ownership, expiry and available management actions.'
+
+- key: table:authentik_invitation;slot:help
+  summary: Review enrollment invitations and their expiry dates in Authentik.
+  content: |
+    Use **{{label:authentik_invitation}}** to review invitations when your host has configured an enrollment flow. Check the email address and expiry before following up with someone. Use **{{label:authentikCancelInvitation}}** to withdraw an invitation.
+
+    **How rows get created:** **{{label:authentikInviteUser}}** creates a single-use invitation in Authentik and requests its delivery by email. You read invitations live from Authentik. An empty list means no invitations match your query.
+- key: table:authentik_invitation;field:name
+  summary: The invitation name recorded in Authentik.
+- key: table:authentik_invitation;field:email
+  summary: The email address supplied for the invited person.
+- key: table:authentik_invitation;field:singleUse
+  summary: Whether the invitation can be redeemed only once.
+- key: table:authentik_invitation;field:expires
+  summary: When the invitation stops being valid.
+- key: table:authentik_invitation;field:flowSlug
+  summary: The enrollment flow used by this invitation.
+- key: table:authentik_invitation;field:createdBy
+  summary: The username Authentik records as the invitation creator.
+- key: process:authentikInviteUser;slot:help
+  summary: Invite a new person to enroll through Authentik by email.
+  content: |
+    Enter the person's email, an optional full name and a reason. You need permission to manage users, writes must be enabled, and your host must configure an enrollment flow. The email must not already belong to an existing user.
+
+    Review the invitation before continuing. Authentik creates a single-use invitation that expires after seven days and sends the email. You can inspect it in **{{label:authentik_invitation}}** or withdraw it with **{{label:authentikCancelInvitation}}**.
+- key: process:authentikCancelInvitation;slot:help
+  summary: Withdraw an invitation so it can no longer be used to enroll.
+  content: |
+    Select the invitation and give a reason. Review your selection before continuing. You need permission to manage users and writes must be enabled.
+
+    This action deletes the invitation in Authentik. An invitation that is already absent needs no change. Cancelling an invitation does not delete an account that has already enrolled.
+- key: process:authentikDeleteUser;slot:help
+  summary: Permanently delete an eligible account from Authentik.
+  content: |
+    Use **{{label:authentikDeactivateUser}}** if you want to keep the account and its history. Deletion is permanent and requires the host to enable deletion as well as user management and writes.
+
+    Give a reason and type the username to confirm, then check **Review** before continuing. You cannot delete protected accounts, your own account or the last identity administrator. You need permission to manage users.
+- key: process:authentikDeleteGroup;slot:help
+  summary: Permanently delete an empty group and the access it grants.
+  content: |
+    Remove the group's members and child groups first. Deletion removes the group with its permissions, application access and policy. You need permission to manage groups, and your host must enable deletion, group management and writes.
+
+    Give a reason and type the group name to confirm. Check **Review** before continuing. Superuser groups and changes that would remove the last identity administrator are refused.
+- key: possibleValueSource:authentik_user;slot:help
+  summary: Choose an Authentik user from the accounts visible to you.
+- key: possibleValueSource:authentik_group;slot:help
+  summary: Choose an Authentik group for the membership action.

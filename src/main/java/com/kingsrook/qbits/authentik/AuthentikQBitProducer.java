@@ -26,11 +26,13 @@ import com.kingsrook.qbits.authentik.app.AuthentikRelations;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qbits.authentik.health.AuthentikHealthChecks;
 import com.kingsrook.qbits.authentik.metadata.AuthentikAppMetaDataProducer;
+import com.kingsrook.qbits.authentik.metadata.AuthentikHelp;
 import com.kingsrook.qbits.authentik.processes.AuthentikProcesses;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.metadata.MetaDataProducerMultiOutput;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
 import com.kingsrook.qqq.backend.core.model.metadata.possiblevalues.QPossibleValueSource;
 import com.kingsrook.qqq.backend.core.model.metadata.processes.QProcessMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.qbits.QBitMetaData;
@@ -192,6 +194,9 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
       {
          qInstance.addProcess(process);
       }
+      // Registration is metadata-only; core skips startup sync without a helpContent table.
+      HelpBundles.register(qInstance, "help/qbit-authentik.yaml");
+      AuthentikHelp.apply(qInstance, qBitConfig);
 
       LOG.info("Authentik QBit produced", logPair("version", VERSION), logPair("appKey", qBitConfig.getAppKey()),
          logPair("features", qBitConfig.getEffectiveFeatures()), logPair("readOnly", qBitConfig.getReadOnly()));

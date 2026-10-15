@@ -45,6 +45,15 @@ Read-only is the default (`features` = `READ`). `readOnly=true` is a hard kill s
 | App and home | `authentikAdmin` (label "Identity", hosts may nest it) with the `authentikHome` widget and the drift report |
 | Actions | Create User, Invite User, Edit User, Deactivate User, Reactivate User, Add To Group, Remove From Group, Send Password Reset Email, Reset MFA, Revoke App Passwords, Revoke Sessions, Create Group, Edit Group, Edit Permissions And App Access, Add Members, Remove Members, Cancel Invitation, Approve And Apply, Reject; with `POLICIES`: Edit Policy (on groups and policies); with `DELETE`: Delete User, Delete Group |
 
+### Tables, starter data and empty screens
+
+Nothing is seeded: there are no starter defaults to include in a changelog. Setup comes from `AuthentikQBitConfig` (URL, API token, features, read-only mode), and the Identity home's "Needs attention" card lists what is left. The tables are of two kinds:
+
+- **API-backed (live):** `authentik_user`, `_group`, `_group_member` (virtual), `_session`, `_event`, `_application`, `_policy_binding`, `_blueprint`, `_role`, `_token`, `_invitation`. Every row is read from Authentik on each view and nothing is stored locally. An empty list means Authentik returned nothing to you: your role lacks the permission, the qbit's feature or invitation flow is not enabled, or Authentik has no such records. Read-only mode only blocks changes.
+- **Local (the qbit's own records):** `authentik_admin_action` (audit trail), `authentik_approval_request`, `authentik_policy` and `authentik_token_scope`. They fill as people run actions, and are written only by the qbit.
+
+Every table, and the app, ships help (`help/qbit-authentik.yaml`, the QQQ help-bundle format) that says what the table is for, how its rows get created and, for the live tables, what an empty list means. The Next UI shows it as the empty state. A host's own help on a table is never replaced, and a host's `tableNamePrefix` is applied to the bundle's table names. `AuthentikTablesGuardrailTest` fails when a table is added without runtime use, a documented reason it starts empty, and this help.
+
 ### Permissions
 
 QQQ permissions, held as `<name>.hasAccess`, granted through the group attribute `qqq.io/permissions` and read by `AuthentikGroupPermissionMapper`:
@@ -83,7 +92,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Item | What to do |
 |---|---|
 | Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
-| QQQ version | QQQ 4.1.0-RC.6 BOM pin; the new health SPI currently requires the local 4.1.0-SNAPSHOT override below. Java 21. |
+| QQQ version | QQQ 4.1.0-RC.8 (released BOM, including the core health SPI). Java 21. |
 | Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
 | Tables | Create `authentik_admin_action`, `authentik_approval_request` and `authentik_token_scope` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
@@ -119,7 +128,7 @@ Access-token metadata is readable with `authentik.audit.read` or `authentik.toke
 
 The **Access tokens** home widget requires `authentik.tokens.manage` and uses the standard TABLE widget. Its links use supported owner or identifier filters; creation time and last use are computed, not API-filterable or sortable. The Revoke Token action accepts 1–`MAX_BULK` selected tokens from either the record or list.
 
-Hosts with their own authentication customizer can call `AuthentikTokenScopes.apply(session, claims)` **after** computing permissions. The qbit's two claims mappers already do this. Scope and token-existence results are cached per runtime/identifier for 60 seconds; API/lookup failures deny access. The temporary session-permission intersection is marked `STAND-IN(core=QRun-IO/qqq#1153, removeBy=4.1.0-RC.7)`; a reflection bridge also attaches `QCredentialScope` when available. It does not add permissions.
+Hosts with their own authentication customizer can call `AuthentikTokenScopes.apply(session, claims)` **after** computing permissions. The qbit's two claims mappers already do this. Scope and token-existence results are cached per runtime/identifier for 60 seconds; API/lookup failures deny access. The qbit conservatively narrows session permissions for direct consumers and attaches core's `QCredentialScope` for framework enforcement. It does not add permissions.
 
 The RC.2 classpath has no Alerts producer SPI. Reminders and guard alerts log at INFO and skip delivery when the optional adapter is unavailable; skipped reminders are not marked delivered. With the newer core Alerts SPI and qbit-alerts installed, the reflection adapter sends owner notifications and raises guard incidents (dedupe key `authentik_token_guard_bypass`, mapped to core CRITICAL severity). A host may install a per-runtime `AuthentikTokenAlerts.Sink`. The daily scheduler's system session is trusted; manual runs require `authentik.tokens.manage`.
 
@@ -149,7 +158,22 @@ The Identity home links its central status to System Health. The configuration
 `driftReport` widget remains available. Disable checks centrally with
 `health_check.enabled`; no Authentik table fields are added.
 
-These registrations require the core health SPI (currently local QQQ
-`4.1.0-SNAPSHOT`). The released BOM pin is unchanged; use
-`-Dqqq.snapshot.version=4.1.0-SNAPSHOT` for the integration build. The parent release
-rule also requires `-Denforcer.skipRules=requireReleaseDeps` for this local snapshot.
+These registrations use the core health SPI released in QQQ 4.1.0-RC.8; no
+SNAPSHOT override or enforcer skip is needed.
+
+## In-app help
+
+The qbit ships `src/main/resources/help/qbit-authentik.yaml` and registers it with
+QQQ's help bundle registry (QQQ 4.1.0-RC.7). Registration is metadata-only; core
+skips startup synchronization when the host has no `helpContent` table. Inline
+app and table help remains available without help storage.
+
+To override wording, register a separate bundle with `layer: HOST`, its own bundle
+ID and version, and entries with the same keys and roles. HOST entries take
+precedence over QBIT entries; do not edit the dependency's resource. Keep deployment
+names, navigation and authentication timing in the host bundle.
+
+`AuthentikHelpBundleTest` enables every supported feature and uses
+`HelpBundleAssertions` to require coverage and validate keys, summaries and live
+references. Run it with `./mvnw test -Dtest=AuthentikHelpBundleTest`.
+The bundle version is the literal project version; update it when releasing.

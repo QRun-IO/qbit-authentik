@@ -30,6 +30,7 @@ import com.kingsrook.qqq.backend.core.actions.processes.RunProcessAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessInput;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunProcessOutput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
@@ -299,7 +300,26 @@ class TokenManagementTest
       t.config.withTokenBrokerClientSecret("test-secret").withSubjectTokenSource(session -> null);
       refused(create(), "signed-in Authentik session");
       t.config.withSubjectTokenSource(session -> "subject:3");
-      TokenKeyDelivery.set(org.mockito.Mockito.mock(TokenKeyDelivery.class));
+      TokenKeyDelivery.set(new TokenKeyDelivery()
+      {
+         /*******************************************************************************
+          ** Simulate a host without a usable response channel.
+          *******************************************************************************/
+         @Override
+         public boolean available()
+         {
+            return (false);
+         }
+
+         /*******************************************************************************
+          ** Delivery must never be attempted while unavailable.
+          *******************************************************************************/
+         @Override
+         public void deliver(RunBackendStepOutput output, OneTimeKey key)
+         {
+            throw (new AssertionError("Unavailable delivery was called"));
+         }
+      });
       refused(create(), "upgrade QQQ");
       seed("own", 3);
       refused(AdminRequest.of(AdminAction.ROTATE_TOKEN, "own", "replace"), "upgrade QQQ");
@@ -530,4 +550,21 @@ class TokenManagementTest
       assertThat(t.qInstance.getTable("authentik_token_scope").getFields()).doesNotContainKey("key");
       assertThat(t.config.toString()).doesNotContain("test-broker-secret");
    }
+
+   /*******************************************************************************
+    ** RC.7 delivers credentials only through the response-only secret channel.
+    *******************************************************************************/
+   @Test
+   void coreOneTimeDelivery()
+   {
+      TokenKeyDelivery.set(null);
+      RunBackendStepOutput output = new RunBackendStepOutput();
+      OneTimeKey key = new OneTimeKey("Token", "test-key-not-a-credential", "Copy once");
+      assertThat(TokenKeyDelivery.get().available()).isTrue();
+      assertThat(TokenKeyDelivery.tryDeliver(output, key)).isTrue();
+      assertThat(output.getOneTimeSecrets()).hasSize(1);
+      assertThat(output.getOneTimeSecrets().get(0).getValue()).isEqualTo(key.value());
+      assertThat(output.getValues()).doesNotContainValue(key.value());
+   }
+
 }
