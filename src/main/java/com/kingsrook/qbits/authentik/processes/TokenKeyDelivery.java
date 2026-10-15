@@ -19,6 +19,7 @@ package com.kingsrook.qbits.authentik.processes;
 
 import com.kingsrook.qbits.authentik.admin.OneTimeKey;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepOutput;
+import com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret;
 
 
 /*******************************************************************************
@@ -43,11 +44,11 @@ public interface TokenKeyDelivery
 
 
    /*******************************************************************************
-    ** Current adapter; null restores the safe reflection adapter.
+    ** Current adapter; null restores the core response-only adapter.
     *******************************************************************************/
    static void set(TokenKeyDelivery delivery)
    {
-      Holder.delivery = delivery == null ? new ReflectiveDelivery() : delivery;
+      Holder.delivery = delivery == null ? new CoreDelivery() : delivery;
    }
 
 
@@ -90,7 +91,7 @@ public interface TokenKeyDelivery
     *******************************************************************************/
    final class Holder
    {
-      private static volatile TokenKeyDelivery delivery = new ReflectiveDelivery();
+      private static volatile TokenKeyDelivery delivery = new CoreDelivery();
 
       /*******************************************************************************
        ** Utility holder.
@@ -103,56 +104,18 @@ public interface TokenKeyDelivery
 
 
    /*******************************************************************************
-    ** STAND-IN(core=QRun-IO/qqq#1162, removeBy=4.1.0-RC.7)
-    ** Reflection keeps RC.2 binary-compatible and never falls back to values.
+    ** Core response-only delivery; credentials never enter process values.
     *******************************************************************************/
-   final class ReflectiveDelivery implements TokenKeyDelivery
+   final class CoreDelivery implements TokenKeyDelivery
    {
       /*******************************************************************************
-       ** Check the complete core contract before any irreversible key mutation.
-       *******************************************************************************/
-      @Override
-      public boolean available()
-      {
-         try
-         {
-            Class<?> type = Class.forName("com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret");
-            type.getConstructor();
-            for(String field : new String[] { "Label", "Value", "Masked", "UsageText" })
-            {
-               type.getMethod("with" + field, String.class);
-            }
-            RunBackendStepOutput.class.getMethod("addOneTimeSecret", type);
-            return (true);
-         }
-         catch(ReflectiveOperationException e)
-         {
-            return (false);
-         }
-      }
-
-
-
-      /*******************************************************************************
-       ** Add to core's response-only channel; never include failures' contents.
+       ** Add to core's response-only channel.
        *******************************************************************************/
       @Override
       public void deliver(RunBackendStepOutput output, OneTimeKey key)
       {
-         try
-         {
-            Class<?> type = Class.forName("com.kingsrook.qqq.backend.core.model.secrets.OneTimeSecret");
-            Object secret = type.getConstructor().newInstance();
-            type.getMethod("withLabel", String.class).invoke(secret, key.label());
-            type.getMethod("withValue", String.class).invoke(secret, key.value());
-            type.getMethod("withMasked", String.class).invoke(secret, key.masked());
-            type.getMethod("withUsageText", String.class).invoke(secret, key.usageText());
-            RunBackendStepOutput.class.getMethod("addOneTimeSecret", type).invoke(output, secret);
-         }
-         catch(ReflectiveOperationException e)
-         {
-            throw (new IllegalStateException("One-time output unavailable"));
-         }
+         output.addOneTimeSecret(new OneTimeSecret().withLabel(key.label()).withValue(key.value())
+            .withMasked(key.masked()).withUsageText(key.usageText()));
       }
    }
 }

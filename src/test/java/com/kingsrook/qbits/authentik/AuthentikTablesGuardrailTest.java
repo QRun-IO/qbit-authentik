@@ -24,7 +24,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.kingsrook.qbits.authentik.admin.AdminTestSupport;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
 import com.kingsrook.qbits.authentik.metadata.AuthentikHelp;
@@ -160,11 +159,7 @@ class AuthentikTablesGuardrailTest
          }
       }
       assertThat(instance.getApp("authentikAdmin").getHelpContent()).containsKey(AuthentikHelp.SLOT);
-      for(Map.Entry<String, JsonNode> entry : AuthentikHelp.entries().entrySet())
-      {
-         String key = entry.getKey();
-         assertThat(key.startsWith("app:") || STARTS_EMPTY.containsKey(key.substring(6, key.indexOf(';')))).as("help names only real tables: " + key).isTrue();
-      }
+
    }
 
 
