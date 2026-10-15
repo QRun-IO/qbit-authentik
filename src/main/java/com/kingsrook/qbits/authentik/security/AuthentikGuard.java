@@ -20,8 +20,8 @@ package com.kingsrook.qbits.authentik.security;
 import java.util.List;
 import java.util.Locale;
 import com.kingsrook.qbits.authentik.AuthentikFeature;
-import com.kingsrook.qbits.authentik.admin.AdminAction;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
+import com.kingsrook.qbits.authentik.admin.AdminAction;
 import com.kingsrook.qbits.authentik.client.AuthentikJson;
 import com.kingsrook.qbits.authentik.client.AuthentikTableSpec;
 import com.kingsrook.qbits.authentik.client.AuthentikTables;
@@ -61,6 +61,21 @@ public class AuthentikGuard
    public AuthentikGuard(AuthentikQBitConfig config)
    {
       this.config = config;
+   }
+
+
+
+   /*******************************************************************************
+    ** Health probes expose only safe outcomes, including to the central runner.
+    *******************************************************************************/
+   public void checkHealth() throws QPermissionDeniedException
+   {
+      QSession session = QContext.getQSession();
+      requireUser(session);
+      if(!has(session, IdentityPermission.ADMIN) && (session.getPermissions() == null || !session.getPermissions().contains("health.read")))
+      {
+         throw (new QPermissionDeniedException("Health read permission is required."));
+      }
    }
 
 

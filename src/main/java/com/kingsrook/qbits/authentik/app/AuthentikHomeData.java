@@ -17,20 +17,18 @@
 package com.kingsrook.qbits.authentik.app;
 
 
-import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
 import com.kingsrook.qbits.authentik.AuthentikFeature;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.admin.AuthentikLocalTables;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
-import com.kingsrook.qbits.authentik.client.AuthentikJson;
 import com.kingsrook.qbits.authentik.drift.AuthentikDriftReport;
 import com.kingsrook.qbits.authentik.drift.DriftFinding;
 import com.kingsrook.qbits.authentik.permissions.GroupGraph;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
+import com.kingsrook.qqq.backend.core.actions.permissions.PermissionEnforcement;
 import com.kingsrook.qqq.backend.core.actions.tables.CountAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.context.QContext;
@@ -55,8 +53,6 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class AuthentikHomeData
 {
    private static final QLogger LOG = QLogger.getLogger(AuthentikHomeData.class);
-
-   public static final int TOKEN_WARNING_DAYS = 14;
 
    private boolean       peopleAvailable;
    private int           activePeople;
@@ -84,8 +80,10 @@ public class AuthentikHomeData
    private List<QRecord> recentActions = new ArrayList<>();
    private List<String>  attention     = new ArrayList<>();
 
+   private String healthStatus = "UNKNOWN";
+   private Integer healthComponentId;
+
    private AuthentikQBitConfig config;
-   private String              version;
 
 
 
@@ -104,7 +102,7 @@ public class AuthentikHomeData
       data.loadApprovals();
       data.loadActions();
       data.loadAttention(util);
-      data.version = util.fetchServerVersion().orElse(null);
+      data.loadHealth();
       return (data);
    }
 
@@ -240,8 +238,7 @@ public class AuthentikHomeData
 
 
    /*******************************************************************************
-    ** Things that need a person: drift findings, blueprint state, tokens about
-    ** to expire, bootstrap operators still set.
+    ** Configuration review and bootstrap operators still set. Health is central.
     *******************************************************************************/
    private void loadAttention(AuthentikActionUtil util)
    {
@@ -275,26 +272,6 @@ public class AuthentikHomeData
             LOG.info("Identity home: drift report unavailable", logPair("error", e.getClass().getSimpleName()));
          }
       }
-      if(mayAudit)
-      {
-         try
-         {
-            Instant soon = Instant.now().plus(TOKEN_WARNING_DAYS, ChronoUnit.DAYS);
-            for(JSONObject token : util.getAllPages("/core/tokens/?user__username=" + java.net.URLEncoder.encode(config.getEffectiveServiceAccountUsername(), java.nio.charset.StandardCharsets.UTF_8), 50))
-            {
-               Instant expires = AuthentikJson.parseInstant(token.optString("expires", null));
-               if(token.optBoolean("expiring", true) && expires != null && expires.isBefore(soon))
-               {
-                  attention.add("The qbit's API token (" + token.optString("identifier") + ") expires on "
-                     + java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd").withZone(java.time.ZoneOffset.UTC).format(expires) + ": rotate it (owner checklist).");
-               }
-            }
-         }
-         catch(Exception e)
-         {
-            LOG.debug("Identity home: token expiry not checked", e);
-         }
-      }
    }
 
 
@@ -320,11 +297,51 @@ public class AuthentikHomeData
 
 
    /*******************************************************************************
-    ** Getter for version
+    ** Read the central rollup using the current session's table permissions.
     *******************************************************************************/
-   public String getVersion()
+   private void loadHealth()
    {
-      return (version);
+      if(QContext.getQInstance().getTable("health_component") == null)
+      {
+         return;
+      }
+      try
+      {
+         QueryInput query = new QueryInput();
+         query.setTableName("health_component");
+         query.setPermissionEnforcement(PermissionEnforcement.ENFORCE);
+         query.setFilter(new QQueryFilter(new QFilterCriteria("name", QCriteriaOperator.EQUALS, "authentik")).withLimit(1));
+         List<QRecord> records = new QueryAction().execute(query).getRecords();
+         if(!records.isEmpty())
+         {
+            healthStatus = com.kingsrook.qqq.backend.core.health.HealthStatus.valueOf(records.getFirst().getValueString("status")).name();
+            healthComponentId = records.getFirst().getValueInteger("id");
+         }
+      }
+      catch(Exception e)
+      {
+         LOG.debug("Identity home: central health unavailable");
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the central component status.
+    *******************************************************************************/
+   public String getHealthStatus()
+   {
+      return (healthStatus);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for the central component record link.
+    *******************************************************************************/
+   public Integer getHealthComponentId()
+   {
+      return (healthComponentId);
    }
 
 

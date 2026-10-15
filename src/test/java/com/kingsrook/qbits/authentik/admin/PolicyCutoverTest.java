@@ -175,7 +175,7 @@ class PolicyCutoverTest
       assertThat(PolicyCutoverWidgets.bannerHtml(new AccessComparison.State(AccessComparison.Status.ACTIVE, "ok <b>", java.time.Instant.now()))).contains("Enforced.").contains("ok &lt;b&gt;");
 
       String home = com.kingsrook.qbits.authentik.app.AuthentikHomeView.render(com.kingsrook.qbits.authentik.app.AuthentikHomeData.load(t.config));
-      assertThat(home).contains("Policies at sign-in").contains("mapper off");
+      assertThat(home).contains("System Health").doesNotContain("Policies at sign-in");
    }
 
 

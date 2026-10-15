@@ -14,7 +14,7 @@ Design: [`docs/DESIGN.md`](docs/DESIGN.md) (the approved spec, QRun-IO/qqq#1065)
 | **Policies** | IAM-style policy documents on groups (`qqq.io/policy`, format in [docs/POLICY-FORMAT.md](docs/POLICY-FORMAT.md)), edited with a matrix of the app's apps, tables, processes and reports and a live JSON preview (Next UI widget `AUTHENTIK_POLICY_EDITOR`). At sign-in they become QQQ permissions through `AuthentikGroupPermissionMapper`, or through the token claim with `AuthentikPolicyClaimMapper`. Parsing fails closed. |
 | **Safety** | Operators can only grant permissions they hold themselves. No self-edits. Break-glass, the service account and superusers are untouchable, and superuser groups cannot be managed. The last administrator cannot be removed. Granting `authentik.*` needs a second person. Destructive actions need a reason and a typed confirmation. A change made in the Authentik UI after you opened a form is detected, not overwritten. |
 | **Audit** | Every attempt is a row in `authentik_admin_action` (written before the call), and Authentik's own event log gets a `custom_qqq_admin_action` event naming the human operator. |
-| **Screens** | A home dashboard (what needs attention, people, groups, recent changes, connection), standard tables with full record screens, and every action as a table or record action with the usual Review and Result steps. Nothing is in the nav except the main tables. |
+| **Screens** | A home dashboard (what needs attention, people, groups, recent changes, central health), standard tables with full record screens, and every action as a table or record action with the usual Review and Result steps. Nothing is in the nav except the main tables. |
 
 Everything is a standard QQQ table, action and widget, so it works in any QQQ UI and over the QQQ API.
 
@@ -92,7 +92,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Item | What to do |
 |---|---|
 | Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
-| QQQ version | QQQ 4.1.0-RC.6 (released BOM, no core SNAPSHOT). Java 21. |
+| QQQ version | QQQ 4.1.0-RC.8 (released BOM, including the core health SPI). Java 21. |
 | Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
 | Tables | Create `authentik_admin_action`, `authentik_approval_request` and `authentik_token_scope` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
@@ -128,7 +128,7 @@ Access-token metadata is readable with `authentik.audit.read` or `authentik.toke
 
 The **Access tokens** home widget requires `authentik.tokens.manage` and uses the standard TABLE widget. Its links use supported owner or identifier filters; creation time and last use are computed, not API-filterable or sortable. The Revoke Token action accepts 1–`MAX_BULK` selected tokens from either the record or list.
 
-Hosts with their own authentication customizer can call `AuthentikTokenScopes.apply(session, claims)` **after** computing permissions. The qbit's two claims mappers already do this. Scope and token-existence results are cached per runtime/identifier for 60 seconds; API/lookup failures deny access. The temporary session-permission intersection is marked `STAND-IN(core=QRun-IO/qqq#1153, removeBy=4.1.0-RC.7)`; a reflection bridge also attaches `QCredentialScope` when available. It does not add permissions.
+Hosts with their own authentication customizer can call `AuthentikTokenScopes.apply(session, claims)` **after** computing permissions. The qbit's two claims mappers already do this. Scope and token-existence results are cached per runtime/identifier for 60 seconds; API/lookup failures deny access. The qbit conservatively narrows session permissions for direct consumers and attaches core's `QCredentialScope` for framework enforcement. It does not add permissions.
 
 The RC.2 classpath has no Alerts producer SPI. Reminders and guard alerts log at INFO and skip delivery when the optional adapter is unavailable; skipped reminders are not marked delivered. With the newer core Alerts SPI and qbit-alerts installed, the reflection adapter sends owner notifications and raises guard incidents (dedupe key `authentik_token_guard_bypass`, mapped to core CRITICAL severity). A host may install a per-runtime `AuthentikTokenAlerts.Sink`. The daily scheduler's system session is trusted; manual runs require `authentik.tokens.manage`.
 
@@ -136,3 +136,44 @@ The RC.2 classpath has no Alerts producer SPI. Reminders and guard alerts log at
 Service-account creation merges `goauthentik.io/user/token-maximum-lifetime` into the new user attributes using `serviceAccountTokenLifetime` (default `days=365`). No lifetime group is required; only the requested, permitted groups are added.
 
 Service-account creation and rotation need `add_token` (verified on Authentik 2026.8.3 by `TokenContractIT`).
+
+## Health checks
+
+The producer registers these central checks when Authentik is configured. All use
+component `authentik`, category `IDENTITY`, and a 10-second timeout. They reuse the
+API client and drift diagnostics, honor the runner deadline, and record only safe
+version, expiry-day, and finding-code details.
+
+| Name | Kind | Interval |
+| --- | --- | --- |
+| `authentik.api` | DEPENDENCY | 300 seconds |
+| `authentik.api_token` | DEPENDENCY | 21600 seconds |
+| `authentik.mapper` | DEPENDENCY | 21600 seconds |
+| `authentik.token_broker` | DEPENDENCY | 300 seconds |
+
+The broker check uses a client-credentials grant and discards the returned bearer;
+it reports UNKNOWN when broker credentials are not configured. Token metadata must
+identify one API token; ambiguous tokens or an unavailable expiry report UNKNOWN.
+The Identity home links its central status to System Health. The configuration
+`driftReport` widget remains available. Disable checks centrally with
+`health_check.enabled`; no Authentik table fields are added.
+
+These registrations use the core health SPI released in QQQ 4.1.0-RC.8; no
+SNAPSHOT override or enforcer skip is needed.
+
+## In-app help
+
+The qbit ships `src/main/resources/help/qbit-authentik.yaml` and registers it with
+QQQ's help bundle registry (QQQ 4.1.0-RC.7). Registration is metadata-only; core
+skips startup synchronization when the host has no `helpContent` table. Inline
+app and table help remains available without help storage.
+
+To override wording, register a separate bundle with `layer: HOST`, its own bundle
+ID and version, and entries with the same keys and roles. HOST entries take
+precedence over QBIT entries; do not edit the dependency's resource. Keep deployment
+names, navigation and authentication timing in the host bundle.
+
+`AuthentikHelpBundleTest` enables every supported feature and uses
+`HelpBundleAssertions` to require coverage and validate keys, summaries and live
+references. Run it with `./mvnw test -Dtest=AuthentikHelpBundleTest`.
+The bundle version is the literal project version; update it when releasing.

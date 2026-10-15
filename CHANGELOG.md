@@ -4,7 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
-- Guided empty states: `help/qbit-authentik.yaml` (QQQ help-bundle format) gives the Identity app and all 15 tables a summary and a "How rows get created" section; the 11 API-backed tables say they are read live from Authentik and what an empty list means (no permission, feature or invitation flow not enabled, or Authentik has none). Applied by the new `AuthentikHelp` stand-in (`STAND-IN(core=QRun-IO/qqq#1198, removeBy=4.1.0-RC.7)`), which fills only empty slots and follows the host's `tableNamePrefix`. `AuthentikTablesGuardrailTest` pins that every table is used at runtime, explained and documented. No schema, config or seed changes.
+- Replace expired token-delivery and credential-scope reflection bridges with the RC.7 APIs; retain conservative permission narrowing and explicit unavailable-delivery tests.
+- Ship the expanded, host-neutral QBIT help bundle using QQQ 4.1.0-RC.7 registration and validation, with coverage for optional features and live references. Preserve inline app/table help for hosts without help storage; document HOST bundle overrides.
+
+- Guided empty states: `help/qbit-authentik.yaml` (QQQ help-bundle format) gives the Identity app and all 15 tables a summary and a "How rows get created" section; the 11 API-backed tables say they are read live from Authentik and what an empty list means (no permission, feature or invitation flow not enabled, or Authentik has none). Applied inline by `AuthentikHelp` as well as registered with core, which fills only empty slots and follows the host's `tableNamePrefix`. `AuthentikTablesGuardrailTest` pins that every table is used at runtime, explained and documented. No schema, config or seed changes.
 - `AuthentikQBitConfig.fullAccessHostPermissions` lets a host declare permission names core cannot enumerate (custom checkers, named permissions); full access expands to them at use time, for the instance holding that runtime's backend only.
 - `AuthentikMaintenance.applyPolicy` lets reviewed host run-once jobs apply a policy to an exact group name through the existing audited Save Policy path. Dedicated maintenance identities, full-access expansion, canonical no-ops, context restoration, stale checks and optional two-person approval are covered; system-session writes remain forbidden. No HTTP route or process is registered.
 
@@ -13,6 +16,13 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 - Edit Policy supplies per-member preview data for up to 200 active, in-scope direct and descendant members, with relevant direct group names, base permissions excluding only the edited policy, a truncation flag, and the configured mapper-enabled flag. The Next UI can compute effective permissions and additions/removals locally while preserving inherited, named, static and bootstrap grants.
 - Service-account lifetime caps use the user attribute (`serviceAccountTokenLifetime`, default `days=365`), preserving other attributes and requiring no special group.
 - `TokenContractIT` on Authentik 2026.8.3 (9 tests) with the production token blueprint: token exchange as the user, the broker deny policy, the `qqq_token` claim, PATCH defaults, the expiry cap, service-account create/set_key/extend, the detective alarm, and the qbit lifecycle with the one-time key absent from audit rows and events.
+
+### Added (central health)
+- `authentik.api`, `authentik.api_token`, `authentik.mapper`, and `authentik.token_broker` dependency checks registered by the producer, with safe details and bounded requests through the existing client.
+- Client-credentials broker probe using the existing token transport; its bearer is discarded.
+
+### Removed (central health)
+- The Identity home Connection health card, its direct version/token-expiry probes, and its inline mapper status. A single central component status links to System Health. The configuration drift-report widget is retained.
 
 ### Added (access tokens 6c)
 - Read-only and app/table scopes, validated at Review and execution and enforced after claims permissions; revoked credentials fail closed. Optional core credential-scope bridge for #1153.
