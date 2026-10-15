@@ -17,11 +17,9 @@
 package com.kingsrook.qbits.authentik.security;
 
 
-import java.lang.reflect.Method;
 import java.util.Arrays;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
@@ -39,6 +37,7 @@ import com.kingsrook.qqq.backend.core.logging.QLogger;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.permissions.MetaDataWithPermissionRules;
+import com.kingsrook.qqq.backend.core.model.session.QCredentialScope;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.module.api.actions.BaseAPIActionUtil;
 import com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData;
@@ -262,7 +261,7 @@ public final class AuthentikTokenScopes
 
 
    /*******************************************************************************
-    ** STAND-IN(core=QRun-IO/qqq#1153, removeBy=4.1.0-RC.7): intersect, never grant.
+    ** Intersect permissions for direct session consumers and attach core scope.
     *******************************************************************************/
    public static void narrow(QSession session, TokenScope scope)
    {
@@ -272,8 +271,8 @@ public final class AuthentikTokenScopes
 
 
    /*******************************************************************************
-    ** Keep only permitted bases and read operations, then attach core's scope
-    ** when available. Management hasAccess permissions are not read operations.
+    ** Keep conservative permission narrowing for direct session consumers, then
+    ** attach core scope for framework enforcement. Management is not read-only.
     *******************************************************************************/
    private static void narrow(QInstance instance, QSession session, TokenScope scope)
    {
@@ -411,10 +410,6 @@ public final class AuthentikTokenScopes
 
 
    /*******************************************************************************
-    ** Optional core bridge. An incompatible installed contract fails closed;
-    ** an absent class uses the permission intersection above.
-    *******************************************************************************/
-   /*******************************************************************************
     ** An empty scope dimension means "not restricted" (null for core).
     *******************************************************************************/
    private static Set<String> nullIfEmpty(Set<String> set)
@@ -425,51 +420,18 @@ public final class AuthentikTokenScopes
 
 
    /*******************************************************************************
-    ** STAND-IN(core=QRun-IO/qqq#1168, removeBy=4.1.0-RC.7): until the qbit's QQQ
-    ** version has QCredentialScope (qqq#1153), narrow() above enforces the scope
-    ** by intersecting the session's permissions; this attaches the core scope by
-    ** reflection when it exists. Replace both with a direct withCredentialScope.
+    ** Attach the released core scope contract; a revoked token allows nothing.
     *******************************************************************************/
    private static void attachCoreScope(QSession session, TokenScope scope)
    {
-      try
-      {
-         Class<?> type = Class.forName("com.kingsrook.qqq.backend.core.model.session.QCredentialScope");
-         Object value = type.getConstructor().newInstance();
-         ///////////////////////////////////////////////////////////////////////
-         // core treats a null set as unrestricted and an empty set as        //
-         // "nothing": an unlisted dimension must therefore be passed as null //
-         ///////////////////////////////////////////////////////////////////////
-         Map<String, Object> fields = new java.util.LinkedHashMap<>();
-         fields.put("CredentialId", scope.identifier());
-         fields.put("ReadOnly", scope.readOnly());
-         fields.put("Apps", nullIfEmpty(scope.apps()));
-         fields.put("Tables", nullIfEmpty(scope.tables()));
-         fields.put("Processes", nullIfEmpty(scope.processes()));
-         fields.put("Reports", nullIfEmpty(scope.reports()));
-         fields.put("Widgets", nullIfEmpty(scope.widgets()));
-         fields.put("OperationIds", nullIfEmpty(scope.operationIds()));
-         for(var field : fields.entrySet())
-         {
-            Method setter = Arrays.stream(type.getMethods()).filter(m -> m.getName().equals("with" + field.getKey()) && m.getParameterCount() == 1)
-               .findFirst().orElseThrow(NoSuchMethodException::new);
-            Object arg = field.getValue();
-            if(arg instanceof Set<?> set && List.class.isAssignableFrom(setter.getParameterTypes()[0]))
-            {
-               arg = List.copyOf(set);
-            }
-            setter.invoke(value, arg);
-         }
-         session.getClass().getMethod("withCredentialScope", type).invoke(session, value);
-      }
-      catch(ClassNotFoundException ignored)
-      {
-         // RC.2 has no credential scope; the stand-in above is active.
-      }
-      catch(ReflectiveOperationException | IllegalArgumentException e)
-      {
-         session.setPermissions(new TreeSet<>());
-         LOG.warn("The installed credential-scope contract is incompatible; denying credential permissions.");
-      }
+      boolean denied = scope.mode() == Mode.DENY_ALL;
+      session.withCredentialScope(new QCredentialScope().withCredentialId(scope.identifier())
+         .withReadOnly(denied || scope.readOnly())
+         .withApps(denied ? Set.of() : nullIfEmpty(scope.apps()))
+         .withTables(denied ? Set.of() : nullIfEmpty(scope.tables()))
+         .withProcesses(denied ? Set.of() : nullIfEmpty(scope.processes()))
+         .withReports(denied ? Set.of() : nullIfEmpty(scope.reports()))
+         .withWidgets(denied ? Set.of() : nullIfEmpty(scope.widgets()))
+         .withOperationIds(denied ? Set.of() : nullIfEmpty(scope.operationIds())));
    }
 }

@@ -17,17 +17,16 @@
 package com.kingsrook.qbits.authentik.metadata;
 
 
-import java.io.IOException;
-import java.io.InputStream;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.regex.Pattern;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.model.metadata.QInstance;
 import com.kingsrook.qqq.backend.core.model.metadata.help.QHelpContent;
+import com.kingsrook.qqq.backend.core.model.metadata.help.bundles.HelpBundles;
 import com.kingsrook.qqq.backend.core.model.metadata.layout.QAppMetaData;
 import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
 
@@ -40,8 +39,8 @@ import com.kingsrook.qqq.backend.core.model.metadata.tables.QTableMetaData;
  **
  ** The bundle's keys use the default table prefix; a host's own tableNamePrefix
  ** is applied to them, so renamed tables get the same text.
- ** STAND-IN(core=QRun-IO/qqq#1198, removeBy=4.1.0-RC.7): replace with HelpBundles.register once the pinned
- ** QQQ release includes it; the bundle file stays the same.
+ ** Inline fallback for hosts without help storage; core owns bundle validation
+ ** and the producer also registers the bundle for startup synchronization.
  *******************************************************************************/
 public final class AuthentikHelp
 {
@@ -66,33 +65,14 @@ public final class AuthentikHelp
     *******************************************************************************/
    public static Map<String, JsonNode> entries() throws QException
    {
-      try(InputStream stream = AuthentikHelp.class.getResourceAsStream(RESOURCE))
+      Map<String, JsonNode> entries = new LinkedHashMap<>();
+      var bundle = HelpBundles.load(RESOURCE.substring(1), AuthentikHelp.class.getClassLoader());
+      ObjectMapper mapper = new ObjectMapper();
+      for(var entry : bundle.getEntries())
       {
-         if(stream == null)
-         {
-            throw (new IOException("missing resource"));
-         }
-         JsonNode bundle = new ObjectMapper(new YAMLFactory()).readTree(stream);
-         if(!"qbit-authentik".equals(bundle.path("bundle").asText()) || !"QBIT".equals(bundle.path("layer").asText()))
-         {
-            throw (new IOException("invalid bundle header"));
-         }
-         Map<String, JsonNode> entries = new LinkedHashMap<>();
-         for(JsonNode entry : bundle.path("entries"))
-         {
-            String key     = entry.path("key").asText();
-            String summary = entry.path("summary").asText();
-            if(key.isBlank() || summary.isBlank() || summary.length() > 120 || entry.path("content").asText().isBlank() || entries.put(key, entry) != null)
-            {
-               throw (new IOException("invalid or duplicate entry: " + key));
-            }
-         }
-         return (entries);
+         entries.put(entry.getKey(), mapper.valueToTree(entry));
       }
-      catch(IOException | RuntimeException e)
-      {
-         throw (new QException("Could not load " + RESOURCE, e));
-      }
+      return (entries);
    }
 
 
@@ -103,25 +83,37 @@ public final class AuthentikHelp
     *******************************************************************************/
    public static void apply(QInstance qInstance, AuthentikQBitConfig config) throws QException
    {
+      for(var bundle : HelpBundles.of(qInstance).getBundles())
+      {
+         if("qbit-authentik".equals(bundle.getId()))
+         {
+            for(var entry : bundle.getEntries())
+            {
+               entry.setKey(configuredNames(entry.getKey(), config));
+               entry.setSummary(configuredNames(entry.getSummary(), config));
+               entry.setContent(configuredNames(entry.getContent(), config));
+            }
+         }
+      }
       for(Map.Entry<String, JsonNode> entry : entries().entrySet())
       {
          String key = entry.getKey();
-         if(key.startsWith("table:"))
+         if(key.startsWith("table:") && key.endsWith(";slot:help"))
          {
             String tableKey = key.substring("table:".length(), key.indexOf(';'));
             String unprefixed = tableKey.substring(DEFAULT_TABLE_PREFIX.length());
             QTableMetaData table = qInstance.getTable(config.applyTablePrefix(unprefixed));
             if(table != null && (table.getHelpContent() == null || !table.getHelpContent().containsKey(SLOT)))
             {
-               table.withHelpContent(SLOT, content(entry.getValue()));
+               table.withHelpContent(SLOT, content(entry.getValue(), config));
             }
          }
-         else if(key.startsWith("app:"))
+         else if(key.startsWith("app:") && key.endsWith(";slot:help"))
          {
             QAppMetaData app = qInstance.getApp(config.applyPrefix(AuthentikAppMetaDataProducer.APP_NAME));
             if(app != null && (app.getHelpContent() == null || !app.getHelpContent().containsKey(SLOT)))
             {
-               app.withHelpContent(SLOT, content(entry.getValue()));
+               app.withHelpContent(SLOT, content(entry.getValue(), config));
             }
          }
       }
@@ -133,9 +125,35 @@ public final class AuthentikHelp
    /*******************************************************************************
     ** Summary as the first paragraph, then the content, as markdown.
     *******************************************************************************/
-   static QHelpContent content(JsonNode entry)
+   static QHelpContent content(JsonNode entry, AuthentikQBitConfig config)
    {
-      return (new QHelpContent().withContentAsMarkdown(entry.path("summary").asText().strip() + "\n\n" + entry.path("content").asText().strip()));
+      return (new QHelpContent().withContentAsMarkdown(configuredNames(entry.path("summary").asText().strip() + "\n\n" + entry.path("content").asText().strip(), config)));
+   }
+
+
+
+   /*******************************************************************************
+    ** Follow the host prefix in keys and live references; status enums are fixed.
+    *******************************************************************************/
+   private static String configuredNames(String text, AuthentikQBitConfig config)
+   {
+      if(text == null)
+      {
+         return (null);
+      }
+      return (Pattern.compile("authentik_[a-zA-Z0-9_]+|authentik[A-Z][a-zA-Z0-9]*").matcher(text).replaceAll(match ->
+      {
+         String name = match.group();
+         if(name.equals("authentik_action_status") || name.equals("authentik_approval_status"))
+         {
+            return (name);
+         }
+         if(name.startsWith(DEFAULT_TABLE_PREFIX))
+         {
+            return (config.applyTablePrefix(name.substring(DEFAULT_TABLE_PREFIX.length())));
+         }
+         return (config.applyPrefix(name.substring("authentik".length())));
+      }));
    }
 
 }

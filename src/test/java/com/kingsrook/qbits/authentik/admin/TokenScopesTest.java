@@ -121,11 +121,15 @@ class TokenScopesTest
       JSONObject claims = new JSONObject().put("qqq_token", "limited");
       AuthentikTokenScopes.apply(session, claims);
       assertThat(session.getPermissions()).containsExactlyInAnyOrder("cms.publish.hasAccess", "post.read");
+      assertThat(session.getCredentialScope().getReadOnly()).isTrue();
+      assertThat(session.getCredentialScope().getTables()).isNull();
       t.authentik.tokens.get("sam").clear();
       AuthentikRuntime.forBackend(t.config.getApiBackendName()).invalidateCache();
       AuthentikTokenScopes.apply(session, claims);
       assertThat(session.getPermissions()).isEmpty();
       assertThat(AuthentikTokenScopes.forClaims(t.qInstance, claims).orElseThrow().mode()).isEqualTo(Mode.DENY_ALL);
+      assertThat(session.getCredentialScope().getTables()).isEmpty();
+      assertThat(session.getCredentialScope().getOperationIds()).isEmpty();
       assertThat(new TokenScopeStore(t.config).find("limited")).isNotNull();
    }
 

@@ -92,7 +92,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Item | What to do |
 |---|---|
 | Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
-| QQQ version | QQQ 4.1.0-RC.6 (released BOM, no core SNAPSHOT). Java 21. |
+| QQQ version | QQQ 4.1.0-RC.7 (released BOM, no core SNAPSHOT). Java 21. |
 | Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
 | Tables | Create `authentik_admin_action`, `authentik_approval_request` and `authentik_token_scope` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
@@ -128,7 +128,7 @@ Access-token metadata is readable with `authentik.audit.read` or `authentik.toke
 
 The **Access tokens** home widget requires `authentik.tokens.manage` and uses the standard TABLE widget. Its links use supported owner or identifier filters; creation time and last use are computed, not API-filterable or sortable. The Revoke Token action accepts 1–`MAX_BULK` selected tokens from either the record or list.
 
-Hosts with their own authentication customizer can call `AuthentikTokenScopes.apply(session, claims)` **after** computing permissions. The qbit's two claims mappers already do this. Scope and token-existence results are cached per runtime/identifier for 60 seconds; API/lookup failures deny access. The temporary session-permission intersection is marked `STAND-IN(core=QRun-IO/qqq#1153, removeBy=4.1.0-RC.7)`; a reflection bridge also attaches `QCredentialScope` when available. It does not add permissions.
+Hosts with their own authentication customizer can call `AuthentikTokenScopes.apply(session, claims)` **after** computing permissions. The qbit's two claims mappers already do this. Scope and token-existence results are cached per runtime/identifier for 60 seconds; API/lookup failures deny access. The qbit conservatively narrows session permissions for direct consumers and attaches core's `QCredentialScope` for framework enforcement. It does not add permissions.
 
 The RC.2 classpath has no Alerts producer SPI. Reminders and guard alerts log at INFO and skip delivery when the optional adapter is unavailable; skipped reminders are not marked delivered. With the newer core Alerts SPI and qbit-alerts installed, the reflection adapter sends owner notifications and raises guard incidents (dedupe key `authentik_token_guard_bypass`, mapped to core CRITICAL severity). A host may install a per-runtime `AuthentikTokenAlerts.Sink`. The daily scheduler's system session is trusted; manual runs require `authentik.tokens.manage`.
 
@@ -136,3 +136,21 @@ The RC.2 classpath has no Alerts producer SPI. Reminders and guard alerts log at
 Service-account creation merges `goauthentik.io/user/token-maximum-lifetime` into the new user attributes using `serviceAccountTokenLifetime` (default `days=365`). No lifetime group is required; only the requested, permitted groups are added.
 
 Service-account creation and rotation need `add_token` (verified on Authentik 2026.8.3 by `TokenContractIT`).
+
+
+## In-app help
+
+The qbit ships `src/main/resources/help/qbit-authentik.yaml` and registers it with
+QQQ's help bundle registry (QQQ 4.1.0-RC.7). Registration is metadata-only; core
+skips startup synchronization when the host has no `helpContent` table. Inline
+app and table help remains available without help storage.
+
+To override wording, register a separate bundle with `layer: HOST`, its own bundle
+ID and version, and entries with the same keys and roles. HOST entries take
+precedence over QBIT entries; do not edit the dependency's resource. Keep deployment
+names, navigation and authentication timing in the host bundle.
+
+`AuthentikHelpBundleTest` enables every supported feature and uses
+`HelpBundleAssertions` to require coverage and validate keys, summaries and live
+references. Run it with `./mvnw test -Dtest=AuthentikHelpBundleTest`.
+The bundle version is the literal project version; update it when releasing.
