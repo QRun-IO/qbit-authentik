@@ -21,20 +21,17 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Set;
-import java.util.TreeSet;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.AuthentikRuntime;
 import com.kingsrook.qbits.authentik.policy.PolicyGenerator;
 import com.kingsrook.qbits.authentik.policy.PolicyParseException;
 import com.kingsrook.qbits.authentik.policy.PolicyParser;
 import com.kingsrook.qbits.authentik.policy.PolicyPermissions;
-import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.context.CapturedContext;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
-import com.kingsrook.qqq.backend.core.model.session.QSession;
-import com.kingsrook.qqq.backend.core.model.session.QUser;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import org.json.JSONObject;
 
@@ -60,13 +57,18 @@ public final class AuthentikMaintenance
     ** plan and execute path. Requires an initialized QContext with the host's
     ** QInstance. The caller's context is restored on success, refusal or failure.
     **
-    ** The operator must start with maintenance: or run-once: and have a nonblank
-    ** suffix. Its name and the required reason are recorded verbatim. A dedicated
-    ** non-system session holds policies.manage and the document's current grants.
-    ** Existing scope, protection, readOnly, feature and stale checks still apply.
-    ** Equivalent policies return NO_CHANGE without a write or an audit row.
-    ** With policyTwoPersonApproval enabled, a change queues an approval instead
-    ** of writing to Authentik; this API never bypasses second-person approval.
+    ** Runs as the host's maintenance service principal (config
+    ** maintenancePrincipal, default "maintenance"; docs/SERVICE-IDENTITY.md in
+    ** qqq): under OAuth2 a real token for its Authentik service account, so its
+    ** authority is exactly what the owner granted that account (policies.manage
+    ** and every grant the document applies - the subset rule still holds). No
+    ** authority is created here. The audit operator is service:{principal};
+    ** the job name (maintenance: or run-once:, nonblank suffix) prefixes the
+    ** required reason. Existing scope, protection, readOnly, feature and stale
+    ** checks still apply. Equivalent policies return NO_CHANGE without a write
+    ** or an audit row. With policyTwoPersonApproval enabled, a change queues an
+    ** approval instead of writing to Authentik; this API never bypasses
+    ** second-person approval.
     *******************************************************************************/
    public static AuthentikAdmin.AdminResult applyPolicy(String apiBackendName, String groupName, String policyJson, String operatorName, String reason) throws QException
    {
@@ -87,18 +89,16 @@ public final class AuthentikMaintenance
       CapturedContext caller = QContext.capture();
       try
       {
-         MaintenanceSession session = new MaintenanceSession();
-         session.setUser(new QUser().withIdReference(operatorName).withFullName("Maintenance (" + operatorName + ")"));
-         session.setPermissions(new TreeSet<>(Set.of(IdentityPermission.POLICIES_MANAGE.getSessionPermission())));
-         QContext.init(caller.qInstance(), session);
+         String principal = AuthentikRuntime.forBackend(apiBackendName).getConfig().getMaintenancePrincipal();
+         QContext.init(caller.qInstance(), ServiceIdentities.session(caller.qInstance(), principal));
 
          AuthentikAdmin admin = AuthentikAdmin.forBackend(apiBackendName);
          AuthentikRuntime runtime = admin.getUtil().getRuntime();
          runtime.getGuard().authorize(AdminAction.SAVE_POLICY);
-         Set<String> grants = StringUtils.hasContent(policyJson)
-            ? PolicyParser.parseStrict(policyJson, runtime.getConfig().getPolicyFormat(), runtime.getPolicyCatalog()).permissions() : Set.of();
-         session.getPermissions().addAll(grants.contains(PolicyPermissions.FULL_ACCESS)
-            ? PolicyPermissions.allPermissions(caller.qInstance(), runtime.getPermissionCatalog()) : grants);
+         if(StringUtils.hasContent(policyJson))
+         {
+            PolicyParser.parseStrict(policyJson, runtime.getConfig().getPolicyFormat(), runtime.getPolicyCatalog());
+         }
 
          runtime.invalidateCache();
          List<JSONObject> groups = admin.getUtil().getAllPages("/core/groups/?name=" + URLEncoder.encode(groupName, StandardCharsets.UTF_8)
@@ -108,7 +108,15 @@ public final class AuthentikMaintenance
             throw (new QUserFacingException("Expected exactly one Authentik group named " + groupName + "."));
          }
          JSONObject group = groups.get(0);
-         AdminRequest request = AdminRequest.of(AdminAction.SAVE_POLICY, group.getString("pk"), reason)
+         if(isServicePrincipalGroup(group))
+         {
+            ////////////////////////////////////////////////////////////////////
+            // a principal never changes a service principal's grants (its own //
+            // or another's): only the owner does, in Identity                 //
+            ////////////////////////////////////////////////////////////////////
+            throw (new QUserFacingException("Service principal groups are changed only by the owner in Identity."));
+         }
+         AdminRequest request = AdminRequest.of(AdminAction.SAVE_POLICY, group.getString("pk"), operatorName + ": " + reason)
             .with(AuthentikAdmin.POLICY_DOCUMENT, policyJson)
             .with("expectedFingerprint", AuthentikSafety.groupFingerprint(group));
          return (admin.execute(request));
@@ -126,6 +134,29 @@ public final class AuthentikMaintenance
 
 
    /*******************************************************************************
+    ** A service principal role group: named service:..., or a child of
+    ** qqq-service-accounts.
+    *******************************************************************************/
+   static boolean isServicePrincipalGroup(JSONObject group)
+   {
+      if(group.optString("name", "").startsWith("service:"))
+      {
+         return (true);
+      }
+      org.json.JSONArray parents = group.optJSONArray("parents_obj");
+      for(int i = 0; parents != null && i < parents.length(); i++)
+      {
+         if("qqq-service-accounts".equals(parents.optJSONObject(i) == null ? null : parents.getJSONObject(i).optString("name")))
+         {
+            return (true);
+         }
+      }
+      return (false);
+   }
+
+
+
+   /*******************************************************************************
     ** Canonical compact full-access document using the host's spec and version.
     *******************************************************************************/
    public static String fullAccessDocument(AuthentikQBitConfig config) throws QException
@@ -138,24 +169,5 @@ public final class AuthentikMaintenance
       {
          throw (new QException("Could not generate the full-access policy.", e));
       }
-   }
-
-
-
-   /*******************************************************************************
-    ** Recognize only sessions created here, never an ordinary user's name prefix.
-    *******************************************************************************/
-   static boolean isMaintenanceSession(QSession session)
-   {
-      return (session instanceof MaintenanceSession);
-   }
-
-
-
-   /*******************************************************************************
-    ** A local job identity, never an Authentik user or a QSystemUserSession.
-    *******************************************************************************/
-   private static final class MaintenanceSession extends QSession
-   {
    }
 }

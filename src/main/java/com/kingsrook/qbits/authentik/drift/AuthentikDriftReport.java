@@ -22,6 +22,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
 import com.kingsrook.qbits.authentik.client.AuthentikJson;
@@ -60,6 +61,9 @@ import static com.kingsrook.qqq.backend.core.logging.LogUtils.logPair;
 public class AuthentikDriftReport
 {
    private static final QLogger LOG = QLogger.getLogger(AuthentikDriftReport.class);
+
+   private static final Pattern SAFE_PERMISSION = Pattern.compile("[A-Za-z0-9_.*-]{1,120}");
+   private static final Pattern SAFE_ATTRIBUTE  = Pattern.compile("[A-Za-z0-9_./-]{1,60}");
 
    private final AuthentikActionUtil client;
    private final AuthentikQBitConfig config;
@@ -374,6 +378,19 @@ public class AuthentikDriftReport
 
 
    /*******************************************************************************
+    ** The attribute name of a GroupGraph malformed entry ("key: detail"), never
+    ** the detail, which can echo whatever a person typed.
+    *******************************************************************************/
+   static String attributeOf(String malformedEntry)
+   {
+      int    colon = malformedEntry == null ? -1 : malformedEntry.indexOf(": ");
+      String key   = colon < 0 ? "" : malformedEntry.substring(0, colon);
+      return (SAFE_ATTRIBUTE.matcher(key).matches() ? key : "attribute");
+   }
+
+
+
+   /*******************************************************************************
     ** 6
     *******************************************************************************/
    void checkGroupAttributes(List<DriftFinding> findings) throws QException
@@ -388,14 +405,16 @@ public class AuthentikDriftReport
          for(String bad : node.malformed())
          {
             issues++;
-            findings.add(DriftFinding.warning("group attributes", node.name(), "Malformed entry ignored (" + bad + "); qqq.io/permissions and qqq.io/app-access must be lists of strings."));
+            findings.add(DriftFinding.warning("group attributes", node.name(), "Malformed entry ignored (" + bad + "); qqq.io/permissions and qqq.io/app-access must be lists of strings.")
+               .withReason("malformed " + attributeOf(bad)));
          }
          for(String permission : node.permissions())
          {
             if(resolver.expand(permission).isEmpty())
             {
                issues++;
-               findings.add(DriftFinding.warning("group attributes", node.name(), "qqq.io/permissions entry \"" + permission + "\" grants nothing in this app (unknown permission or empty wildcard)."));
+               findings.add(DriftFinding.warning("group attributes", node.name(), "qqq.io/permissions entry \"" + permission + "\" grants nothing in this app (unknown permission or empty wildcard; a name the app checks only in code, not in its metadata, is not in the catalog).")
+                  .withReason("grants nothing: " + (SAFE_PERMISSION.matcher(permission).matches() ? permission : "(unprintable name)")));
             }
          }
          for(String app : node.appAccess())
@@ -409,7 +428,8 @@ public class AuthentikDriftReport
          if(graph.isSuperuserInherited(node.pk()) && !node.permissions().isEmpty())
          {
             issues++;
-            findings.add(DriftFinding.warning("group attributes", node.name(), "Superuser group (or under one) carries qqq.io/permissions. QQQ cannot manage it; keep QQQ grants on ordinary groups."));
+            findings.add(DriftFinding.warning("group attributes", node.name(), "Superuser group (or under one) carries qqq.io/permissions. QQQ cannot manage it; keep QQQ grants on ordinary groups.")
+               .withReason("superuser group carries qqq.io/permissions"));
          }
       }
       if(issues == 0)
