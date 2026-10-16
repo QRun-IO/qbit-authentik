@@ -4,6 +4,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+- **Breaking (security):** `AuthentikMaintenance.applyPolicy` runs as the host's maintenance service principal (QQQ service identities, qqq `docs/SERVICE-IDENTITY.md`; config `maintenancePrincipal`, default `maintenance`). The self-made `MaintenanceSession`, which granted itself `policies.manage` and the document's grants, is gone; under OAuth2 it was rejected anyway (its audit insert failed). The principal's Authentik service account must hold `policies.manage` and every grant it applies, and the subset rule still holds. The audit operator is `service:{principal}`; the job name (`run-once:`/`maintenance:`) prefixes the reason. Hosts declare the principal: `ServiceIdentitiesMetaData.declare(qInstance, new QServicePrincipalMetaData().withName("maintenance"))`. Needs the QQQ release with service identities (qqq#1255).
 - Replace expired token-delivery and credential-scope reflection bridges with the RC.7 APIs; retain conservative permission narrowing and explicit unavailable-delivery tests.
 - Ship the expanded, host-neutral QBIT help bundle using QQQ 4.1.0-RC.7 registration and validation, with coverage for optional features and live references. Preserve inline app/table help for hosts without help storage; document HOST bundle overrides.
 

@@ -63,6 +63,7 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QQueryFilter;
 import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.actions.tables.update.UpdateInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
 import com.kingsrook.qqq.backend.core.utils.StringUtils;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -329,8 +330,8 @@ public class AuthentikAdmin
    /*******************************************************************************
     ** The operator, resolved once per instance from live Authentik data. When
     ** the operator is not an Authentik user (static or development sessions),
-    ** the session's own permissions stand in. Maintenance sessions are local job
-    ** identities and never resolved as Authentik users. bootstrapOperatorSubjects additionally
+    ** the session's own permissions stand in. Service principal sessions
+    ** (maintenance) are never resolved as Authentik users by email. bootstrapOperatorSubjects additionally
     ** hold every authentik.* permission.
     *******************************************************************************/
    public Operator operator() throws QException
@@ -341,7 +342,7 @@ public class AuthentikAdmin
       }
 
       String      email       = guard.operatorEmail();
-      boolean     maintenance = AuthentikMaintenance.isMaintenanceSession(QContext.getQSession());
+      boolean     maintenance = ServiceIdentities.isMintedServiceSession(QContext.getQSession());
       boolean     bootstrap   = !maintenance && email != null && com.kingsrook.qbits.authentik.security.BootstrapOperators.matchesUniqueUser(config.getResolvedBootstrapSubjects(), util, email);
       Integer     pk          = null;
       Set<String> permissions = new TreeSet<>();
