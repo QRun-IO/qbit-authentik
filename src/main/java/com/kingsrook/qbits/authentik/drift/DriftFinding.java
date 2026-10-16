@@ -25,9 +25,32 @@ package com.kingsrook.qbits.authentik.drift;
  ** @param check    the check's short name, e.g. "blueprints"
  ** @param subject  what the finding is about, e.g. a group name
  ** @param message  plain-language explanation and what to do
+ ** @param reason   a short, safe summary for health outcomes (no attribute
+ **                 values a person typed beyond validated permission names);
+ **                 null when the finding has none
  *******************************************************************************/
-public record DriftFinding(Severity severity, String check, String subject, String message)
+public record DriftFinding(Severity severity, String check, String subject, String message, String reason)
 {
+
+   /*******************************************************************************
+    ** A finding without a health reason.
+    *******************************************************************************/
+   public DriftFinding(Severity severity, String check, String subject, String message)
+   {
+      this(severity, check, subject, message, null);
+   }
+
+
+
+   /*******************************************************************************
+    ** This finding with a short, safe reason for health outcomes.
+    *******************************************************************************/
+   public DriftFinding withReason(String reason)
+   {
+      return (new DriftFinding(severity, check, subject, message, reason));
+   }
+
+
 
    /*******************************************************************************
     ** Severity, most severe first.

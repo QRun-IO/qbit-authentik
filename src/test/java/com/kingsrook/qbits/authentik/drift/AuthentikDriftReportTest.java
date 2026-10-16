@@ -186,4 +186,20 @@ class AuthentikDriftReportTest
       assertThatThrownBy(() -> new AuthentikDriftReportWidgetRenderer().render(input)).isInstanceOf(QPermissionDeniedException.class);
    }
 
+
+
+
+   /*******************************************************************************
+    ** A malformed entry's health reason keeps the attribute name, never the
+    ** value a person typed.
+    *******************************************************************************/
+   @Test
+   void malformedReasonKeepsOnlyTheAttribute()
+   {
+      assertThat(AuthentikDriftReport.attributeOf("qqq.io/permissions: {\"x\":\"typed value\"}")).isEqualTo("qqq.io/permissions");
+      assertThat(AuthentikDriftReport.attributeOf("qqq.io/policy: line 1: bad")).isEqualTo("qqq.io/policy");
+      assertThat(AuthentikDriftReport.attributeOf("no separator")).isEqualTo("attribute");
+      assertThat(AuthentikDriftReport.attributeOf("bad key with spaces: x")).isEqualTo("attribute");
+      assertThat(AuthentikDriftReport.attributeOf(null)).isEqualTo("attribute");
+   }
 }
