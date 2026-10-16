@@ -1563,7 +1563,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
             {
                // Never echo an untrusted broker error body.
             }
-            throw (new QUserFacingException("Authentik refused to act as you (" + error + ")"));
+            throw (new BrokerRefusedException(error));
          }
          throw (mapError(request, path, status, response.getContent(), token));
       }
