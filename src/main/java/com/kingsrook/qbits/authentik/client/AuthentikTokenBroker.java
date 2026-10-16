@@ -62,20 +62,40 @@ public class AuthentikTokenBroker
 
 
    /*******************************************************************************
-    ** Request client credentials for health, then discard the bearer immediately.
+    ** Prove the broker's client credentials with the grant it actually uses
+    ** (token exchange), without a subject token, so nothing is issued and no
+    ** user data is sent. Authentik checks the grant type, then the client
+    ** secret, then the subject: invalid_request (missing subject) means both
+    ** passed; invalid_client means a bad secret; invalid_grant means the
+    ** provider does not allow token exchange.
     *******************************************************************************/
-   public void probeClientCredentials(AuthentikActionUtil util) throws QException
+   public void probeCredentials(AuthentikActionUtil util) throws QException
    {
       AuthentikQBitConfig config = util.getRuntime().getConfig();
       HttpPost request = new HttpPost(config.getTokenEndpointUrl());
       request.setEntity(new UrlEncodedFormEntity(List.of(
-         new BasicNameValuePair("grant_type", "client_credentials"),
+         new BasicNameValuePair("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange"),
          new BasicNameValuePair("client_id", config.getTokenBrokerClientId()),
-         new BasicNameValuePair("client_secret", config.getTokenBrokerClientSecret()),
-         new BasicNameValuePair("scope", "goauthentik.io/api")), StandardCharsets.UTF_8));
-      if(util.requestBrokerCredentials(request).optString("access_token", "").isBlank())
+         new BasicNameValuePair("client_secret", config.getTokenBrokerClientSecret())), StandardCharsets.UTF_8));
+      String code;
+      try
       {
-         throw (new QUserFacingException("Authentik broker returned no access token"));
+         util.requestBrokerCredentials(request);
+         code = "issued";
+      }
+      catch(BrokerRefusedException e)
+      {
+         code = e.getErrorCode();
+      }
+      switch(code)
+      {
+         case "invalid_request" ->
+         {
+            return;
+         }
+         case "invalid_client" -> throw (new QUserFacingException("Authentik rejected the token broker's client credentials"));
+         case "invalid_grant", "unsupported_grant_type" -> throw (new QUserFacingException("The token broker's Authentik provider does not allow token exchange"));
+         default -> throw (new QUserFacingException("Authentik answered the token broker probe unexpectedly (" + code + ")"));
       }
    }
 }

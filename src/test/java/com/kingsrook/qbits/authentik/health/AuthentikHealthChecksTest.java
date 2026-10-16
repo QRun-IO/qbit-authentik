@@ -200,25 +200,44 @@ class AuthentikHealthChecksTest
 
 
    /*******************************************************************************
-    ** A broker check exercises the grant without exposing the returned bearer.
+    ** The broker check uses the grant the broker uses (token exchange) with no
+    ** subject: invalid_request proves the credentials; nothing is ever issued.
     *******************************************************************************/
    @Test
    void brokerStates() throws Exception
    {
-      respond(new JSONObject().put("access_token", SECRET));
+      refuse("invalid_request");
       assertThat(run("token_broker").getStatus()).isEqualTo(HealthStatus.UP);
       HttpPost request = (HttpPost) FixtureActionUtil.REQUESTS.getLast();
-      assertThat(EntityUtils.toString(request.getEntity())).contains("grant_type=client_credentials", "client_id=", "client_secret=");
+      String body = EntityUtils.toString(request.getEntity());
+      assertThat(body).contains("grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Atoken-exchange", "client_id=", "client_secret=");
+      assertThat(body).doesNotContain("client_credentials", "subject_token");
       assertThat(request.getFirstHeader("Authorization")).isNull();
       assertThat(request.getURI().toString()).isEqualTo(config.getTokenEndpointUrl());
-      respond(new JSONObject());
+
+      refuse("invalid_client");
       assertThat(run("token_broker").getStatus()).isEqualTo(HealthStatus.DOWN);
+      refuse("invalid_grant");
+      assertThat(run("token_broker").getStatus()).isEqualTo(HealthStatus.DOWN);
+      respond(new JSONObject().put("access_token", SECRET));
+      assertThat(run("token_broker").getStatus()).isEqualTo(HealthStatus.DOWN);
+
       config.withTokenBrokerClientSecret(null);
       FixtureActionUtil.REQUESTS.clear();
       var outcome = run("token_broker");
       assertThat(outcome.getStatus()).isEqualTo(HealthStatus.UNKNOWN);
       assertThat(outcome.getMessage()).isEqualTo("not configured");
       assertThat(FixtureActionUtil.REQUESTS).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Serve a token-endpoint refusal with a standard OAuth2 error code.
+    *******************************************************************************/
+   private void refuse(String errorCode)
+   {
+      FixtureActionUtil.handler = request -> FixtureActionUtil.response(400, new JSONObject().put("error", errorCode).toString());
    }
 
 

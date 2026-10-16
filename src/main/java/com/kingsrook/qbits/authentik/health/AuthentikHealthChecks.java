@@ -188,7 +188,7 @@ public final class AuthentikHealthChecks
       {
          return (HealthCheckOutcome.unknown("not configured"));
       }
-      new AuthentikTokenBroker().probeClientCredentials(util);
+      new AuthentikTokenBroker().probeCredentials(util);
       return (HealthCheckOutcome.up("Token broker authenticated"));
    }
 }
