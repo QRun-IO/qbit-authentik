@@ -360,6 +360,21 @@ class AuthentikMaintenanceTest
 
 
    /*******************************************************************************
+    ** Maintenance never changes a service principal's role group.
+    *******************************************************************************/
+   @Test
+   void refusesServicePrincipalGroups() throws Exception
+   {
+      t.authentik.group("service:kof22-scheduler", false, List.of(), List.of());
+      assertThatThrownBy(() -> apply("service:kof22-scheduler", fullAccess)).hasMessageContaining("Service principal groups");
+      assertThat(AuthentikMaintenance.isServicePrincipalGroup(new JSONObject().put("name", "x")
+         .put("parents_obj", new org.json.JSONArray().put(new JSONObject().put("name", "qqq-service-accounts"))))).isTrue();
+      assertThat(t.writes()).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
     ** Apply using the production public API.
     *******************************************************************************/
    private AuthentikAdmin.AdminResult apply(String group, String document) throws QException

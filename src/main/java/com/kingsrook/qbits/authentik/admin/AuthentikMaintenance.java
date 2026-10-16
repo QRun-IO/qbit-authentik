@@ -108,6 +108,14 @@ public final class AuthentikMaintenance
             throw (new QUserFacingException("Expected exactly one Authentik group named " + groupName + "."));
          }
          JSONObject group = groups.get(0);
+         if(isServicePrincipalGroup(group))
+         {
+            ////////////////////////////////////////////////////////////////////
+            // a principal never changes a service principal's grants (its own //
+            // or another's): only the owner does, in Identity                 //
+            ////////////////////////////////////////////////////////////////////
+            throw (new QUserFacingException("Service principal groups are changed only by the owner in Identity."));
+         }
          AdminRequest request = AdminRequest.of(AdminAction.SAVE_POLICY, group.getString("pk"), operatorName + ": " + reason)
             .with(AuthentikAdmin.POLICY_DOCUMENT, policyJson)
             .with("expectedFingerprint", AuthentikSafety.groupFingerprint(group));
@@ -121,6 +129,29 @@ public final class AuthentikMaintenance
       {
          QContext.init(caller);
       }
+   }
+
+
+
+   /*******************************************************************************
+    ** A service principal role group: named service:..., or a child of
+    ** qqq-service-accounts.
+    *******************************************************************************/
+   static boolean isServicePrincipalGroup(JSONObject group)
+   {
+      if(group.optString("name", "").startsWith("service:"))
+      {
+         return (true);
+      }
+      org.json.JSONArray parents = group.optJSONArray("parents_obj");
+      for(int i = 0; parents != null && i < parents.length(); i++)
+      {
+         if("qqq-service-accounts".equals(parents.optJSONObject(i) == null ? null : parents.getJSONObject(i).optString("name")))
+         {
+            return (true);
+         }
+      }
+      return (false);
    }
 
 
