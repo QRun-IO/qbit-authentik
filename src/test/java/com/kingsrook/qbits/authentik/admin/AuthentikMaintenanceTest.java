@@ -33,6 +33,9 @@ import com.kingsrook.qqq.backend.core.model.actions.tables.query.QueryInput;
 import com.kingsrook.qqq.backend.core.model.data.QRecord;
 import com.kingsrook.qqq.backend.core.model.session.QSession;
 import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.kingsrook.qqq.backend.core.serviceidentity.QServicePrincipalMetaData;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentities;
+import com.kingsrook.qqq.backend.core.serviceidentity.ServiceIdentitiesMetaData;
 import org.json.JSONObject;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -41,13 +44,16 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 
 /*******************************************************************************
- ** Host maintenance uses the audited Save Policy path with a local job identity.
+ ** Host maintenance uses the audited Save Policy path as the maintenance service
+ ** principal (a local principal here: the test instance uses MOCK auth).
  *******************************************************************************/
 class AuthentikMaintenanceTest
 {
    private static final String GROUP = "kof-website-analysts";
    private static final String OPERATOR = "run-once:KOF22_RUN_ONCE";
    private static final String REASON = "  owner request 2026-10-14: full-access policy for kof22-admins  ";
+   private static final String PRINCIPAL_ID = "service:maintenance";
+   private static final String AUDIT_REASON = OPERATOR + ": " + REASON;
 
    private AdminTestSupport t;
    private String fullAccess;
@@ -62,13 +68,17 @@ class AuthentikMaintenanceTest
    {
       t = AdminTestSupport.create(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.GROUPS, AuthentikFeature.POLICIES));
       fullAccess = AuthentikMaintenance.fullAccessDocument(t.config);
+      Set<String> all = new java.util.TreeSet<>(PolicyPermissions.allPermissions(t.qInstance, t.admin().getUtil().getRuntime().getPermissionCatalog()));
+      all.add(IdentityPermission.POLICIES_MANAGE.getSessionPermission());
+      ServiceIdentitiesMetaData.declare(t.qInstance, new QServicePrincipalMetaData().withName("maintenance").withLocalPermissions(all.toArray(new String[0])));
    }
 
 
 
    /*******************************************************************************
-    ** A system job gets a dedicated, fully expanded session. The audit precedes
-    ** PATCH, the event identifies the job, and an equivalent document is a no-op.
+    ** A system job runs as the maintenance principal (its own grants, nothing
+    ** minted here). The audit precedes PATCH, the operator is the principal,
+    ** the reason names the job, and an equivalent document is a no-op.
     *******************************************************************************/
    @Test
    void appliesFullAccessAuditedAndIdempotently() throws Exception
@@ -84,8 +94,8 @@ class AuthentikMaintenanceTest
       {
          QSession session = QContext.getQSession();
          assertThat(session).isNotInstanceOf(QSystemUserSession.class);
-         assertThat(session.getUser().getIdReference()).isEqualTo(OPERATOR);
-         assertThat(session.getUser().getFullName()).isEqualTo("Maintenance (" + OPERATOR + ")");
+         assertThat(ServiceIdentities.isMintedServiceSession(session)).isTrue();
+         assertThat(session.getUser().getIdReference()).isEqualTo(PRINCIPAL_ID);
          assertThat(session.getPermissions()).containsAll(all).doesNotContain(PolicyPermissions.FULL_ACCESS);
          assertThat(QContext.getActionStack()).isNotSameAs(caller.actionStack());
          assertThat(QContext.getAuthorizedActionScopeDepth()).isZero();
@@ -112,15 +122,15 @@ class AuthentikMaintenanceTest
       assertThat(t.authentik.groupByName(GROUP).getJSONObject("attributes").getString(t.config.getPolicyAttribute())).isEqualTo(fullAccess);
       assertThat(rows(AuthentikLocalTables.ADMIN_ACTION)).singleElement().satisfies(row ->
       {
-         assertThat(row.getValueString("operator")).isEqualTo(OPERATOR);
-         assertThat(row.getValueString("reason")).isEqualTo(REASON);
+         assertThat(row.getValueString("operator")).isEqualTo(PRINCIPAL_ID);
+         assertThat(row.getValueString("reason")).isEqualTo(AUDIT_REASON);
          assertThat(row.getValueString("status")).isEqualTo("SUCCEEDED");
       });
       assertThat(t.authentik.events).singleElement().satisfies(event ->
       {
          assertThat(event.getString("action")).isEqualTo("custom_qqq_admin_action");
-         assertThat(event.getJSONObject("context").getString("operator")).isEqualTo(OPERATOR);
-         assertThat(event.getJSONObject("context").getString("reason")).isEqualTo(REASON);
+         assertThat(event.getJSONObject("context").getString("operator")).isEqualTo(PRINCIPAL_ID);
+         assertThat(event.getJSONObject("context").getString("reason")).isEqualTo(AUDIT_REASON);
       });
       assertThat(result.eventPk()).isNotBlank();
       int writes = t.writes().size();
@@ -134,12 +144,16 @@ class AuthentikMaintenanceTest
 
 
    /*******************************************************************************
-    ** Ordinary policies need only their grants and policies.manage, and honor
+    ** Ordinary policies need only their grants and policies.manage (held by the
+    ** principal, not added here), and honor
     ** the configured spec/version. The maintenance: prefix is accepted too.
     *******************************************************************************/
    @Test
    void appliesNamedPolicyWithLimitedSession() throws Exception
    {
+      ServiceIdentitiesMetaData.declare(t.qInstance, new QServicePrincipalMetaData().withName("policy-maintenance")
+         .withLocalPermissions("cms_page.read", IdentityPermission.POLICIES_MANAGE.getSessionPermission()));
+      t.config.withMaintenancePrincipal("policy-maintenance");
       t.config.withPolicySpec("host-iam");
       String document = AuthentikMaintenance.fullAccessDocument(t.config).replace("\"Action\":[\"*\"]", "\"Action\":[\"read\"]")
          .replace("\"Resource\":[\"*\"]", "\"Resource\":[\"cms_page\"]");
@@ -245,8 +259,8 @@ class AuthentikMaintenanceTest
          assertThat(row.getValueString("status")).isEqualTo("PENDING_APPROVAL"));
       assertThat(rows(AuthentikLocalTables.APPROVAL_REQUEST)).singleElement().satisfies(row ->
       {
-         assertThat(row.getValueString("requester")).isEqualTo(OPERATOR);
-         assertThat(row.getValueString("reason")).isEqualTo(REASON);
+         assertThat(row.getValueString("requester")).isEqualTo(PRINCIPAL_ID);
+         assertThat(row.getValueString("reason")).isEqualTo(AUDIT_REASON);
       });
       assertThat(QContext.capture()).isEqualTo(caller);
    }
@@ -309,6 +323,52 @@ class AuthentikMaintenanceTest
          .hasMessageContaining("System sessions");
       assertThat(t.admin().execute(AdminRequest.of(AdminAction.SAVE_POLICY, t.authentik.pk(GROUP), REASON)
          .with(AuthentikAdmin.POLICY_DOCUMENT, fullAccess)).ok()).isFalse();
+      assertThat(t.writes()).isEmpty();
+   }
+
+
+
+   /*******************************************************************************
+    ** Without a declared principal, or with one that lacks the grants, nothing
+    ** is written: maintenance never creates authority.
+    *******************************************************************************/
+   @Test
+   void needsAPrincipalHoldingTheGrants() throws Exception
+   {
+      CapturedContext caller = QContext.capture();
+      t.config.withMaintenancePrincipal("undeclared");
+      assertThatThrownBy(() -> apply(GROUP, fullAccess)).hasMessageContaining("not declared");
+      assertThat(QContext.capture()).isEqualTo(caller);
+
+      ServiceIdentitiesMetaData.declare(t.qInstance, new QServicePrincipalMetaData().withName("weak")
+         .withLocalPermissions(IdentityPermission.POLICIES_MANAGE.getSessionPermission()));
+      t.config.withMaintenancePrincipal("weak");
+      AuthentikAdmin.AdminResult result;
+      try
+      {
+         result = apply(GROUP, fullAccess);
+         assertThat(result.ok()).isFalse();
+      }
+      catch(QException e)
+      {
+         assertThat(e).isNotNull();
+      }
+      assertThat(t.writes()).isEmpty();
+      assertThat(QContext.capture()).isEqualTo(caller);
+   }
+
+
+
+   /*******************************************************************************
+    ** Maintenance never changes a service principal's role group.
+    *******************************************************************************/
+   @Test
+   void refusesServicePrincipalGroups() throws Exception
+   {
+      t.authentik.group("service:kof22-scheduler", false, List.of(), List.of());
+      assertThatThrownBy(() -> apply("service:kof22-scheduler", fullAccess)).hasMessageContaining("Service principal groups");
+      assertThat(AuthentikMaintenance.isServicePrincipalGroup(new JSONObject().put("name", "x")
+         .put("parents_obj", new org.json.JSONArray().put(new JSONObject().put("name", "qqq-service-accounts"))))).isTrue();
       assertThat(t.writes()).isEmpty();
    }
 

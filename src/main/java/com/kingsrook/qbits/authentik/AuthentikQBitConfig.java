@@ -66,6 +66,7 @@ public class AuthentikQBitConfig implements QBitConfig
    private String tokenBrokerClientId = "${env.AUTHENTIK_TOKEN_BROKER_CLIENT_ID}";
    private String tokenBrokerClientSecret = "${env.AUTHENTIK_TOKEN_BROKER_CLIENT_SECRET}";
    private String tokenEndpointUrl = null;
+   private String maintenancePrincipal = "maintenance";
    private String appPublicUrl = null;
    private String authentikPublicUrl = null;
    private String appClientId = null;
@@ -1732,6 +1733,29 @@ public class AuthentikQBitConfig implements QBitConfig
    public AuthentikQBitConfig withTokenEndpointUrl(String tokenEndpointUrl)
    {
       this.tokenEndpointUrl = tokenEndpointUrl;
+      return (this);
+   }
+
+
+
+   /*******************************************************************************
+    ** Getter for maintenancePrincipal: the service principal (declared by the
+    ** host, docs/SERVICE-IDENTITY.md in qqq) that AuthentikMaintenance runs as.
+    ** Its Authentik policy must hold policies.manage and every grant it applies.
+    *******************************************************************************/
+   public String getMaintenancePrincipal()
+   {
+      return (this.maintenancePrincipal);
+   }
+
+
+
+   /*******************************************************************************
+    ** Fluent setter for maintenancePrincipal (default maintenance).
+    *******************************************************************************/
+   public AuthentikQBitConfig withMaintenancePrincipal(String maintenancePrincipal)
+   {
+      this.maintenancePrincipal = maintenancePrincipal;
       return (this);
    }
 
