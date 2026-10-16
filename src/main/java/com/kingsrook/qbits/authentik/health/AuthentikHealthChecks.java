@@ -19,7 +19,10 @@ package com.kingsrook.qbits.authentik.health;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.TreeMap;
 import java.util.TreeSet;
 import com.kingsrook.qbits.authentik.AuthentikQBitConfig;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
@@ -45,6 +48,8 @@ import org.json.JSONObject;
  *******************************************************************************/
 public final class AuthentikHealthChecks
 {
+   private static final String GROUP_ATTRIBUTES = "group attributes";
+
    /*******************************************************************************
     ** Utility class.
     *******************************************************************************/
@@ -151,30 +156,91 @@ public final class AuthentikHealthChecks
 
 
    /*******************************************************************************
-    ** Findings carry fixed codes only, never subjects or diagnostic messages.
+    ** Findings carry fixed codes, plus the flagged group names and each group
+    ** finding's safe reason (DriftFinding.reason), so a degraded mapper says
+    ** what to fix. Service-account activity subjects (people) stay private.
     *******************************************************************************/
-   private static HealthCheckOutcome mapper(AuthentikActionUtil util, AuthentikQBitConfig config)
+   static HealthCheckOutcome mapper(AuthentikActionUtil util, AuthentikQBitConfig config)
    {
-      HealthStatus status = HealthStatus.UP;
-      TreeSet<String> codes = new TreeSet<>();
-      for(DriftFinding finding : new AuthentikDriftReport(util, config).runMapperChecks())
+      return (mapperOutcome(new AuthentikDriftReport(util, config).runMapperChecks()));
+   }
+
+
+
+   /*******************************************************************************
+    ** The mapper outcome for a set of drift findings.
+    *******************************************************************************/
+   static HealthCheckOutcome mapperOutcome(List<DriftFinding> findings)
+   {
+      HealthStatus                                      status  = HealthStatus.UP;
+      TreeSet<String>                                   codes   = new TreeSet<>();
+      TreeMap<String, TreeMap<String, TreeSet<String>>> byGroup = new TreeMap<>();
+      TreeSet<String>                                   other   = new TreeSet<>();
+      for(DriftFinding finding : findings)
       {
-         if(finding.severity() == DriftFinding.Severity.ERROR || finding.severity() == DriftFinding.Severity.WARNING)
+         if(finding.severity() != DriftFinding.Severity.ERROR && finding.severity() != DriftFinding.Severity.WARNING)
          {
-            String code = "group attributes".equals(finding.check()) ? "group_attributes" : "service_account_activity";
-            codes.add(code + "." + finding.severity().name().toLowerCase(java.util.Locale.ROOT));
-            if(finding.severity() == DriftFinding.Severity.ERROR)
+            continue;
+         }
+         boolean groupCheck = GROUP_ATTRIBUTES.equals(finding.check());
+         codes.add((groupCheck ? "group_attributes" : "service_account_activity") + "." + finding.severity().name().toLowerCase(Locale.ROOT));
+         status = finding.severity() == DriftFinding.Severity.ERROR || status == HealthStatus.DOWN ? HealthStatus.DOWN : HealthStatus.DEGRADED;
+         if(groupCheck && finding.reason() != null)
+         {
+            String reason = finding.reason();
+            int    colon  = reason.indexOf(": ");
+            TreeSet<String> values = byGroup.computeIfAbsent(safeName(finding.subject()), k -> new TreeMap<>())
+               .computeIfAbsent(colon < 0 ? reason : reason.substring(0, colon), k -> new TreeSet<>());
+            if(colon >= 0)
             {
-               status = HealthStatus.DOWN;
-            }
-            else if(status != HealthStatus.DOWN)
-            {
-               status = HealthStatus.DEGRADED;
+               values.add(reason.substring(colon + 2));
             }
          }
+         else
+         {
+            other.add(groupCheck ? "group attributes check could not run" : "service-account activity (see the identity drift report)");
+         }
       }
-      return (new HealthCheckOutcome().withStatus(status).withMessage(status == HealthStatus.UP ? "Mapper checks passed" : "Mapper drift detected")
-         .withDetails(new HealthDetails().withValue("findingCodes", String.join(",", codes))));
+      if(status == HealthStatus.UP)
+      {
+         return (HealthCheckOutcome.up("Mapper checks passed").withDetails(new HealthDetails().withValue("findingCodes", "")));
+      }
+
+      List<String> parts = new ArrayList<>();
+      byGroup.forEach((group, reasons) ->
+      {
+         List<String> texts = new ArrayList<>();
+         reasons.forEach((label, values) -> texts.add(values.isEmpty() ? label : label + ": " + String.join(", ", values)));
+         parts.add(group + " (" + String.join("; ", texts) + ")");
+      });
+      parts.addAll(other);
+      String summary = String.join("; ", parts);
+      return (new HealthCheckOutcome().withStatus(status).withMessage(truncate("Mapper drift: " + summary, 500))
+         .withDetails(new HealthDetails()
+            .withValue("findingCodes", String.join(",", codes))
+            .withValue("flaggedGroups", truncate(String.join(", ", byGroup.keySet()), 500))
+            .withValue("summary", truncate(summary, 500))));
+   }
+
+
+
+   /*******************************************************************************
+    ** A group name fit for a health message: printable and bounded.
+    *******************************************************************************/
+   private static String safeName(String name)
+   {
+      String printable = name == null ? "" : name.replaceAll("\\p{Cntrl}", "").trim();
+      return (printable.isEmpty() ? "(unnamed group)" : truncate(printable, 100));
+   }
+
+
+
+   /*******************************************************************************
+    ** Cut a text to a length, marking the cut.
+    *******************************************************************************/
+   private static String truncate(String text, int max)
+   {
+      return (text.length() <= max ? text : text.substring(0, max - 3) + "...");
    }
 
 

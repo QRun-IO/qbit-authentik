@@ -26,6 +26,7 @@ import com.kingsrook.qbits.authentik.AuthentikTestSupport;
 import com.kingsrook.qbits.authentik.client.AuthentikActionUtil;
 import com.kingsrook.qbits.authentik.client.FixtureActionUtil;
 import com.kingsrook.qbits.authentik.client.TokenBucketThrottle;
+import com.kingsrook.qbits.authentik.drift.DriftFinding;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
 import com.kingsrook.qqq.backend.core.health.HealthCategory;
@@ -176,25 +177,98 @@ class AuthentikHealthChecksTest
 
 
    /*******************************************************************************
-    ** Only the two relevant drift checks run; their subjects stay private.
+    ** Only the two relevant drift checks run. Group findings name the group and
+    ** a safe reason; typed attribute values and people (service-account
+    ** activity subjects) stay private.
     *******************************************************************************/
    @Test
    void mapperStates() throws QException
    {
       assertThat(run("mapper").getStatus()).isEqualTo(HealthStatus.UP);
-      JSONObject group = new JSONObject().put("pk", "g1").put("name", SECRET)
-         .put("attributes", new JSONObject().put("qqq.io/permissions", new JSONArray().put(SECRET)));
-      FixtureActionUtil.groupGraphBody = new JSONObject(FixtureActionUtil.EMPTY_PAGE).put("results", new JSONArray().put(group)).toString();
+
+      //////////////////////////////////////////////////////////////////////////////
+      // a group with no qqq.io/* attributes (kof22-admins on its static floor) is //
+      // not drift                                                                 //
+      //////////////////////////////////////////////////////////////////////////////
+      JSONObject floorOnly = new JSONObject().put("pk", "g0").put("name", "kof22-admins").put("attributes", new JSONObject());
+      groups(floorOnly);
       var outcome = run("mapper");
+      assertThat(outcome.getStatus()).isEqualTo(HealthStatus.UP);
+      assertThat(outcome.getMessage()).isEqualTo("Mapper checks passed");
+
+      JSONObject unknown = new JSONObject().put("pk", "g1").put("name", "file-gateway-admins")
+         .put("attributes", new JSONObject().put("qqq.io/permissions", new JSONArray().put("file_gateway.view").put("file_gateway.admin")));
+      JSONObject malformed = new JSONObject().put("pk", "g2").put("name", "editors")
+         .put("attributes", new JSONObject().put("qqq.io/permissions", new JSONArray().put(new JSONObject().put("x", SECRET))));
+      JSONObject superuser = new JSONObject().put("pk", "g3").put("name", "authentik Admins").put("is_superuser", true)
+         .put("attributes", new JSONObject().put("qqq.io/permissions", new JSONArray().put("authentik.users.read")));
+      groups(floorOnly, unknown, malformed, superuser);
+      outcome = run("mapper");
       assertThat(outcome.getStatus()).isEqualTo(HealthStatus.DEGRADED);
-      assertThat(outcome.getDetails().getValues()).containsEntry("findingCodes", "group_attributes.warning");
+      assertThat(outcome.getMessage()).isEqualTo("Mapper drift: authentik Admins (superuser group carries qqq.io/permissions); "
+         + "editors (malformed qqq.io/permissions); file-gateway-admins (grants nothing: file_gateway.admin, file_gateway.view)");
+      assertThat(outcome.getDetails().getValues())
+         .containsEntry("findingCodes", "group_attributes.warning")
+         .containsEntry("flaggedGroups", "authentik Admins, editors, file-gateway-admins")
+         .containsEntry("summary", outcome.getMessage().substring("Mapper drift: ".length()));
+      assertClean(outcome);
+
+      groups(unknown);
       page(new JSONObject().put("action", "model_deleted").put("context", new JSONObject()
          .put("model", new JSONObject().put("model_name", "user").put("pk", "1").put("name", SECRET))));
       outcome = run("mapper");
       assertThat(outcome.getStatus()).isEqualTo(HealthStatus.DOWN);
+      assertThat(outcome.getMessage()).isEqualTo("Mapper drift: file-gateway-admins (grants nothing: file_gateway.admin, file_gateway.view); "
+         + "service-account activity (see the identity drift report)");
       assertClean(outcome);
       assertThat(FixtureActionUtil.REQUESTS).allSatisfy(request -> assertThat(request.getURI().getPath())
          .doesNotContain("/admin/version/", "/core/tokens/", "/managed/blueprints/"));
+   }
+
+
+
+   /*******************************************************************************
+    ** A group check that cannot run, unprintable names and long summaries stay
+    ** readable and within the health limits.
+    *******************************************************************************/
+   @Test
+   void mapperOutcomeEdges()
+   {
+      var outcome = AuthentikHealthChecks.mapperOutcome(List.of(
+         DriftFinding.error("group attributes", "-", "Check could not run: " + SECRET),
+         DriftFinding.info("group attributes", "x", "info only").withReason("ignored"),
+         DriftFinding.warning("group attributes", "bad\u0007name", "m").withReason("grants nothing: (unprintable name)"),
+         DriftFinding.warning("group attributes", "", "m").withReason("malformed attribute")));
+      assertThat(outcome.getStatus()).isEqualTo(HealthStatus.DOWN);
+      assertThat(outcome.getMessage()).isEqualTo("Mapper drift: (unnamed group) (malformed attribute); badname (grants nothing: (unprintable name)); "
+         + "group attributes check could not run");
+      assertThat(outcome.getDetails().getValues()).containsEntry("findingCodes", "group_attributes.error,group_attributes.warning");
+      assertClean(outcome);
+
+      List<DriftFinding> many = new java.util.ArrayList<>();
+      for(int i = 0; i < 60; i++)
+      {
+         many.add(DriftFinding.warning("group attributes", "group-number-" + i, "m").withReason("grants nothing: some.long.permission.name." + i));
+      }
+      outcome = AuthentikHealthChecks.mapperOutcome(many);
+      assertThat(outcome.getMessage()).hasSize(500).endsWith("...");
+      assertThat(outcome.getDetails().toJson().getBytes(java.nio.charset.StandardCharsets.UTF_8).length).isLessThanOrEqualTo(4096);
+      assertThat(outcome.getDetails().getValues()).containsKeys("findingCodes", "flaggedGroups", "summary");
+   }
+
+
+
+   /*******************************************************************************
+    ** Serve these groups as the group graph.
+    *******************************************************************************/
+   private static void groups(JSONObject... groups)
+   {
+      JSONArray results = new JSONArray();
+      for(JSONObject group : groups)
+      {
+         results.put(group);
+      }
+      FixtureActionUtil.groupGraphBody = new JSONObject(FixtureActionUtil.EMPTY_PAGE).put("results", results).toString();
    }
 
 

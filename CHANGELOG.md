@@ -4,6 +4,7 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+- Fix: a degraded `authentik.mapper` health check now says what to fix. The message and details (`flaggedGroups`, `summary`) name each flagged group with a safe reason: `grants nothing: <permission>`, `malformed <attribute>` or `superuser group carries qqq.io/permissions`. It used to say only "Mapper drift detected". Typed attribute values and service-account activity subjects (people) stay out of the outcome. A group with no `qqq.io/*` attributes is not drift and never was.
 - Fix: the `token_broker` health check probes with the grant the broker uses (token exchange) and sends no subject token, so nothing is issued. `invalid_request` (credentials passed) is UP, `invalid_client` is DOWN (bad secret), and `invalid_grant` is DOWN (provider does not allow token exchange). It used to probe `client_credentials`, which the broker provider does not allow, so Authentik logged a 400 every 5 minutes ("Invalid grant_type for provider").
 - Replace expired token-delivery and credential-scope reflection bridges with the RC.7 APIs; retain conservative permission narrowing and explicit unavailable-delivery tests.
 - Ship the expanded, host-neutral QBIT help bundle using QQQ 4.1.0-RC.7 registration and validation, with coverage for optional features and live references. Preserve inline app/table help for hosts without help storage; document HOST bundle overrides.
