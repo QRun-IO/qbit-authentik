@@ -1,0 +1,15 @@
+profile: qbit
+orb_version: 0.7.12
+default_branch: develop
+java_version: '21'
+browsers: true
+api_checks: false
+docs_only: false
+release_on_main: false
+release_tag_policy: none
+test_branch_policy: all
+publish:
+  snapshot: false
+  release_candidate: false
+  release: false
+  asciidoc: false
