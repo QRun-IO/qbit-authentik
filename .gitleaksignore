@@ -1,0 +1,4 @@
+
+# Reviewed historical unit-test redaction canaries and isolated container fixture credentials.
+# Exact commit/file/rule/line fingerprints only; future findings remain blocking.
+3b117cfff49405cd4d1dea5c2572a4330852cd75:src/test/java/com/kingsrook/qbits/authentik/health/AuthentikHealthChecksTest.java:generic-api-key:58
