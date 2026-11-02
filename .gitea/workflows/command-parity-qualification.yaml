@@ -1,0 +1,13 @@
+name: Original Maven command qualification
+on:
+  workflow_dispatch: {}
+permissions:
+  contents: read
+jobs:
+  qualify:
+    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/java-docker.yaml@14d419c39c38137d0d620c2083f9c48461e54f5e
+    with:
+      runner: linux-small
+      docker-runner: container-build
+      browsers: true
+      browser-runner: browser-build
