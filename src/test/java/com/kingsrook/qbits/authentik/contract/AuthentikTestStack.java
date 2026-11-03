@@ -165,8 +165,8 @@ public final class AuthentikTestStack
    {
       postgres.start();
       mailpit.start();
-      worker.start();
       server.start();
+      worker.start();
 
       TestApi admin = admin();
       try
