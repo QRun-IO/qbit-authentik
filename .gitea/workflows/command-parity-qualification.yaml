@@ -5,7 +5,7 @@ permissions:
   contents: read
 jobs:
   qualify:
-    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/java-docker.yaml@14d419c39c38137d0d620c2083f9c48461e54f5e
+    uses: self:KofTwentyTwo/platform-ci/.gitea/workflows/java-docker.yaml@b7cca9f697774d03660fbf73f71182c893137c7d
     with:
       runner: linux-small
       docker-runner: container-build
