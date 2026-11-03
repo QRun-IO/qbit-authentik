@@ -1,0 +1,155 @@
+name: DIAGNOSIS ONLY threads-one - Authentik BootstrapBlueprintIT repro
+# TEMPORARY, MANUAL, DIAGNOSIS ONLY. Never publication, never production qualification, never a gate.
+# Runs only BootstrapBlueprintIT through the original Maven verify command (same -T4, no skipITs, no relaxed checks).
+# Because only one IT is selected, the original coverage check may fail for that reason; that is NOT the blueprint verdict.
+# Single controlled change vs baseline: the test image is a local derivative of ghcr.io/goauthentik/server:2026.8.3
+# with only ENV AUTHENTIK_WORKER__THREADS=1, passed via -Dauthentik.test.image. This tests a hypothesis
+# (goauthentik/authentik#25303); it is not a proven cause or fix.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  CI: 'true'
+jobs:
+  diagnose:
+    runs-on: qqq-builder-2-browser
+    timeout-minutes: 15
+    container:
+      image: local/java-browser:298bba0a82d7b62237dbcd15e6c876c4d4bb68a575ee6f47dedeeb5591f5e7f0
+      options: --init --shm-size=256m
+      volumes:
+        - /var/lib/gitea-job-workspace:${{ github.workspace }}
+        - /run/user/1002/docker.sock:/run/test-docker.sock
+    env:
+      CI: 'true'
+      HOME: /tmp
+      MAVEN_OPTS: -Duser.home=/tmp -Xmx1g
+      MAVEN_CONFIG: /tmp/.m2
+      DOCKER_HOST: unix:///run/test-docker.sock
+      TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE: /run/user/1002/docker.sock
+      TESTCONTAINERS_HOST_OVERRIDE: 172.17.0.1
+    steps:
+      - name: Checkout application at the frozen qualification head
+        uses: builtin:checkout
+        with:
+          repository: QRun-IO/qbit-authentik
+          ref: 4d675b18f65b75c43c7724a632ff8d296b56fefa
+      - name: Checkout platform-ci tools at the exact engine into a separate path
+        uses: builtin:checkout
+        with:
+          repository: KofTwentyTwo/platform-ci
+          ref: d3ee308467433ebbf7db785a9f8c2185d1485f29
+          path: .ci-diagnostic-tools
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Install the pinned action runtime without root
+        run: |
+          set -eu
+          mkdir -p /tmp/java-actions-node
+          curl -fsSL https://nodejs.org/dist/v22.20.0/node-v22.20.0-linux-x64.tar.gz -o /tmp/java-actions-node/node.tar.gz
+          printf '%s\n' 'eeaccb0378b79406f2208e8b37a62479c70595e20be6b659125eb77dd1ab2a29  /tmp/java-actions-node/node.tar.gz' | sha256sum -c -
+          tar -xzf /tmp/java-actions-node/node.tar.gz -C /tmp/java-actions-node --strip-components=1
+          echo /tmp/java-actions-node/bin >> "$GITHUB_PATH"
+      - name: Verify execution boundary
+        run: node "$GITHUB_WORKSPACE/.ci-diagnostic-tools/scripts/docker-boundary.mjs"
+      - name: Run BootstrapBlueprintIT only with threads-one test image (original verify command plus filter flags)
+        run: |
+          set -eu
+          tools="$GITHUB_WORKSPACE/.ci-diagnostic-tools"
+          test -f pom.xml
+          java -version
+          mvn -version
+          bash "$tools/scripts/setup-maven-settings.sh"
+          proxy_pid=''
+          proxy_dir=''
+          image_dir=''
+          image_tag=''
+          cleanup() {
+            if [ -n "$proxy_pid" ]; then
+              kill "$proxy_pid" 2>/dev/null || true
+              wait "$proxy_pid" 2>/dev/null || true
+            fi
+            if [ -n "$proxy_dir" ]; then rm -rf "$proxy_dir"; fi
+            # Remove only this run's derived tag (never forced, never pruned); harmless if still in use.
+            if [ -n "$image_tag" ]; then docker rmi "$image_tag" >/dev/null 2>&1 || true; fi
+            if [ -n "$image_dir" ]; then rm -rf "$image_dir"; fi
+          }
+          trap cleanup EXIT
+          trap 'exit 143' INT TERM
+          # Build the local test-only image: public base plus exactly one ENV, no source COPY, no push.
+          case "${GITHUB_RUN_ID:-}" in
+            ''|*[!0-9]*) echo 'GITHUB_RUN_ID is not numeric'; exit 1 ;;
+          esac
+          base_image='ghcr.io/goauthentik/server:2026.8.3'
+          want_env='AUTHENTIK_WORKER__THREADS=1'
+          derived_tag="local/authentik-threads-one:run-${GITHUB_RUN_ID}"
+          if docker image inspect "$derived_tag" >/dev/null 2>&1; then
+            echo "Derived tag already exists; refusing to reuse or remove it: $derived_tag"
+            exit 1
+          fi
+          if ! base_id_before="$(docker image inspect --format '{{.Id}}' "$base_image" 2>/dev/null)"; then
+            echo "Base image inspect failed; pulling the same public base anonymously: $base_image"
+            docker pull "$base_image"
+            base_id_before="$(docker image inspect --format '{{.Id}}' "$base_image")"
+          fi
+          image_dir="$(mktemp -d /tmp/authentik-threads-one.XXXXXX)"
+          printf 'FROM %s\nENV %s\n' "$base_image" "$want_env" > "$image_dir/Dockerfile"
+          image_tag="$derived_tag"
+          docker build --pull=false -q -t "$image_tag" -f "$image_dir/Dockerfile" "$image_dir" >/dev/null
+          # Silent verification: print only IDs and verdicts, never the environment.
+          base_id_after="$(docker image inspect --format '{{.Id}}' "$base_image")"
+          derived_id="$(docker image inspect --format '{{.Id}}' "$image_tag")"
+          echo "base image id before: $base_id_before"
+          echo "base image id after:  $base_id_after"
+          echo "derived image id:     $derived_id"
+          test "$base_id_before" = "$base_id_after"
+          test "$derived_id" != "$base_id_before"
+          docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$base_image" | sort > "$image_dir/base.env"
+          docker image inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$image_tag" | sort > "$image_dir/derived.env"
+          printf '%s\n' "$want_env" > "$image_dir/want.env"
+          comm -13 "$image_dir/base.env" "$image_dir/derived.env" > "$image_dir/added.env"
+          comm -23 "$image_dir/base.env" "$image_dir/derived.env" > "$image_dir/removed.env"
+          cmp -s "$image_dir/added.env" "$image_dir/want.env" || { echo 'Derived image Env additions differ from the expected single variable'; exit 1; }
+          test ! -s "$image_dir/removed.env" || { echo 'Derived image lost or changed a base Env entry'; exit 1; }
+          fmt='{{json .RootFS.Layers}}|{{json .Config.Entrypoint}}|{{json .Config.Cmd}}|{{json .Config.User}}|{{json .Config.WorkingDir}}|{{json .Config.ExposedPorts}}'
+          test "$(docker image inspect --format "$fmt" "$base_image")" = "$(docker image inspect --format "$fmt" "$image_tag")" || { echo 'Derived image layers or run config differ from base'; exit 1; }
+          echo 'Derived image verified: identical base layers/config, only the expected Env addition'
+          proxy_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/qrun-localhost.XXXXXX")"
+          node "$tools/scripts/compose-localhost-forward.mjs" --containers --host 172.17.0.1 --ready "$proxy_dir/ready" &
+          proxy_pid=$!
+          waited=0
+          while [ ! -f "$proxy_dir/ready" ]; do
+            if ! kill -0 "$proxy_pid" 2>/dev/null || [ "$waited" -ge 100 ]; then
+              echo 'Localhost Testcontainers proxy did not become ready'
+              exit 1
+            fi
+            sleep 0.1
+            waited=$((waited + 1))
+          done
+          kill -0 "$proxy_pid"
+          # set -e keeps Maven's nonzero status; the EXIT trap cleans up the forwarder first, then this run's image.
+          ( export TESTCONTAINERS_HOST_OVERRIDE=localhost; mvn -s /tmp/circleci/mvn-settings.xml --update-snapshots -T4 --no-transfer-progress verify -Dit.test=BootstrapBlueprintIT -Dtest=none -Dsurefire.failIfNoSpecifiedTests=false -Dauthentik.test.image="$image_tag" )
+          kill -0 "$proxy_pid"
+      - if: ${{ always() }}
+        name: Collect Maven reports
+        run: bash "$GITHUB_WORKSPACE/.ci-diagnostic-tools/scripts/collect-maven-reports.sh" ci-reports
+      - name: Require private artifact service
+        if: ${{ always() }}
+        id: artifact_endpoint
+        run: |
+          set -eu
+          case "$ACTIONS_RUNTIME_URL" in https://git.kof22.com|https://git.kof22.com/*) ;; *) echo 'Runtime endpoint is not the private HTTPS forge'; exit 1 ;; esac
+          case "${ACTIONS_RESULTS_URL:-}" in ''|https://git.kof22.com|https://git.kof22.com/*) ;; *) echo 'Results endpoint is not the private HTTPS forge'; exit 1 ;; esac
+      - name: Retain diagnostic reports
+        if: ${{ always() && steps.artifact_endpoint.outcome == 'success' }}
+        uses: self:KofTwentyTwo/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: auth-bootstrap-diagnostic-threads-one
+          path: |
+            target/surefire-reports/*
+            target/failsafe-reports/*
+            target/site/jacoco/jacoco.xml
+            ci-reports/jacoco/**
+            ci-reports/test-output/**
+          if-no-files-found: warn
+          retention-days: 7
