@@ -61,13 +61,18 @@ CI=true ./mvnw verify   # + contract ITs: Authentik 2026.8.3 server+worker, Post
 
 ## Dependencies
 
-Java 21. Parent `qbit-build-parent:2.0.0`. The default-active `qqq-snapshot` profile imports `qqq-bom-pom:4.1.0-RC.5` (ADR-0007, as in qbit-sql-workbench). The project uses `qqq-backend-core` and `qqq-backend-module-api`. Test dependencies: JUnit 5, AssertJ, Mockito, Testcontainers 1.21.4, and Jackson YAML (from qqq) for the schema tests.
+Java 21. Parent `qbit-build-parent:2.1.0`. The default-active `qqq-snapshot` profile imports `qqq-bom-pom:4.1.0-RC.21` (ADR-0007, as in qbit-sql-workbench). The project uses `qqq-backend-core` and `qqq-backend-module-api`. Test dependencies: JUnit 5, AssertJ, Mockito, Testcontainers 1.21.4, and Jackson YAML (from qqq) for the schema tests.
 
 ## Release
 
-CircleCI qqq-orb 0.6.8:
-- `develop` publishes SNAPSHOTs
-- `release/*` publishes RCs
-- `v*` tags publish releases
+Gitea is primary. `.gitea/workflows/qrun-release.yaml` delegates to the shared
+`qrun-release-v1` lifecycle; `.qqq-ci.yml` identifies `develop` as the default
+feature branch and enables snapshot, RC and release publication. Do not infer
+feature completeness from `main`, which still contains the older baseline.
 
-Cut `release/0.1` only after phase 1 is green and reviewed.
+## Local review
+
+Run `./scripts/Start-Review.ps1` on Windows with Java 21 and Docker Desktop.
+The Next UI is at `http://localhost:18300/app/authentikAdmin`; startup URLs for
+Authentik and Mailpit are in `target/review-server.log`. All application ports
+bind to loopback. See `docs/LOCAL-REVIEW.md` for scope, reset and limitations.

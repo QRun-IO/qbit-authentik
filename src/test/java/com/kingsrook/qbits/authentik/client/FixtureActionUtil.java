@@ -44,6 +44,8 @@ public class FixtureActionUtil extends AuthentikActionUtil
 
    /** When set, serves group sweeps (include_parents=false) instead of groupGraphBody. */
    public static Function<HttpRequestBase, QHttpResponse> groupGraphHandler = null;
+   /** Optional metrics responses for worker SQL tests, separate from user pages. */
+   public static Function<HttpRequestBase, QHttpResponse> syncMetricsHandler = null;
 
 
 
@@ -57,6 +59,7 @@ public class FixtureActionUtil extends AuthentikActionUtil
       handler = r -> response(404, "{\"detail\":\"Not found.\"}");
       groupGraphBody = EMPTY_PAGE;
       groupGraphHandler = null;
+      syncMetricsHandler = null;
       AuthentikActionUtil.resetVersionCheck();
    }
 
@@ -72,6 +75,11 @@ public class FixtureActionUtil extends AuthentikActionUtil
       if(request.getURI().getPath().endsWith("/admin/version/"))
       {
          return (response(200, AuthentikTestSupport.resource("fixtures/2026.8.3/admin-version.json")));
+      }
+      if(syncMetricsHandler != null && (request.getURI().getPath().endsWith("/events/events/stats/")
+         || request.getURI().getPath().endsWith("/authenticators/admin/all/")))
+      {
+         return (syncMetricsHandler.apply(request));
       }
       if(request.getURI().getPath().endsWith("/core/groups/") && String.valueOf(request.getURI().getRawQuery()).contains("include_parents=false"))
       {

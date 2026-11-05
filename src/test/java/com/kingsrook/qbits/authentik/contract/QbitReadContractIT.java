@@ -140,6 +140,78 @@ class QbitReadContractIT
 
 
    /*******************************************************************************
+    ** Complete uncached directory reads and watermark filtering against the
+    ** pinned server. Build the privacy-preserving mirror projection from its
+    ** actual user/group membership representations.
+    *******************************************************************************/
+   @Test
+   void synchronizationReadsCompleteDirectoryAndProjectsMemberships() throws Exception
+   {
+      AuthentikActionUtil client = new AuthentikActionUtil();
+      client.setBackendMetaData((com.kingsrook.qqq.backend.module.api.model.metadata.APIBackendMetaData) qInstance.getBackend(config.getApiBackendName()));
+      var users = client.syncUsers(null, AuthentikActionUtil.MAX_SWEEP_OBJECTS);
+      var groups = client.syncGroups(AuthentikActionUtil.MAX_SWEEP_OBJECTS);
+      assertThat(users).hasSizeGreaterThanOrEqualTo(probeCount + 3);
+      var snapshot = com.kingsrook.qbits.authentik.sync.AuthentikMirrorSnapshot.build(config, qInstance, users, groups, Map.of(), java.time.Instant.now());
+      assertThat(snapshot.users()).hasSize(users.size());
+      assertThat(snapshot.memberships()).anySatisfy(member ->
+      {
+         assertThat(member.getValue("userPk")).isEqualTo(stack.admin().userPk("read.probe1"));
+         assertThat(member.getValue("groupName")).isEqualTo("kof-website-publishers");
+      });
+      assertThat(client.syncUsers(java.time.Instant.now().plusSeconds(3600), AuthentikActionUtil.MAX_SWEEP_OBJECTS)).isEmpty();
+      String probePk = String.valueOf(stack.admin().userPk("read.probe1"));
+      assertThatThrownBy(() -> client.confirmSyncDeletions(List.of(probePk), List.of()))
+         .isInstanceOf(QException.class).hasMessageContaining("Directory changed");
+      client.confirmSyncDeletions(List.of("2147483647"), List.of(java.util.UUID.randomUUID().toString()));
+      String previousScope = config.getUserScopePathStartsWith();
+      try
+      {
+         config.withUserScopePathStartsWith("absent-sync-scope-" + java.util.UUID.randomUUID() + "/");
+         client.confirmSyncDeletions(List.of(probePk), List.of());
+      }
+      finally
+      {
+         config.withUserScopePathStartsWith(previousScope);
+      }
+      QContext.init(qInstance, new com.kingsrook.qqq.backend.core.model.session.QSystemUserSession(qInstance));
+      var probe = client.syncUser(probePk);
+      var metrics = client.syncMetrics(probe, () -> { });
+      assertThat(metrics.mfaDeviceCount()).isZero();
+      assertThat(metrics.failedLogins24h()).isZero();
+      String fixture = java.util.UUID.randomUUID().toString();
+      try
+      {
+         // Fixture-only setup: Authentik's admin API cannot create MFA devices
+         // for another user or backdate built-in login events. Production sync
+         // below still reads solely through the service-account HTTP API.
+         stack.execInServer("ak", "shell", "-c",
+            "from datetime import timedelta; from django.utils.timezone import now; "
+               + "from authentik.core.models import User; from authentik.events.models import Event, EventAction; "
+               + "from authentik.stages.authenticator_totp.models import TOTPDevice; u=User.objects.get(username='read.probe1'); "
+               + "TOTPDevice.objects.create(user=u,name='" + fixture + "',confirmed=True); "
+               + "TOTPDevice.objects.create(user=u,name='" + fixture + "',confirmed=False); "
+               + "[Event.new(EventAction.LOGIN_FAILED,sync_metrics_fixture='" + fixture + "').set_user(u).save() for i in range(2)]; "
+               + "old=Event.new(EventAction.LOGIN_FAILED,sync_metrics_fixture='" + fixture + "').set_user(u); old.save(); "
+               + "Event.objects.filter(pk=old.pk).update(created=now()-timedelta(hours=25)); "
+               + "Event.new(EventAction.LOGIN,sync_metrics_fixture='" + fixture + "').set_user(u).save(); "
+               + "Event.new(EventAction.LOGIN_FAILED,sync_metrics_fixture='" + fixture + "').set_user(User.objects.get(username='read.probe2')).save()");
+         metrics = client.syncMetrics(probe, () -> { });
+         assertThat(metrics.mfaDeviceCount()).isEqualTo(1);
+         assertThat(metrics.failedLogins24h()).isEqualTo(2);
+      }
+      finally
+      {
+         stack.execInServer("ak", "shell", "-c",
+            "from authentik.events.models import Event; from authentik.stages.authenticator_totp.models import TOTPDevice; "
+               + "TOTPDevice.objects.filter(name='" + fixture + "').delete(); "
+               + "Event.objects.filter(context__sync_metrics_fixture='" + fixture + "').delete()");
+      }
+   }
+
+
+
+   /*******************************************************************************
     **
     *******************************************************************************/
    @AfterEach

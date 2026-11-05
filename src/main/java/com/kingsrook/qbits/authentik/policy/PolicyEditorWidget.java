@@ -97,7 +97,8 @@ public final class PolicyEditorWidget
       Data             data    = new Data()
          .withSpec(format.spec())
          .withVersion(format.version())
-         .withCatalog(runtime.getPolicyCatalog().toJson().toList())
+         .withCatalog(List.of())
+         .withCatalogWidget(config.applyPrefix(NAME))
          .withMapperEnabled(config.getMapperEnabled())
          .withOutputFieldName(AuthentikAdmin.POLICY_DOCUMENT);
 
@@ -127,6 +128,8 @@ public final class PolicyEditorWidget
             /////////////////////////////////////////////////////////////////
             data.withDocument(PolicyGenerator.toPretty(PolicyGenerator.canonical(stored, format, runtime.getPolicyCatalog())));
             data.withFullAccess(PolicyParser.parseStrict(stored, format, runtime.getPolicyCatalog()).permissions().contains(PolicyPermissions.FULL_ACCESS));
+            data.withUnknownPermissions(new ArrayList<>(runtime.getPolicyCatalog().unknownPermissions(
+               PolicyParser.parseStrict(stored, format, runtime.getPolicyCatalog()).permissions())));
          }
          catch(PolicyParseException e)
          {
@@ -209,6 +212,16 @@ public final class PolicyEditorWidget
          String backendName = String.valueOf(((QWidgetMetaData) input.getWidgetMetaData()).getDefaultValues().get(BACKEND_NAME_KEY));
          AuthentikQBitConfig config = AuthentikRuntime.forBackend(backendName).getConfig();
          Map<String, String> params = input.getQueryParams();
+         if(params != null && "true".equals(params.get("accessCatalog")))
+         {
+            if(!AuthentikGuard.has(QContext.getQSession(), IdentityPermission.POLICIES_MANAGE))
+            {
+               throw (new QPermissionDeniedException("You do not have permission to edit policies (authentik.policies.manage)."));
+            }
+            var catalog = AuthentikRuntime.forBackend(backendName).getPolicyCatalog();
+            return (new RenderWidgetOutput(new com.kingsrook.qbits.authentik.processes.AccessEditorWidget.Data(List.of(
+               com.kingsrook.qbits.authentik.processes.AccessCatalog.page(catalog.permissionNames(), catalog, params)))));
+         }
          return (new RenderWidgetOutput(load(config, params == null ? null : params.get(GROUP_PK_PARAM))));
       }
    }
@@ -224,6 +237,8 @@ public final class PolicyEditorWidget
       private String                    version;
       private String                    groupLabel;
       private List<Object>              catalog;
+      private String                    catalogWidget;
+      private List<String>              unknownPermissions = List.of();
       private String                    document;
       private String                    documentProblem;
       private Boolean                   changedInAuthentik = false;
@@ -336,6 +351,44 @@ public final class PolicyEditorWidget
       public List<Object> getCatalog()
       {
          return (catalog);
+      }
+
+
+      /*******************************************************************************
+       ** The guarded widget endpoint supplying bounded catalog pages.
+       *******************************************************************************/
+      public String getCatalogWidget()
+      {
+         return (catalogWidget);
+      }
+
+
+      /*******************************************************************************
+       ** Set the catalog endpoint.
+       *******************************************************************************/
+      public Data withCatalogWidget(String catalogWidget)
+      {
+         this.catalogWidget = catalogWidget;
+         return (this);
+      }
+
+
+      /*******************************************************************************
+       ** Stored unknown grants, classified against the entire server catalog.
+       *******************************************************************************/
+      public List<String> getUnknownPermissions()
+      {
+         return (unknownPermissions);
+      }
+
+
+      /*******************************************************************************
+       ** Keep unknown stored grants independently of catalog pagination.
+       *******************************************************************************/
+      public Data withUnknownPermissions(List<String> unknownPermissions)
+      {
+         this.unknownPermissions = unknownPermissions;
+         return (this);
       }
 
 

@@ -82,7 +82,7 @@ public final class AuthentikRelations
 
       List<QFieldSection> groupSections = new ArrayList<>();
       groupSections.add(new QFieldSection("details", "Details", new QIcon("groups"), Tier.T1,
-         List.of("name", "isSuperuser", "isSuperuserInherited", "parentNames", "childNames", "memberCount", "roleNames", "pk")));
+         List.of("name", "accessType", "isSuperuser", "isSuperuserInherited", "parentNames", "childNames", "memberCount", "roleNames", "pk")));
       groupSections.add(new QFieldSection("permissions", "Permissions and app access", new QIcon("admin_panel_settings"), Tier.T2,
          List.of("permissions", "effectivePermissions", "appAccess")));
       relate(qInstance, groupSections, "members", "Members", "group", group, membership, "pk", "groupPk");

@@ -114,7 +114,7 @@ Both call the same Authentik code, which applies the same validation. QQQ does n
 **How the two front doors stay in sync.**
 - QQQ reads live, so a change made in the Authentik UI shows up in QQQ on the next screen load (allowing for a 30-second cache).
 - For things QQQ keeps a small copy of (the Web Users join and home-page counts), Authentik sends a **webhook** to QQQ whenever a user or group changes. QQQ refreshes just that record through the ESB.
-- A 15-minute background check catches anything a webhook missed.
+- A five-minute background check catches anything a webhook missed, with a fifteen-minute permission freshness ceiling.
 
 **Where Git still fits.** Git (cluster-gitops blueprints) keeps the **plumbing** that should be reviewed and versioned:
 - the login, recovery and enrollment flows
@@ -340,7 +340,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 │  ├─ processes (table/record actions; preview→review→execute)              │
 │  ├─ AdminActionAuditor     (local audit row + Authentik custom event)     │
 │  ├─ Mirror tables (RDBMS) + MirrorSync (webhook→ESB + reconcile)          │
-│  ├─ AuthentikWebhookRouteProvider (/qqq/v1/authentik/webhook)             │
+│  ├─ AuthentikWebhookRouteProvider (/qqq/hooks/authentik/webhook)             │
 │  ├─ IdentitySnapshotExport (optional nightly read-only YAML → git)        │
 │  └─ AuthentikGroupPermissionMapper (auth customizer; uses the resolver)   │
 └──────────────┬───────────────────────────────────────────────────────────┘
@@ -377,7 +377,7 @@ MHP learned this the hard way. Blueprint drift caused incident APPS-1462, which 
 | `confirmations` | see §6.3 | Per-action confirmation level: `CONFIRM`, `TYPED`, `TWO_PERSON` |
 | `throttle` | 10 req/s, burst 20; bulk pacing 100 ms | Self-imposed; authenticated calls are not throttled server-side |
 | `cacheTtl` | 30 s lists, 60 s group attributes, 5 min computed app access | Memoization TTLs |
-| `mirror` | backend name, 15-minute reconcile, 30-day inbox retention | Used if `MIRROR` is on |
+| `mirror` | backend name, five-minute reconcile, fifteen-minute authorization freshness, 30-day inbox retention | Used if `MIRROR` is on |
 | `webhookSecret` | `${env.AUTHENTIK_WEBHOOK_SECRET}` | Shared secret in a header set by the transport's header mapping |
 | `esbDestinationName` | optional | If set, webhook events go through the ESB; otherwise they are processed inline |
 | `snapshotExport` | off | Git remote, branch, path and schedule for the optional nightly export (§7.3) |
@@ -613,6 +613,7 @@ The role `qqq-<appKey>-idadmin` is assigned directly to the service account (boo
 |---|---|---|
 | `authentik_core.view_user`, `view_group`, `view_application`, `view_authenticatedsession`, `authentik_rbac.view_role`, `authentik_policies.view_policybinding`, `authentik_events.view_event`, `authentik_blueprints.view_blueprintinstance` | Read screens, access computation, drift report (the phase 0/1 set in §4.3) | 1 |
 | `authentik_core.view_token`, `authentik_stages_invitation.view_invitation`, device `view_*` | Token, invitation and MFA lists | 3 |
+| `authentik_flows.view_flow`, `authentik_flows.view_flowstagebinding`, `authentik_policies_expression.view_expressionpolicy` (plus existing `view_policybinding`) | Uncached verification of invitation enrollment correlation protection before accepting new-user evidence; no configuration writes | 3 |
 | (none) for the access matrix: `check_access?for_user=` cannot be used by a non-superuser (§0.2 iii); the qbit evaluates `qqq.io/app-access` and the app's bindings itself | Access matrix | 1 |
 | `authentik_events.add_event` | `custom_qqq_admin_action` audit events | 1 |
 | `authentik_core.add_user`, `change_user` | Create, edit, deactivate, reactivate | 3 |
@@ -704,7 +705,7 @@ This is weaker than revision 1's per-group object permissions. That is the cost 
 | Action | Allowed | Mechanism |
 |---|---|---|
 | Create user | Yes (`USERS`) | `POST /core/users/` with **no password** (`is_active=true`, `path=newUserPath`, `attributes.qqq.io/created-by`), then memberships, then `recovery_email` so the user sets their own password |
-| Invite user | Yes (`USERS`) | Invitation (`fixed_data` email and name, `single_use`, expires in 7 days) + `send_email`, through the `kof22-enrollment` flow. Groups are applied by QQQ when the `invitation_used` webhook arrives. |
+| Invite user | Yes (`USERS`) | Invitation (`fixed_data` email and name, `single_use`, expires in 7 days) + `send_email`, through the `kof22-enrollment` flow. QQQ applies selected groups after verifying invitation consumption and successful user creation; see [invitation assignment implementation](INVITATION-ASSIGNMENTS.md). |
 | Send password-reset email | Yes (`CREDENTIALS`) | `recovery_email` with `recoveryEmailStage`, `token_duration` 30 minutes |
 | Show or copy recovery link, set password, set hash | **No** | Never called. A link given to the operator amounts to account takeover. |
 | Create, rotate, extend, revoke access tokens | Yes (`TOKENS`, §13) | A person's own tokens: as that person, through the token broker. Service accounts: `service_account`, `set_key`, `PATCH`. The key is shown once and never stored |
@@ -794,7 +795,7 @@ Each process:
 | Process | Table / slot | Records | Permission | Default confirmation | Authentik calls |
 |---|---|---|---|---|---|
 | Create user | `authentik_user` query action | 0 | `authentik.users.manage` (+ `memberships.manage` if groups given) | CONFIRM | `POST /core/users/` (no password) → `add_user` per group → `recovery_email` |
-| Invite user | same | 0 | `authentik.users.manage` | CONFIRM | `POST /stages/invitation/invitations/` + `send_email`; groups applied on `invitation_used` |
+| Invite user | same | 0 | `authentik.users.manage` | CONFIRM | `POST /stages/invitation/invitations/` + `send_email`; groups applied after verified `invitation_used` and new-account `user_write` correlation |
 | Edit user | `authentik_user` view action | 1 | `authentik.users.manage` | CONFIRM | `PATCH /core/users/{id}/` (name, email, path, type internal/external) |
 | Deactivate | `authentik_user` | 1–25 | `authentik.users.manage` | TYPED | `PATCH is_active=false` (deletes sessions) + optional app-password revoke |
 | Reactivate | same | 1–25 | `authentik.users.manage` | CONFIRM | `PATCH is_active=true` |
@@ -830,7 +831,7 @@ Each process:
 These objects are infrastructure in Git (`present`):
 1. **Event matcher policies** `qqq-<appKey>-sync-*`: `model_created`, `model_updated`, `model_deleted` for `authentik_core.user` and `authentik_core.group`, plus `login`, `login_failed`, `password_set`, `invitation_used`, `user_write`. They are bound to one rule (ANY).
 2. **Webhook transport** `qqq-<appKey>`:
-   - `webhook_url` `https://admin.kof22.com/qqq/v1/authentik/webhook`
+   - `webhook_url` `https://admin.kof22.com/qqq/hooks/authentik/webhook`
    - a **body mapping** returning `{eventPk, action, created, username, model: context.model, app}`. The default body has no event id or model.
    - a **header mapping** adding `X-QQQ-Webhook-Secret` from the worker env
    - `send_once: true`
@@ -853,8 +854,30 @@ Changes made by QQQ itself come back as webhooks too. They are harmless, because
 ### 7.2 Reconcile
 
 Webhooks are hints: delivery is at least once, unordered, and lost if no destination resolves. So:
-- **Every 15 minutes**: `GET /core/users/?last_updated__gt=<watermark>`, a full group sweep (groups have no `last_updated` in 2026.8, and are few), plus `login_failed` events since the watermark.
+- **Every five minutes**: `GET /core/users/?last_updated__gt=<watermark>`, a full group sweep (groups have no `last_updated` in 2026.8, and are few), plus `login_failed` events since the watermark.
 - **Nightly**: a full user, group and membership sweep (about 20 requests per 1,000 users), which removes deleted rows.
+
+**Cadence adjustment (2026-11-05).** The original fifteen-minute schedule collided
+with the request-time adapter's fifteen-minute freshness ceiling. Freshness is
+measured from scan start, so starting the next scan only at expiry denies access
+until that scan commits. Five-minute scheduling provides headroom without relaxing
+the authorization limit or advancing a watermark before publication. The directory
+lease still serializes overlapping work; a busy tick skips publication. A stalled
+or overloaded directory can still expire and must fail closed. SQL regressions
+cover four-minute scans, one skipped tick, and stale rejection; actual API-scale
+throughput and scheduler jitter remain release acceptance gates. More frequent
+scans increase API usage, including the per-user metrics described below.
+
+**Pinned 2026.8.3 metrics implementation.** The event-list endpoint has no supported
+created-time filter. Reconciliation therefore obtains `failedLogins24h` from
+`GET /events/events/stats/?action=login_failed&username=<encoded>&count_steps=hours%3D24`,
+using the server's `count_step.hours24` aggregate. This preserves the rolling
+24-hour meaning without sending an ignored date parameter or storing raw events.
+`mfaDeviceCount` counts confirmed devices from `/authenticators/admin/all/?user=<pk>`;
+unconfirmed enrollment does not count as configured MFA. Both reads are uncached,
+renew worker ownership, and persist only counts. Unavailable or malformed metrics
+are null (unknown), not zero. These per-user metric requests are additional to the
+directory paging estimate above and remain part of the API-scale acceptance gate.
 
 ### 7.3 Optional nightly snapshot export (read-only, not authoritative)
 
@@ -1038,7 +1061,7 @@ The estimates assume one senior engineer with AI assistance, plus about 20% of a
 | Session permissions go stale after a demotion | Token-refresh re-evaluation, webhook marking, live checks in the guard |
 | The service account can lock administrators out (remove members from `authentik Admins`, deactivate break-glass, strip `qqq.io/protected`, §0.2 ii-b). Re-parenting under a superuser group **is** refused by Authentik (§0.2 ii) | Guard refusal of every write that targets a protected account or a superuser group; drift report; recovery through cluster access |
 | Load on the shared Postgres | Throttle, caps, mirror |
-| Webhook loss | Inbox, 15-minute reconcile, nightly sweep |
+| Webhook loss | Inbox, five-minute reconcile, nightly sweep |
 | Direct backend calls outside core enforcement | Guard in the backend util, ArchUnit, field stripping |
 | Token leakage | Redaction tests; no body logging on sensitive paths |
 | An Authentik upgrade changes fields | Pinned schema, fixtures per version, version check |

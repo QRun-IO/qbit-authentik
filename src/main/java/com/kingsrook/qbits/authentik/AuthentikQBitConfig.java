@@ -46,7 +46,8 @@ public class AuthentikQBitConfig implements QBitConfig
 {
    /** Features implemented in this release. Others are refused by validate(). */
    public static final Set<AuthentikFeature> AVAILABLE_FEATURES = EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
-      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE, AuthentikFeature.TOKENS);
+      AuthentikFeature.CREDENTIALS, AuthentikFeature.SESSIONS, AuthentikFeature.POLICIES, AuthentikFeature.DELETE, AuthentikFeature.TOKENS,
+      AuthentikFeature.MIRROR, AuthentikFeature.WEBHOOK);
 
    /** Features that change Authentik data; they need a local backend for the audit trail. */
    public static final Set<AuthentikFeature> WRITE_FEATURES = EnumSet.of(AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP,
@@ -90,6 +91,7 @@ public class AuthentikQBitConfig implements QBitConfig
    private String                localBackendName;
    private Boolean               twoPersonApproval        = true;
    private String                schedulerName;
+   private String                esbDestinationName;
    private String                linkPrefix               = "/app";
    private String                recoveryEmailStage;
    private String                invitationFlow;
@@ -235,6 +237,22 @@ public class AuthentikQBitConfig implements QBitConfig
       if(requested.contains(AuthentikFeature.WEBHOOK) && !StringUtils.hasContent(getResolvedWebhookSecret()))
       {
          errors.add("feature WEBHOOK needs webhookSecret");
+      }
+
+      if(requested.contains(AuthentikFeature.WEBHOOK) && !requested.contains(AuthentikFeature.MIRROR))
+      {
+         errors.add("feature WEBHOOK needs MIRROR");
+      }
+      if(requested.contains(AuthentikFeature.MIRROR))
+      {
+         try
+         {
+            com.kingsrook.qbits.authentik.sync.AuthentikSyncRegistration.validate(qInstance, this, errors);
+         }
+         catch(LinkageError missingDependency)
+         {
+            errors.add("MIRROR/WEBHOOK requires the host RDBMS and enabled middleware/ESB dependencies");
+         }
       }
 
       for(String subject : getResolvedBootstrapSubjects())
@@ -952,6 +970,31 @@ public class AuthentikQBitConfig implements QBitConfig
    public AuthentikQBitConfig withSchedulerName(String schedulerName)
    {
       this.schedulerName = schedulerName;
+      return (this);
+   }
+
+   /*******************************************************************************
+    ** Optional host ESB destination; absent means inline inbox processing.
+    *******************************************************************************/
+   public String getEsbDestinationName()
+   {
+      return (esbDestinationName);
+   }
+
+   /*******************************************************************************
+    ** Select an existing host destination, without creating a broker or queue.
+    *******************************************************************************/
+   public void setEsbDestinationName(String value)
+   {
+      esbDestinationName = value;
+   }
+
+   /*******************************************************************************
+    ** Fluent optional destination selection.
+    *******************************************************************************/
+   public AuthentikQBitConfig withEsbDestinationName(String value)
+   {
+      esbDestinationName = value;
       return (this);
    }
 

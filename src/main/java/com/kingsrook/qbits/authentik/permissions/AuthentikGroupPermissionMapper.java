@@ -82,6 +82,16 @@ public class AuthentikGroupPermissionMapper implements QAuthenticationModuleCust
       return ("authentikApi");
    }
 
+   /*******************************************************************************
+    ** Static host grants for current direct groups, without consulting claims.
+    *******************************************************************************/
+   protected Set<String> configuredStaticPermissions(Collection<String> groups)
+   {
+      Set<String> permissions = new TreeSet<>();
+      groups.forEach(group -> permissions.addAll(staticGroupPermissions.getOrDefault(group, List.of())));
+      return (permissions);
+   }
+
 
 
    /*******************************************************************************

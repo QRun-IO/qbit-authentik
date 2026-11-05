@@ -177,6 +177,10 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
 
       List<String> errors = new ArrayList<>();
       qBitConfig.validate(qInstance, errors);
+      if(errors.isEmpty() && qBitConfig.hasFeature(AuthentikFeature.MIRROR))
+      {
+         com.kingsrook.qbits.authentik.sync.AuthentikSyncRegistration.validateNames(qInstance, qBitConfig, errors);
+      }
       if(!errors.isEmpty())
       {
          throw (new QException("AuthentikQBit configuration validation failed: " + String.join("; ", errors)));
@@ -187,12 +191,24 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
       MetaDataProducerMultiOutput output = QBitMetaDataProducer.super.produce(qInstance);
       output.addSelfToInstance(qInstance);
 
+      if(qBitConfig.hasFeature(AuthentikFeature.MIRROR))
+      {
+         com.kingsrook.qbits.authentik.sync.AuthentikSyncRegistration.register(qInstance, qBitConfig);
+      }
+
       AuthentikHealthChecks.register(qInstance, qBitConfig);
       addPossibleValueSources(qInstance);
       AuthentikRelations.apply(qInstance, qBitConfig);
       for(QProcessMetaData process : AuthentikProcesses.processes(qBitConfig))
       {
          qInstance.addProcess(process);
+      }
+      for(AuthentikProcesses.Def def : AuthentikProcesses.definitions(qBitConfig))
+      {
+         if(com.kingsrook.qbits.authentik.processes.AccessEditorWidget.supports(def))
+         {
+            qInstance.addWidget(com.kingsrook.qbits.authentik.processes.AccessEditorWidget.metadata(qBitConfig, def));
+         }
       }
       // Registration is metadata-only; core skips startup sync without a helpContent table.
       HelpBundles.register(qInstance, "help/qbit-authentik.yaml");
@@ -216,14 +232,19 @@ public class AuthentikQBitProducer implements QBitMetaDataProducer<AuthentikQBit
          String name = qBitConfig.applyTablePrefix(spec);
          if(qInstance.getPossibleValueSource(name) == null)
          {
-            qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(name));
+            qInstance.addPossibleValueSource(QPossibleValueSource.newForTable(name)
+               .withSearchFields(List.of(AuthentikTables.USER.equals(spec) ? "username" : "name")));
          }
       }
       if(qBitConfig.getLocalBackendName() != null)
       {
          for(QPossibleValueSource source : AuthentikLocalTables.possibleValueSources())
          {
-            qInstance.addPossibleValueSource(source);
+            // These fixed status enums are shared by all named QBit instances.
+            if(qInstance.getPossibleValueSource(source.getName()) == null)
+            {
+               qInstance.addPossibleValueSource(source);
+            }
          }
       }
    }

@@ -297,9 +297,112 @@ class TokenContractIT
       JSONObject full = claims(expect(credentials(username, key, "openid profile email"), 200).getString("access_token"));
       assertThat(full.getString("qqq_token")).isEqualTo(identifier);
       assertThat(full.has("groups")).isTrue();
+      var identity = com.kingsrook.qbits.authentik.security.AuthentikSessionIdentity.fromVerifiedClaims(full).orElseThrow();
+      assertThat(identity.pk()).isEqualTo(owner);
+      assertThat(identity.uuid()).isEqualTo(admin.getOk("/core/users/" + owner + "/").getString("uuid"));
       JSONObject limited = claims(expect(credentials(username, key, "openid email"), 200).getString("access_token"));
       assertThat(limited.has("qqq_token")).isFalse();
       assertThat(limited.has("groups")).isFalse();
+      assertThat(com.kingsrook.qbits.authentik.security.AuthentikSessionIdentity.fromVerifiedClaims(limited)).isEmpty();
+      String renamed = username + "-renamed";
+      expect(admin.patch("/core/users/" + owner + "/", new JSONObject().put("username", renamed).put("email", renamed + "@example.test")), 200);
+      JSONObject afterRename = claims(expect(credentials(renamed, key, "openid profile email"), 200).getString("access_token"));
+      assertThat(afterRename.getString("sub")).isNotEqualTo(full.getString("sub"));
+      assertThat(com.kingsrook.qbits.authentik.security.AuthentikSessionIdentity.fromVerifiedClaims(afterRename)).contains(identity);
+   }
+
+
+   /*******************************************************************************
+    ** Real OAuth-issued claims feed the production mapper. Role inheritance and
+    ** isolated direct grants disappear from a new session after revocation.
+    ** This covers credential sign-in; interactive authorization-code acceptance
+    ** remains a separate release gate.
+    *******************************************************************************/
+   @Test
+   void freshOAuthCredentialsReflectRoleAndDirectGrantRevocation() throws Exception
+   {
+      int owner = user("grant-mapper");
+      JSONObject role = expect(admin.post("/core/groups/", new JSONObject().put("name", unique("role"))
+         .put("attributes", new JSONObject().put("qqq.io/application-role", true)
+            .put("qqq.io/permissions", new JSONArray().put("authentik.users.read")))), 201);
+      groups.add(role.getString("pk"));
+      JSONObject child = expect(admin.post("/core/groups/", new JSONObject().put("name", unique("team"))
+         .put("parents", new JSONArray().put(role.getString("pk"))).put("users", new JSONArray().put(owner))), 201);
+      groups.add(child.getString("pk"));
+      JSONObject direct = expect(admin.post("/core/groups/", new JSONObject().put("name", unique("direct"))
+         .put("users", new JSONArray().put(owner)).put("attributes", new JSONObject()
+            .put("qqq.io/user-access-owner", "kof22-admin:" + owner)
+            .put("qqq.io/permissions", new JSONArray().put("authentik.audit.read")))), 201);
+      groups.add(direct.getString("pk"));
+
+      String signed = subject(owner);
+      configureQbit(owner, signed);
+      config.withMapperEnabled(true);
+      var mapper = new com.kingsrook.qbits.authentik.permissions.AuthentikGroupPermissionMapper();
+      QSession granted = new QSession();
+      mapper.customizeSession(QContext.getQInstance(), granted,
+         Map.of(com.kingsrook.qbits.authentik.permissions.AuthentikGroupPermissionMapper.CLAIMS_CONTEXT_KEY, claims(signed)));
+      assertThat(granted.getPermissions()).contains("authentik.users.read.hasAccess", "authentik.audit.read.hasAccess")
+         .doesNotContain("authentik.users.manage.hasAccess");
+
+      expect(admin.post("/core/groups/" + child.getString("pk") + "/remove_user/", new JSONObject().put("pk", owner)), 204);
+      expect(admin.patch("/core/groups/" + direct.getString("pk") + "/", new JSONObject().put("attributes",
+         new JSONObject().put("qqq.io/user-access-owner", "kof22-admin:" + owner))), 200);
+      QSession revoked = new QSession();
+      mapper.customizeSession(QContext.getQInstance(), revoked,
+         Map.of(com.kingsrook.qbits.authentik.permissions.AuthentikGroupPermissionMapper.CLAIMS_CONTEXT_KEY, claims(subject(owner))));
+      assertThat(revoked.getPermissions()).doesNotContain("authentik.users.read.hasAccess", "authentik.audit.read.hasAccess");
+   }
+
+   /*******************************************************************************
+    ** Actual Authentik discovery/signatures, production reconciliation and SQL
+    ** binding must revoke access without replacing the already-issued token.
+    *******************************************************************************/
+   @Test
+   void existingOAuthTokenReflectsReconciledPermissionRevocation() throws Exception
+   {
+      int owner = user("session-refresh");
+      JSONObject role = expect(admin.post("/core/groups/", new JSONObject().put("name", unique("session-role"))
+         .put("users", new JSONArray().put(owner)).put("attributes", new JSONObject()
+            .put("qqq.io/permissions", new JSONArray().put("authentik.users.read")))), 201);
+      groups.add(role.getString("pk"));
+      String token = subject(owner);
+      configureQbit(owner, token);
+      config.withMapperEnabled(true);
+      QInstance instance = QContext.getQInstance();
+      try(var host = new SessionSqlHost(instance, config))
+      {
+         assertThat(host.reconcile()).isTrue();
+         var metadata = new com.kingsrook.qqq.backend.core.model.metadata.authentication.OAuth2AuthenticationMetaData();
+         metadata.setName("authentik-session-contract");
+         metadata.setBaseUrl(stack.baseUrl() + "/application/o/" + AuthentikTestStack.APP_SLUG + "/");
+         metadata.setClientId(AuthentikTestStack.APP_SLUG);
+         metadata.setClientSecret("unused-for-bearer-contract");
+         metadata.setScopes("openid profile email");
+         metadata.setUserSessionTableName(config.applyTablePrefix(com.kingsrook.qbits.authentik.sync.AuthentikSyncTables.USER));
+         metadata.setRedirectStateTableName(config.applyTablePrefix(com.kingsrook.qbits.authentik.sync.AuthentikSyncTables.USER));
+         metadata.setBearerTokensEnabled(true);
+         metadata.setSessionStoreEnabled(false);
+         metadata.setMaxSessionLifetimeSeconds(600);
+         metadata.setCustomizer(new com.kingsrook.qqq.backend.core.model.metadata.code.QCodeReference(
+            com.kingsrook.qbits.authentik.permissions.AuthentikRefreshingPermissionMapper.class));
+         instance.withInstanceDefaultAuthentication(metadata);
+         var first = new com.kingsrook.qbits.authentik.permissions.AuthentikRefreshingOAuth2Module();
+         var second = new com.kingsrook.qbits.authentik.permissions.AuthentikRefreshingOAuth2Module();
+         var request = Map.of("accessToken", token);
+         QSession original = first.createSession(instance, request);
+         assertThat(original.getPermissions()).contains("authentik.users.read.hasAccess");
+         expect(admin.patch("/core/groups/" + role.getString("pk") + "/", new JSONObject().put("attributes", new JSONObject())), 200);
+         assertThat(host.reconcile()).isTrue();
+         QSession refreshed = second.createSession(instance, request);
+         assertThat(refreshed.getUuid()).isEqualTo(original.getUuid());
+         assertThat(refreshed.getPermissions()).doesNotContain("authentik.users.read.hasAccess");
+         assertThat(first.isSessionValid(instance, original)).isTrue();
+         assertThat(original.getPermissions()).doesNotContain("authentik.users.read.hasAccess");
+         first.logout(instance, original.getUuid());
+         org.assertj.core.api.Assertions.assertThatThrownBy(() -> second.createSession(instance, request))
+            .isInstanceOf(com.kingsrook.qqq.backend.core.exceptions.QAuthenticationException.class);
+      }
    }
 
 
