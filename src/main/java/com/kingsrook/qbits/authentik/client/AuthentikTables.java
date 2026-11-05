@@ -161,7 +161,7 @@ public final class AuthentikTables
       spec.withField(new AuthentikFieldSpec("isProtected", "Protected", QFieldType.BOOLEAN, o -> null));
       spec.withField(new AuthentikFieldSpec("groupNames", "Groups", QFieldType.STRING, joined("groups_obj", "name"))
          .withFilter(QCriteriaOperator.EQUALS, "groups_by_name").withFilter(QCriteriaOperator.IN, "groups_by_name"));
-      spec.withField(new AuthentikFieldSpec("roleNames", "Roles", QFieldType.STRING, joined("roles_obj", "name"))
+      spec.withField(new AuthentikFieldSpec("roleNames", "Authentik Administrative Roles", QFieldType.STRING, joined("roles_obj", "name"))
          .withFilter(QCriteriaOperator.EQUALS, "roles_by_name").withFilter(QCriteriaOperator.IN, "roles_by_name"));
       spec.withField(new AuthentikFieldSpec("lastLogin", "Last Login", QFieldType.DATE_TIME, instant("last_login"))
          .withFilter(QCriteriaOperator.GREATER_THAN, "last_login__gt").withFilter(QCriteriaOperator.LESS_THAN, "last_login__lt")
@@ -192,7 +192,7 @@ public final class AuthentikTables
     *******************************************************************************/
    static AuthentikTableSpec groups()
    {
-      AuthentikTableSpec spec = new AuthentikTableSpec(GROUP, "Groups", "groups", "/core/groups/", "pk")
+      AuthentikTableSpec spec = new AuthentikTableSpec(GROUP, "Groups and Application Roles", "groups", "/core/groups/", "pk")
          .withDefaultListParam("include_users", "true")
          .withDefaultListParam("include_parents", "true")
          .withDefaultListParam("include_children", "true")
@@ -205,6 +205,8 @@ public final class AuthentikTables
       spec.withField(new AuthentikFieldSpec("pk", "Id", QFieldType.STRING, string("pk")));
       spec.withField(new AuthentikFieldSpec("name", "Name", QFieldType.STRING, string("name"))
          .withFilter(QCriteriaOperator.EQUALS, "name").withSearchable().withOrdering("name"));
+      spec.withField(new AuthentikFieldSpec("accessType", "Access Type", QFieldType.STRING,
+         o -> com.kingsrook.qbits.authentik.permissions.ApplicationRole.isRole(o) ? "Application role" : "Group"));
       spec.withField(new AuthentikFieldSpec("isSuperuser", "Superuser (own flag)", QFieldType.BOOLEAN, bool("is_superuser"))
          .withFilter(QCriteriaOperator.EQUALS, "is_superuser"));
       spec.withField(new AuthentikFieldSpec("isSuperuserInherited", "Superuser (incl. parents)", QFieldType.BOOLEAN, o -> null));
@@ -216,7 +218,7 @@ public final class AuthentikTables
       spec.withField(new AuthentikFieldSpec("permissions", "QQQ Permissions", QFieldType.TEXT, attributeList(AuthentikJson.ATTR_PERMISSIONS)));
       spec.withField(new AuthentikFieldSpec("effectivePermissions", "Effective QQQ Permissions (incl. parents)", QFieldType.TEXT, o -> null));
       spec.withField(new AuthentikFieldSpec("appAccess", "App Access", QFieldType.TEXT, attributeList(AuthentikJson.ATTR_APP_ACCESS)));
-      spec.withField(new AuthentikFieldSpec("roleNames", "Roles", QFieldType.STRING, joined("roles_obj", "name")));
+      spec.withField(new AuthentikFieldSpec("roleNames", "Authentik Administrative Roles", QFieldType.STRING, joined("roles_obj", "name")));
       spec.withField(new AuthentikFieldSpec("numPk", "Numeric Id", QFieldType.INTEGER, integer("num_pk")).withHidden());
       spec.withField(new AuthentikFieldSpec("parentPks", "Parent Ids", QFieldType.TEXT, json("parents")).withHidden());
       spec.withField(new AuthentikFieldSpec("attributes", "Attributes", QFieldType.TEXT, json("attributes")).withSensitive());

@@ -48,6 +48,11 @@ import com.kingsrook.qbits.authentik.policy.PolicyStore;
 import com.kingsrook.qbits.authentik.security.AuthentikGuard;
 import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qbits.authentik.security.WriteAuthorization;
+import com.kingsrook.qbits.authentik.sync.AuthentikInvitationAssignments;
+import com.kingsrook.qbits.authentik.sync.AuthentikWebhookInbox;
+import com.kingsrook.qqq.backend.core.model.session.QSession;
+import com.kingsrook.qqq.backend.core.model.session.QSystemUserSession;
+import com.kingsrook.qqq.backend.core.model.session.QUser;
 import com.kingsrook.qqq.backend.core.actions.tables.InsertAction;
 import com.kingsrook.qqq.backend.core.actions.tables.QueryAction;
 import com.kingsrook.qqq.backend.core.actions.tables.UpdateAction;
@@ -116,6 +121,7 @@ public class AuthentikAdmin
    private GroupGraph     graph;
    private GroupGraph     membersGraph;
    private List<AuthentikSafety.UserFacts> userFacts;
+   private AuthentikInvitationAssignments.Intent deferredInvitation;
 
 
 
@@ -343,12 +349,26 @@ public class AuthentikAdmin
 
       String      email       = guard.operatorEmail();
       boolean     maintenance = ServiceIdentities.isMintedServiceSession(QContext.getQSession());
-      boolean     bootstrap   = !maintenance && email != null && com.kingsrook.qbits.authentik.security.BootstrapOperators.matchesUniqueUser(config.getResolvedBootstrapSubjects(), util, email);
       Integer     pk          = null;
       Set<String> permissions = new TreeSet<>();
       Set<String> appAccess   = new TreeSet<>();
 
-      JSONObject user = maintenance || email == null ? null : findUserByEmail(email);
+      JSONObject user;
+      if(deferredInvitation != null)
+      {
+         user = deferredUser(deferredInvitation.operatorPk(), deferredInvitation.operatorUuid());
+         String currentEmail = user.optString("email");
+         if(currentEmail.isBlank() || (!(QContext.getQSession() instanceof QSystemUserSession) && !currentEmail.equals(email)))
+         {
+            throw (new QPermissionDeniedException("The invitation operator identity changed."));
+         }
+         email = currentEmail;
+      }
+      else
+      {
+         user = maintenance || email == null ? null : findUserByEmail(email);
+      }
+      boolean bootstrap = !maintenance && email != null && com.kingsrook.qbits.authentik.security.BootstrapOperators.matchesUniqueUser(config.getResolvedBootstrapSubjects(), util, email);
       if(user != null)
       {
          pk = user.optInt("pk");
@@ -393,6 +413,122 @@ public class AuthentikAdmin
       return (operator);
    }
 
+   /***************************************************************************
+    ** Execute only saved, paired invitation grants. The internal session can
+    ** coordinate local state but never writes Authentik. Each isolated admin
+    ** uses the original immutable human identity and freshly resolved rights.
+    ** An interrupted attempt remains IN_FLIGHT for review, never automatic retry.
+    ***************************************************************************/
+   public boolean applyInvitationAssignments(String reference, AuthentikWebhookInbox inbox, AuthentikWebhookInbox.Claim claim) throws Exception
+   {
+      if(!(QContext.getQSession() instanceof QSystemUserSession))
+      {
+         throw (new QPermissionDeniedException("Deferred assignments require the internal worker."));
+      }
+      if(!config.hasFeature(AuthentikFeature.MIRROR) || !config.hasFeature(AuthentikFeature.WEBHOOK))
+      {
+         return (true);
+      }
+      var store = new AuthentikInvitationAssignments(config);
+      var intent = store.find(reference);
+      if(intent == null || !"READY".equals(intent.status()) || intent.groups().containsValue("IN_FLIGHT"))
+      {
+         return (true);
+      }
+      if(Boolean.TRUE.equals(config.getReadOnly()) || !config.hasFeature(AuthentikFeature.MEMBERSHIP))
+      {
+         // Preserve the inbox trigger while writes are disabled. Deferral does
+         // not spend a failure attempt and resumes with current authorization.
+         return (false);
+      }
+      for(String group : new TreeSet<>(intent.groups().keySet()))
+      {
+         if(!"PENDING".equals(intent.groups().get(group)))
+         {
+            continue;
+         }
+         var attempt = store.begin(reference, group, inbox, claim);
+         if(attempt == null)
+         {
+            return (false);
+         }
+         boolean applied = false;
+         try
+         {
+            var delegated = new AuthentikAdmin(util);
+            delegated.deferredInvitation = intent;
+            applied = delegated.executeInvitationGroup(group);
+         }
+         finally
+         {
+            // Restored internal context records the outcome even after expiry.
+            // If storage fails, IN_FLIGHT remains and cannot be replayed.
+            if(!store.finish(attempt, applied))
+            {
+               throw (new QException("The invitation assignment outcome requires review."));
+            }
+         }
+         if(!applied)
+         {
+            return (true);
+         }
+      }
+      return (true);
+   }
+
+   /***************************************************************************
+    ** Scope delegation to one saved group and target. No caller-supplied user,
+    ** permissions or action can enter this context; restore it on every exit.
+    ***************************************************************************/
+   private boolean executeInvitationGroup(String group) throws QException
+   {
+      runtime.invalidateCache();
+      Operator original = operator();
+      requireInvitationAuthority(original);
+      deferredUser(deferredInvitation.userPk(), deferredInvitation.userUuid());
+      new AuthentikInvitationFlow(util).verify(deferredInvitation.flow());
+      QSession internal = QContext.getQSession();
+      QSession delegated = new QSession();
+      delegated.setUser(new QUser().withIdReference(original.email()).withFullName(original.email()));
+      delegated.setPermissions(new java.util.HashSet<>(original.permissions()));
+      try
+      {
+         QContext.setQSession(delegated);
+         AdminResult result = execute(AdminRequest.of(AdminAction.ADD_MEMBER, group + ":" + deferredInvitation.userPk(), deferredInvitation.reason()));
+         return (result.ok() && !result.pending());
+      }
+      finally
+      {
+         QContext.setQSession(internal);
+      }
+   }
+
+   /***************************************************************************
+    ** Recheck both original onboarding rights, even if session claims lag.
+    ***************************************************************************/
+   private void requireInvitationAuthority(Operator original) throws QPermissionDeniedException
+   {
+      if(!original.permissions().contains(IdentityPermission.USERS_MANAGE.getSessionPermission())
+         || !original.permissions().contains(IdentityPermission.MEMBERSHIPS_MANAGE.getSessionPermission()))
+      {
+         throw (new QPermissionDeniedException("The original operator can no longer assign invitation memberships."));
+      }
+   }
+
+   /***************************************************************************
+    ** Numeric IDs and emails can be reused; match the persisted immutable UUID
+    ** against an uncached active, scoped identity before delegated action.
+    ***************************************************************************/
+   private JSONObject deferredUser(Integer pk, String uuid) throws QException
+   {
+      JSONObject user = pk == null ? null : util.syncUser(pk.toString());
+      if(user == null || uuid == null || !uuid.equalsIgnoreCase(user.optString("uuid")) || !Boolean.TRUE.equals(user.opt("is_active")))
+      {
+         throw (new QPermissionDeniedException("The saved invitation identity is unavailable or changed."));
+      }
+      return (user);
+   }
+
 
 
    /*******************************************************************************
@@ -418,6 +554,34 @@ public class AuthentikAdmin
          return (plan.refuse("A reason is required for every change."));
       }
 
+      if(deferredInvitation != null)
+      {
+         if(action != AdminAction.ADD_MEMBER)
+         {
+            return (plan.refuse("Deferred invitations may only add the saved memberships."));
+         }
+         requireInvitationAuthority(operator());
+      }
+
+      for(String field : List.of("parentIds", "groupIds"))
+      {
+         if(request.params().containsKey(field))
+         {
+            List<String> names = new ArrayList<>();
+            for(String id : AuthentikSafety.parseList(request.str(field)))
+            {
+               GroupGraph.Node group = graph().byPk(id);
+               if(group == null)
+               {
+                  return (plan.refuse("A selected group or role no longer exists. Open the editor again."));
+               }
+               names.add(group.name());
+            }
+            request.with(field.equals("parentIds") ? "parents" : "groups",
+               names.isEmpty() && action == AdminAction.EDIT_GROUP ? "none" : String.join("\n", names));
+         }
+      }
+
       return switch(action)
       {
          case CREATE_TOKEN, ROTATE_TOKEN, REVOKE_TOKEN, EXTEND_TOKEN, CREATE_SERVICE_ACCOUNT -> tokens.plan(plan);
@@ -429,6 +593,7 @@ public class AuthentikAdmin
          case ADD_MEMBER, REMOVE_MEMBER -> planMembership(plan, request);
          case CREATE_GROUP -> planCreateGroup(plan, request);
          case EDIT_GROUP -> planEditGroup(plan, request);
+         case EDIT_USER_PERMISSIONS -> planUserPermissions(plan, request);
          case EDIT_PERMISSIONS -> planEditPermissions(plan, request);
          case SAVE_POLICY -> planSavePolicy(plan, request);
          case DELETE_USER -> planDeleteUser(plan, request);
@@ -448,25 +613,36 @@ public class AuthentikAdmin
     *******************************************************************************/
    public AdminResult execute(AdminRequest request) throws QException
    {
-      if(request.action().getFeature() == com.kingsrook.qbits.authentik.AuthentikFeature.TOKENS)
-      {
-         request.params().remove("approved");
-      }
+      // Approval is authority from a stored second-person decision, never input.
+      request.params().remove("approved");
       runtime.invalidateCache();
       operator = null;
       graph = null;
       membersGraph = null;
       userFacts = null;
-      return (execute(plan(request), null));
+      return (executeTrusted(plan(request), null));
    }
 
 
 
    /*******************************************************************************
-    ** Perform a plan. approver is the second person when this is the
-    ** application of an approved request, else null.
+    ** Revalidate an externally supplied plan. Only approve(id) can supply an
+    ** approver; callers cannot turn a preview or arbitrary string into authority.
     *******************************************************************************/
    public AdminResult execute(AdminPlan plan, String approver) throws QException
+   {
+      if(approver != null)
+      {
+         throw (new QUserFacingException("Use the stored approval request to approve this change."));
+      }
+      return (execute(plan.getRequest()));
+   }
+
+
+   /*******************************************************************************
+    ** Perform a freshly validated plan from this class's execution paths only.
+    *******************************************************************************/
+   private AdminResult executeTrusted(AdminPlan plan, String approver) throws QException
    {
       if(plan.getRequest().action().getFeature() == com.kingsrook.qbits.authentik.AuthentikFeature.TOKENS)
       {
@@ -593,6 +769,10 @@ public class AuthentikAdmin
 
       AdminRequest stored = AdminRequest.fromJson(request.getValueString("payloadJson")).with("approved", true);
       runtime.invalidateCache();
+      operator = null;
+      graph = null;
+      membersGraph = null;
+      userFacts = null;
       AdminPlan plan = plan(stored);
       AdminResult result;
       if(plan.getState() == AdminPlan.State.NEEDS_APPROVAL)
@@ -601,7 +781,7 @@ public class AuthentikAdmin
       }
       else
       {
-         result = execute(plan, approver);
+         result = executeTrusted(plan, approver);
       }
       decide(approvalId, result.ok() ? AuthentikLocalTables.ApprovalStatus.APPROVED : AuthentikLocalTables.ApprovalStatus.FAILED, approver, result.ok() ? null : result.message());
       return (result);
@@ -788,7 +968,7 @@ public class AuthentikAdmin
       }
 
       plan.withTargetLabel(username);
-      List<String> groupNames = AuthentikSafety.parseList(request.str("groups"));
+      List<String> groupNames = requestedGroupNames(request, "groups");
       List<String> labels     = new ArrayList<>();
       for(String groupName : groupNames)
       {
@@ -836,8 +1016,118 @@ public class AuthentikAdmin
          return (plan.refuse("A user with the email " + email + " already exists."));
       }
       plan.withTargetLabel(email).withChange(null, "invitation to " + email + " (single use, expires in 7 days)");
-      plan.getNotes().add("Group memberships are added after the person has signed up (Add to group).");
+      if(!requestedGroupNames(request, "groups").isEmpty())
+      {
+         try
+         {
+            var prepared = prepareInvitationAssignments(request);
+            plan.withChange(null, "invitation to " + email + "; after enrollment: " + String.join(", ", requestedGroupNames(request, "groups")));
+            plan.getNotes().add("Save " + prepared.groups().size() + " group/role assignments. They require verified enrollment and your current grant authority when applied.");
+         }
+         catch(QException invalid)
+         {
+            return (plan.refuse(invalid.getMessage()));
+         }
+      }
+      else
+      {
+         if(flowUuid(config.getInvitationFlow()) == null)
+         {
+            return (plan.refuse("The configured invitation flow is unavailable. No invitation will be created."));
+         }
+         plan.getNotes().add("No group or role assignments selected. Memberships can be added after signup.");
+      }
       return (plan);
+   }
+
+   /***************************************************************************
+    ** Private, freshly computed facts. Never accept operator or flow identity
+    ** from process parameters, including a previously rendered review screen.
+    ***************************************************************************/
+   private record InvitationAssignmentPlan(Integer operatorPk, String operatorUuid, String flowSlug, String flowUuid, List<String> groups)
+   {
+   }
+
+   /***************************************************************************
+    ** Recheck membership authority, immutable operator identity and protected
+    ** flow before persisting any deferred intent or sending an invitation.
+    ***************************************************************************/
+   private InvitationAssignmentPlan prepareInvitationAssignments(AdminRequest request) throws QException
+   {
+      if(!config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.MIRROR)
+         || !config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.WEBHOOK))
+      {
+         throw (new QUserFacingException("Invitation assignments require MIRROR and WEBHOOK to be configured."));
+      }
+      guard.authorize(AdminAction.ADD_MEMBER);
+      var ids = new ArrayList<String>();
+      for(String name : requestedGroupNames(request, "groups"))
+      {
+         GroupGraph.Node group = graph().byName(name);
+         if(group == null)
+         {
+            throw (new QUserFacingException("A selected group or role no longer exists."));
+         }
+         String problem = checkGroupGrantable(group);
+         if(problem != null)
+         {
+            throw (new QUserFacingException(problem));
+         }
+         ids.add(group.pk());
+      }
+      if(ids.isEmpty() || ids.size() > 100 || request.reason().length() > 2048)
+      {
+         throw (new QUserFacingException("Select 1 to 100 groups/roles and use a reason of at most 2048 characters."));
+      }
+      Operator original = operator();
+      if(!original.permissions().contains(IdentityPermission.MEMBERSHIPS_MANAGE.getSessionPermission())
+         || !original.permissions().contains(IdentityPermission.USERS_MANAGE.getSessionPermission()))
+      {
+         throw (new QUserFacingException("You no longer have the user and membership management permissions required for these assignments."));
+      }
+      JSONObject user = original.pk() == null ? null : util.getObject(AuthentikTables.get(AuthentikTables.USER), original.pk().toString());
+      if(user == null || !Boolean.TRUE.equals(user.opt("is_active")) || !guard.isUserInScope(user)
+         || !original.pk().toString().equals(user.optString("pk")) || !UUID_PATTERN.matcher(user.optString("uuid")).matches())
+      {
+         throw (new QUserFacingException("Invitation assignments require an active, scoped Authentik operator with an immutable identity."));
+      }
+      String slug = util.invitationFlowSlug(config.getInvitationFlow());
+      String flowId = new AuthentikInvitationFlow(util).verify(slug);
+      return (new InvitationAssignmentPlan(original.pk(), user.getString("uuid").toLowerCase(java.util.Locale.ROOT), slug, flowId, List.copyOf(ids)));
+   }
+
+   /***************************************************************************
+    ** Narrow local-SQL operation; the interactive session is always restored
+    ** before any provider write, which still requires the normal authorization.
+    ***************************************************************************/
+   private <T> T invitationStore(InvitationStoreWork<T> work) throws QException
+   {
+      var original = QContext.getQSession();
+      try
+      {
+         QContext.setQSession(new com.kingsrook.qqq.backend.core.model.session.QSystemUserSession(QContext.getQInstance()));
+         return (work.run(new com.kingsrook.qbits.authentik.sync.AuthentikInvitationAssignments(config)));
+      }
+      catch(Exception failure)
+      {
+         throw (new QException("Invitation assignment state could not be accessed. No further invitation action was attempted."));
+      }
+      finally
+      {
+         QContext.setQSession(original);
+      }
+   }
+
+   /***************************************************************************
+    ** Internal SQL callback; never accepts network operations or public input.
+    ***************************************************************************/
+   @FunctionalInterface
+   private interface InvitationStoreWork<T>
+   {
+      /***********************************************************************
+       ** Operate on the configured host store.
+       ***********************************************************************/
+      T run(com.kingsrook.qbits.authentik.sync.AuthentikInvitationAssignments store) throws Exception;
    }
 
 
@@ -848,6 +1138,19 @@ public class AuthentikAdmin
    private AdminPlan planCancelInvitation(AdminPlan plan, AdminRequest request) throws QException
    {
       JSONObject invitation = util.getApiJsonOrNull("/stages/invitation/invitations/" + safeKey(request.targetKey()) + "/");
+      if(config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.MIRROR))
+      {
+         var intent = invitationStore(store -> store.findByInvitation(request.targetKey()));
+         if(intent != null && List.of("WAITING", "READY").contains(intent.status()))
+         {
+            if(intent.groups().containsValue("IN_FLIGHT"))
+            {
+               return (plan.refuse("An assignment is already in progress. Review its outcome before cancelling."));
+            }
+            return (plan.withTargetLabel(invitation == null ? "Pending invitation assignments" : invitation.optString("name"))
+               .withChange("invitation assignments pending", "cancel invitation and pending assignments"));
+         }
+      }
       if(invitation == null)
       {
          return (plan.noChange("The invitation no longer exists."));
@@ -989,6 +1292,14 @@ public class AuthentikAdmin
       {
          return (plan.refuse("Bad membership key."));
       }
+      if(deferredInvitation != null)
+      {
+         if(!parts[1].equals(String.valueOf(deferredInvitation.userPk())) || !deferredInvitation.groups().containsKey(parts[0]))
+         {
+            return (plan.refuse("This membership is not in the saved invitation."));
+         }
+         deferredUser(deferredInvitation.userPk(), deferredInvitation.userUuid());
+      }
       JSONObject user = targetUser(plan, parts[1], false);
       if(user == null)
       {
@@ -998,6 +1309,10 @@ public class AuthentikAdmin
       if(node == null)
       {
          return (plan.refuse("That group no longer exists."));
+      }
+      if(graph().isUserAccessGroup(node.pk()))
+      {
+         return (plan.refuse("User-specific access groups cannot be shared. Use Edit User Permissions."));
       }
       plan.withTargetLabel(user.optString("username") + " / " + node.name());
 
@@ -1068,7 +1383,7 @@ public class AuthentikAdmin
       }
 
       List<String> parentPks = new ArrayList<>();
-      for(String parentName : AuthentikSafety.parseList(request.str("parents")))
+      for(String parentName : requestedGroupNames(request, "parents"))
       {
          GroupGraph.Node parent = graph().byName(parentName);
          if(parent == null)
@@ -1125,10 +1440,10 @@ public class AuthentikAdmin
       if(StringUtils.hasContent(parentsText))
       {
          newParents = new ArrayList<>();
-         if(!parentsText.equalsIgnoreCase("none"))
+         if(!parentsText.equalsIgnoreCase("none") || request.params().containsKey("parentIds"))
          {
             Set<String> descendants = AuthentikSafety.descendantPks(graph(), node.pk());
-            for(String parentName : AuthentikSafety.parseList(parentsText))
+            for(String parentName : requestedGroupNames(request, "parents"))
             {
                GroupGraph.Node parent = graph().byName(parentName);
                if(parent == null)
@@ -1187,9 +1502,110 @@ public class AuthentikAdmin
 
 
    /*******************************************************************************
-    ** Edit a group's qqq.io/permissions and qqq.io/app-access: the subset rule,
-    ** unknown-name rejection, stale check, last-admin protection and (for
-    ** authentik.*) two-person approval.
+    ** Resolve picker IDs without splitting names containing commas or newlines.
+    ** Legacy name-based callers retain their existing list syntax.
+    *******************************************************************************/
+   public List<String> requestedGroupNames(AdminRequest request, String field) throws QException
+   {
+      String idField = field.equals("parents") ? "parentIds" : "groupIds";
+      if(!request.params().containsKey(idField))
+      {
+         return (AuthentikSafety.parseList(request.str(field)));
+      }
+      List<String> names = new ArrayList<>();
+      for(String pk : AuthentikSafety.parseList(request.str(idField)))
+      {
+         GroupGraph.Node group = graph().byPk(pk);
+         if(group == null)
+         {
+            throw (new QUserFacingException("A selected group or role no longer exists."));
+         }
+         names.add(group.name());
+      }
+      return (names);
+   }
+
+   /*******************************************************************************
+    ** Find the isolated group backing direct user grants; reject external sharing.
+    *******************************************************************************/
+   public JSONObject userAccessGroup(String userPk) throws QException
+   {
+      List<String> ids = graph().userAccessGroups(config.getAppKey(), userPk);
+      if(ids.size() > 1)
+      {
+         throw (new QUserFacingException("Multiple direct-access groups exist for this user. Resolve the duplicate in Authentik first."));
+      }
+      if(ids.isEmpty())
+      {
+         return (null);
+      }
+      JSONObject group = util.getApiJsonOrNull("/core/groups/" + safeKey(ids.get(0)) + "/?include_users=true&include_parents=true&include_children=true");
+      GroupGraph.Node node = membersGraph().byPk(ids.get(0));
+      if(group == null || node == null || !node.memberPks().equals(List.of(Integer.valueOf(userPk))) || !node.parentPks().isEmpty()
+         || !AuthentikSafety.descendantPks(membersGraph(), node.pk()).isEmpty() || node.ownSuperuser()
+         || !node.policyPermissions().isEmpty() || !node.appAccess().isEmpty() || !node.malformed().isEmpty()
+         || (group.optJSONArray("roles") != null && !group.getJSONArray("roles").isEmpty()))
+      {
+         throw (new QUserFacingException("This user's direct-access group was shared or changed outside this editor. Resolve it in Authentik first."));
+      }
+      return (group);
+   }
+
+   /*******************************************************************************
+    ** Edit isolated user grants with the subset, stale and last-admin rules.
+    *******************************************************************************/
+   private AdminPlan planUserPermissions(AdminPlan plan, AdminRequest request) throws QException
+   {
+      if(targetUser(plan, request.targetKey(), false) == null)
+      {
+         return (plan);
+      }
+      JSONObject group;
+      try
+      {
+         group = userAccessGroup(request.targetKey());
+      }
+      catch(QUserFacingException e)
+      {
+         return (plan.refuse(e.getMessage()));
+      }
+      String fingerprint = group == null ? "absent" : AuthentikSafety.groupFingerprint(group);
+      if(!fingerprint.equals(request.str("expectedFingerprint")))
+      {
+         return (plan.refuse("Direct permissions changed since you opened the editor. Open it again before saving."));
+      }
+      List<String> oldPermissions = group == null ? List.of() : graph().byPk(group.getString("pk")).permissions();
+      List<String> newPermissions = AuthentikSafety.parseList(request.str("permissions"));
+      if(new LinkedHashSet<>(oldPermissions).equals(new LinkedHashSet<>(newPermissions)))
+      {
+         return (plan.noChange("Nothing to change."));
+      }
+      String problem = checkAttributeAdditions(plan, request, newPermissions, List.of(), oldPermissions, List.of());
+      if(problem != null)
+      {
+         return (plan.refuse(problem));
+      }
+      if(group != null)
+      {
+         GroupGraph.Node current = membersGraph().byPk(group.getString("pk"));
+         GroupGraph simulated = AuthentikSafety.withNodes(membersGraph(), AuthentikSafety.withPermissions(current, newPermissions, List.of()));
+         if(AuthentikSafety.removesLastAdmin(adminsNow(), AuthentikSafety.qualifyingAdmins(simulated,
+            new EffectivePermissionResolver(simulated, runtime.getPermissionCatalog()), userFacts())))
+         {
+            return (plan.refuse("Removing these permissions would leave nobody able to manage memberships and permissions."));
+         }
+      }
+      plan.withChange("direct permissions: " + joinOrNone(oldPermissions), "direct permissions: " + joinOrNone(newPermissions));
+      plan.getNotes().add("Only this user's direct grants change. Inherited access remains; refresh the user's session to apply changes.");
+      if(config.getTwoPersonApproval() && !request.bool("approved") && addsIdentityPermission(newPermissions, oldPermissions))
+      {
+         plan.withState(AdminPlan.State.NEEDS_APPROVAL).withMessage("granting authentik.* needs a second person");
+      }
+      return (plan);
+   }
+
+   /*******************************************************************************
+    ** Edit group grants, preserving independent policy and inherited access.
     *******************************************************************************/
    private AdminPlan planEditPermissions(AdminPlan plan, AdminRequest request) throws QException
    {
@@ -1869,6 +2285,11 @@ public class AuthentikAdmin
          plan.refuse("That group no longer exists.");
          return (null);
       }
+      if(graph().isUserAccessGroup(pk))
+      {
+         plan.refuse("Use Edit User Permissions on the owning user to change this dedicated access group.");
+         return (null);
+      }
       plan.withTargetLabel(group.optString("name"));
       if(graph().byPk(pk) == null)
       {
@@ -1892,6 +2313,10 @@ public class AuthentikAdmin
     *******************************************************************************/
    String checkGroupGrantable(GroupGraph.Node node) throws QException
    {
+      if(graph().isUserAccessGroup(node.pk()))
+      {
+         return ("User-specific access groups cannot be assigned to other users.");
+      }
       if(graph().isSuperuserInherited(node.pk()))
       {
          return ("Superuser groups cannot be managed here (use the Authentik admin UI): " + node.name());
@@ -1919,6 +2344,10 @@ public class AuthentikAdmin
     *******************************************************************************/
    private String checkParentAllowed(GroupGraph.Node parent) throws QException
    {
+      if(graph().isUserAccessGroup(parent.pk()))
+      {
+         return ("A user-specific access group cannot be inherited by other groups.");
+      }
       if(graph().isSuperuserInherited(parent.pk()))
       {
          return ("A group cannot be placed under a superuser group (or one of its descendants): " + parent.name());
@@ -2037,27 +2466,64 @@ public class AuthentikAdmin
             return (performCreateUser(plan, auth));
          case INVITE_USER:
          {
+            InvitationAssignmentPlan assignments = requestedGroupNames(request, "groups").isEmpty() ? null : prepareInvitationAssignments(request);
+            var intent = assignments == null ? null : invitationStore(store ->
+            {
+               String reference = store.create(assignments.operatorPk(), assignments.operatorUuid(), assignments.flowSlug(), request.reason(), assignments.groups());
+               return (java.util.Objects.requireNonNull(store.find(reference)));
+            });
             JSONObject body = new JSONObject()
                .put("name", "qqq-" + correlationId.substring(0, 8))
                .put("single_use", true)
-               .put("expires", Instant.now().plus(7, ChronoUnit.DAYS).toString())
+               .put("expires", (intent == null ? Instant.now().plus(7, ChronoUnit.DAYS) : intent.expiresAt()).toString())
                .put("fixed_data", new JSONObject().put("email", request.str("email")));
+            if(intent != null)
+            {
+               body.getJSONObject("fixed_data").put(AuthentikInvitationEvidence.REFERENCE, intent.reference());
+            }
             if(StringUtils.hasContent(request.str("name")))
             {
                body.getJSONObject("fixed_data").put("name", request.str("name"));
             }
-            String flow = flowUuid(config.getInvitationFlow());
-            if(flow != null)
+            String flow = assignments == null ? flowUuid(config.getInvitationFlow()) : assignments.flowUuid();
+            if(flow == null)
             {
-               body.put("flow", flow);
+               throw (new QUserFacingException("The configured invitation flow is unavailable. No invitation was created."));
             }
+            body.put("flow", flow);
             JSONObject invitation = util.write(auth, "POST", "/stages/invitation/invitations/", body);
+            if(intent != null)
+            {
+               try
+               {
+                  if(!invitationStore(store -> store.attach(intent.reference(), invitation.getString("pk"))))
+                  {
+                     throw (new QException("Invitation attachment refused."));
+                  }
+               }
+               catch(QException failure)
+               {
+                  throw (new QException("Invitation created, but assignment state could not be attached. The email was not sent; review the invitation before retrying."));
+               }
+            }
             util.write(auth, "POST", "/stages/invitation/invitations/" + invitation.optString("pk") + "/send_email/",
                new JSONObject().put("email_addresses", new JSONArray().put(request.str("email"))));
-            return ("Invitation sent to " + request.str("email") + ".");
+            return ("Invitation sent to " + request.str("email") + "." + (intent == null ? "" : " Selected groups/roles are saved for assignment after enrollment."));
          }
          case CANCEL_INVITATION:
-            util.write(auth, "DELETE", "/stages/invitation/invitations/" + safeKey(request.targetKey()) + "/", null);
+            if(config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.MIRROR))
+            {
+               var intent = invitationStore(store -> store.findByInvitation(request.targetKey()));
+               if(intent != null && List.of("WAITING", "READY").contains(intent.status())
+                  && !invitationStore(store -> store.cancel(intent.reference())))
+               {
+                  throw (new QException("Pending invitation assignments could not be cancelled. Review their current status."));
+               }
+            }
+            if(util.getApiJsonOrNull("/stages/invitation/invitations/" + safeKey(request.targetKey()) + "/") != null)
+            {
+               util.write(auth, "DELETE", "/stages/invitation/invitations/" + safeKey(request.targetKey()) + "/", null);
+            }
             return ("Invitation cancelled.");
          case EDIT_USER:
          {
@@ -2093,6 +2559,22 @@ public class AuthentikAdmin
             return ("User reactivated.");
          case ADD_MEMBER:
          {
+            if(deferredInvitation != null)
+            {
+               runtime.invalidateCache();
+               operator = null;
+               graph = null;
+               requireInvitationAuthority(operator());
+               AdminPlan current = planMembership(new AdminPlan(request), request);
+               if(current.getState() == AdminPlan.State.NO_CHANGE)
+               {
+                  return (current.getMessage());
+               }
+               if(!current.isRunnable())
+               {
+                  throw (new QPermissionDeniedException(current.getMessage()));
+               }
+            }
             String[] parts = request.targetKey().split(":", 2);
             util.write(auth, "POST", "/core/groups/" + safeKey(parts[0]) + "/add_user/", new JSONObject().put("pk", Integer.parseInt(parts[1])));
             return ("Added to the group.");
@@ -2106,11 +2588,15 @@ public class AuthentikAdmin
          case CREATE_GROUP:
          {
             JSONArray parents = new JSONArray();
-            for(String parentName : AuthentikSafety.parseList(request.str("parents")))
+            for(String parentName : requestedGroupNames(request, "parents"))
             {
                parents.put(graph().byName(parentName).pk());
             }
             JSONObject attributes = new JSONObject();
+            if(request.bool("applicationRole"))
+            {
+               attributes.put(com.kingsrook.qbits.authentik.permissions.ApplicationRole.ATTRIBUTE, true);
+            }
             putList(attributes, AuthentikJson.ATTR_PERMISSIONS, AuthentikSafety.parseList(request.str("permissions")));
             putList(attributes, AuthentikJson.ATTR_APP_ACCESS, AuthentikSafety.parseList(request.str("appAccess")));
             util.write(auth, "POST", "/core/groups/", new JSONObject().put("name", request.str("name")).put("is_superuser", false).put("parents", parents).put("attributes", attributes));
@@ -2140,6 +2626,25 @@ public class AuthentikAdmin
             }
             util.write(auth, "PATCH", "/core/groups/" + safeKey(request.targetKey()) + "/", body);
             return ("Group updated.");
+         }
+         case EDIT_USER_PERMISSIONS:
+         {
+            JSONObject group = userAccessGroup(request.targetKey());
+            JSONObject attributes = group == null ? new JSONObject() : new JSONObject(group.getJSONObject("attributes").toString());
+            attributes.put(GroupGraph.USER_ACCESS_ATTRIBUTE, config.getAppKey() + ":" + request.targetKey());
+            putList(attributes, AuthentikJson.ATTR_PERMISSIONS, AuthentikSafety.parseList(request.str("permissions")));
+            if(group == null)
+            {
+               util.write(auth, "POST", "/core/groups/", new JSONObject()
+                  .put("name", "qqq-" + config.getAppKey() + "-user-" + request.targetKey() + "-access")
+                  .put("is_superuser", false).put("parents", new JSONArray()).put("users", new JSONArray().put(Integer.valueOf(request.targetKey())))
+                  .put("attributes", attributes));
+            }
+            else
+            {
+               util.write(auth, "PATCH", "/core/groups/" + safeKey(group.getString("pk")) + "/", new JSONObject().put("attributes", attributes));
+            }
+            return ("User permissions updated.");
          }
          case EDIT_PERMISSIONS:
          {
@@ -2295,7 +2800,7 @@ public class AuthentikAdmin
 
       try
       {
-         for(String groupName : AuthentikSafety.parseList(request.str("groups")))
+         for(String groupName : requestedGroupNames(request, "groups"))
          {
             util.write(auth, "POST", "/core/groups/" + safeKey(graph().byName(groupName).pk()) + "/add_user/", new JSONObject().put("pk", pk));
          }

@@ -274,4 +274,19 @@ class AuthentikProcessesTest
       assertThat(com.kingsrook.qbits.authentik.drift.AuthentikDriftReport.class.getDeclaredMethods()).anyMatch(m -> m.getName().equals("dashed"));
    }
 
+   /*******************************************************************************
+    ** Clearing the last direct permission must leave a reopenable editor.
+    *******************************************************************************/
+   @Test
+   void directUserGrantCanBeClearedAndEditedAgain() throws QException
+   {
+      String process = "authentikEditUserPermissions";
+      String table = "authentik_user";
+      run(process, table, "pk", List.of(3), Map.of("permissions", "cms.publish.hasAccess", "reason", "Grant"), true);
+      run(process, table, "pk", List.of(3), Map.of("permissions", "", "reason", "Revoke"), true);
+      var outcome = run(process, table, "pk", List.of(3), Map.of("permissions", "cms.publish.hasAccess", "reason", "Restore"), true);
+      assertThat(Outcome.messages(outcome.result())).anyMatch(message -> message.contains("user permissions were updated"));
+      assertThat(t.admin().userAccessGroup("3").getJSONObject("attributes").getJSONArray("qqq.io/permissions").toList()).containsExactly("cms.publish.hasAccess");
+   }
+
 }

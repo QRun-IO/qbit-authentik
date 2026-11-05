@@ -131,7 +131,7 @@ class SignInPolicyIT
    {
       JSONObject transport = admin.first("/events/transports/?name=qqq-kof22-admin");
       assertThat(transport.getString("mode")).isEqualTo("webhook");
-      assertThat(transport.getString("webhook_url")).isEqualTo("https://admin.kof22.com/qqq/v1/authentik/webhook");
+      assertThat(transport.getString("webhook_url")).isEqualTo("https://admin.kof22.com/qqq/hooks/authentik/webhook");
       assertThat(transport.getBoolean("send_once")).isTrue();
       assertThat(transport.isNull("webhook_mapping_body")).isFalse();
       assertThat(transport.isNull("webhook_mapping_headers")).isFalse();

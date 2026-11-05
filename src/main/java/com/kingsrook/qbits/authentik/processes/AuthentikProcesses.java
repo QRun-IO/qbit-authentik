@@ -37,6 +37,7 @@ import com.kingsrook.qbits.authentik.security.IdentityPermission;
 import com.kingsrook.qqq.backend.core.actions.processes.BackendStep;
 import com.kingsrook.qqq.backend.core.context.QContext;
 import com.kingsrook.qqq.backend.core.exceptions.QException;
+import com.kingsrook.qqq.backend.core.exceptions.QUserFacingException;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLine;
 import com.kingsrook.qqq.backend.core.model.actions.processes.ProcessSummaryLineInterface;
 import com.kingsrook.qqq.backend.core.model.actions.processes.RunBackendStepInput;
@@ -159,7 +160,7 @@ public final class AuthentikProcesses
          new QFieldMetaData("expiresInDays", QFieldType.INTEGER).withIsRequired(true), reason), null));
       defs.add(new Def("createServiceAccount", "Create Service Account", AdminAction.CREATE_SERVICE_ACCOUNT, Kind.CREATE, users, "person_add", false, List.of(
          new QFieldMetaData("name", QFieldType.STRING).withIsRequired(true),
-         new QFieldMetaData("groups", QFieldType.TEXT).withLabel("Groups (names, one per line)"),
+         hidden("groupIds"),
          new QFieldMetaData("expiresInDays", QFieldType.INTEGER).withIsRequired(true).withDefaultValue(365), reason),
          "Creates a service account with one app password, shown once."));
 
@@ -167,13 +168,21 @@ public final class AuthentikProcesses
          new QFieldMetaData("username", QFieldType.STRING).withLabel("Username").withIsRequired(true),
          new QFieldMetaData("name", QFieldType.STRING).withLabel("Full Name").withIsRequired(true),
          new QFieldMetaData("email", QFieldType.STRING).withLabel("Email").withIsRequired(true),
-         new QFieldMetaData("groups", QFieldType.TEXT).withLabel("Groups (names, one per line)"),
+         hidden("groupIds"),
          new QFieldMetaData("sendRecovery", QFieldType.BOOLEAN).withLabel("Email them a link to set their own password").withDefaultValue(true),
          reason), "No password is set here. Authentik emails the person a link to set their own."));
-      defs.add(new Def("inviteUser", "Invite User", AdminAction.INVITE_USER, Kind.CREATE, users, "mail", false, List.of(
+      List<QFieldMetaData> invitationFields = new ArrayList<>(List.of(
          new QFieldMetaData("email", QFieldType.STRING).withLabel("Email").withIsRequired(true),
          new QFieldMetaData("name", QFieldType.STRING).withLabel("Full Name"),
-         reason), "Authentik emails a single-use sign-up invitation that expires in 7 days."));
+         reason));
+      if(config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.MIRROR)
+         && config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.WEBHOOK)
+         && config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.MEMBERSHIP))
+      {
+         invitationFields.add(2, hidden("groupIds"));
+      }
+      defs.add(new Def("inviteUser", "Invite User", AdminAction.INVITE_USER, Kind.CREATE, users, "mail", false, invitationFields,
+         "Authentik emails a single-use sign-up invitation that expires in 7 days. Selected groups/roles are saved for assignment after verified enrollment."));
       QFieldMetaData otherAttributes = new QFieldMetaData(AuthentikAdmin.OTHER_ATTRIBUTES, QFieldType.TEXT).withLabel("Other attributes (JSON; leave blank to keep them)");
       defs.add(new Def("editUser", "Edit User", AdminAction.EDIT_USER, Kind.USERS, users, "edit", true, List.of(
          new QFieldMetaData("username", QFieldType.STRING).withLabel("Username"),
@@ -183,16 +192,18 @@ public final class AuthentikProcesses
          otherAttributes,
          hidden("expectedFingerprint"), reason), "Change a person's username, name, email, path or other attributes. "
             + "Attributes starting with qqq.io/ or goauthentik.io/ are set elsewhere; editing attributes needs authentik.audit.read."));
+      defs.add(new Def("editUserPermissions", "Edit User Permissions", AdminAction.EDIT_USER_PERMISSIONS, Kind.USERS, users, "admin_panel_settings", true,
+         List.of(hidden("permissions"), hidden("expectedFingerprint"), reason), "Edit grants that apply only to this user. Inherited permissions must be changed at their source."));
       defs.add(new Def("deactivateUser", "Deactivate User", AdminAction.DEACTIVATE_USER, Kind.USERS, users, "block", false, List.of(
          new QFieldMetaData("revokeAppPasswords", QFieldType.BOOLEAN).withLabel("Also revoke their app passwords").withDefaultValue(false),
          typed, reason), "Deactivating ends their sessions immediately and deletes nothing. Type the username to confirm (when you select several people, type the username of the first one)."));
       defs.add(new Def("deleteUser", "Delete User", AdminAction.DELETE_USER, Kind.USERS, users, "delete_forever", false, List.of(typed, reason),
          "Deletes the account in Authentik permanently. To keep the account and its history, use Deactivate User instead."));
       defs.add(new Def("reactivateUser", "Reactivate User", AdminAction.REACTIVATE_USER, Kind.USERS, users, "check_circle", false, List.of(reason), null));
-      defs.add(new Def("addToGroup", "Add To Group", AdminAction.ADD_MEMBER, Kind.USERS, users, "group_add", false, List.of(group,
+      defs.add(new Def("addToGroup", "Add To Group Or Role", AdminAction.ADD_MEMBER, Kind.USERS, users, "group_add", false, List.of(group,
          new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason),
          "You can only add people to a group whose permissions you hold yourself."));
-      defs.add(new Def("removeFromGroup", "Remove From Group", AdminAction.REMOVE_MEMBER, Kind.USERS, users, "group_remove", false, List.of(group,
+      defs.add(new Def("removeFromGroup", "Remove From Group Or Role", AdminAction.REMOVE_MEMBER, Kind.USERS, users, "group_remove", false, List.of(group,
          new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason), null));
       defs.add(new Def("sendPasswordReset", "Send Password Reset Email", AdminAction.SEND_RECOVERY_EMAIL, Kind.USERS, users, "lock_reset", false, List.of(reason),
          "Authentik emails the person a link. You never see the link."));
@@ -204,21 +215,25 @@ public final class AuthentikProcesses
 
       defs.add(new Def("createGroup", "Create Group", AdminAction.CREATE_GROUP, Kind.CREATE, groups, "group_add", false, List.of(
          new QFieldMetaData("name", QFieldType.STRING).withLabel("Group Name").withIsRequired(true),
-         new QFieldMetaData("parents", QFieldType.TEXT).withLabel("Parent groups (names, one per line)"),
-         new QFieldMetaData("permissions", QFieldType.TEXT).withLabel("QQQ permissions (one per line)"),
-         new QFieldMetaData("appAccess", QFieldType.TEXT).withLabel("App access (app keys, one per line)"),
+         hidden("parentIds"),
+         hidden("permissions"),
+         hidden("appAccess"),
          reason), "A group's QQQ permissions apply to everyone in it, and to groups below it."));
+      defs.add(new Def("createApplicationRole", "Create Application Role", AdminAction.CREATE_GROUP, Kind.CREATE, groups, "badge", false, List.of(
+         new QFieldMetaData("name", QFieldType.STRING).withLabel("Role Name").withIsRequired(true),
+         hidden("parentIds"), hidden("permissions"), reason),
+         "A reusable QQQ application role. Assign users as members, or assign this role as a parent of a group."));
       defs.add(new Def("editGroup", "Edit Group", AdminAction.EDIT_GROUP, Kind.GROUPS, groups, "edit", true, List.of(
          new QFieldMetaData("name", QFieldType.STRING).withLabel("Group Name"),
-         new QFieldMetaData("parents", QFieldType.TEXT).withLabel("Parent groups (names, one per line; none to clear)"),
+         hidden("parentIds"),
          otherAttributes,
          hidden("expectedFingerprint"), reason), "Rename a group, change its parents or its other attributes."));
       defs.add(new Def("deleteGroup", "Delete Group", AdminAction.DELETE_GROUP, Kind.GROUPS, groups, "delete_forever", false, List.of(
          new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Type the group name to confirm").withIsRequired(true), reason),
          "Deletes the group in Authentik permanently, with its permissions, app access and policy. Remove its members and child groups first."));
       defs.add(new Def("editPermissions", "Edit Permissions And App Access", AdminAction.EDIT_PERMISSIONS, Kind.GROUPS, groups, "admin_panel_settings", true, List.of(
-         new QFieldMetaData("permissions", QFieldType.TEXT).withLabel("QQQ permissions (one per line)"),
-         new QFieldMetaData("appAccess", QFieldType.TEXT).withLabel("App access (app keys, one per line)"),
+         hidden("permissions"),
+         hidden("appAccess"),
          hidden("expectedFingerprint"), reason),
          "You can only add permissions you hold yourself. Adding authentik.* needs a second person to approve."));
       String policyHelp = "Tick what members of this group, and of the groups below it, may do. The document is what is saved to Authentik. "
@@ -230,10 +245,10 @@ public final class AuthentikProcesses
             + "Review shows the generated document and what changes before anything is saved."));
       defs.add(new Def("editPolicyRecord", "Edit Policy", AdminAction.SAVE_POLICY, Kind.POLICIES, AuthentikLocalTables.POLICY, "policy", true, policyFields, policyHelp));
       defs.add(new Def("addMembers", "Add Members", AdminAction.ADD_MEMBER, Kind.GROUP_USERNAMES, groups, "person_add", false, List.of(
-         new QFieldMetaData("usernames", QFieldType.TEXT).withLabel("Usernames (one per line)").withIsRequired(true),
+         hidden("userIds"),
          new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason), null));
       defs.add(new Def("removeMembers", "Remove Members", AdminAction.REMOVE_MEMBER, Kind.GROUP_USERNAMES, groups, "person_remove", false, List.of(
-         new QFieldMetaData("usernames", QFieldType.TEXT).withLabel("Usernames (one per line)").withIsRequired(true),
+         hidden("userIds"),
          new QFieldMetaData("confirmText", QFieldType.STRING).withLabel("Confirm the number of people (needed only above 25)").withIsHidden(false), reason), null));
 
       defs.add(new Def("cancelInvitation", "Cancel Invitation", AdminAction.CANCEL_INVITATION, Kind.INVITATIONS, "invitation", "cancel", false, List.of(reason), null));
@@ -241,6 +256,9 @@ public final class AuthentikProcesses
       defs.add(new Def("reject", "Reject", null, Kind.APPROVALS, AuthentikLocalTables.APPROVAL_REQUEST, "close", false, List.of(), null));
 
       defs.removeIf(def -> def.action() != null && !config.hasFeature(def.action().getFeature()));
+      defs.removeIf(def -> def.action() == AdminAction.EDIT_USER_PERMISSIONS
+         && (!config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.USERS)
+         || !config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.MEMBERSHIP)));
       defs.removeIf(def -> (def.action() == AdminAction.DELETE_USER && !config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.USERS))
          || (def.action() == AdminAction.DELETE_GROUP && !config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.GROUPS)));
       if((!config.hasFeature(com.kingsrook.qbits.authentik.AuthentikFeature.GROUPS) || !config.getTwoPersonApproval())
@@ -334,7 +352,7 @@ public final class AuthentikProcesses
          {
             process.setMinInputRecords(1);
             process.setMaxInputRecords(def.action() == AdminAction.EDIT_USER || def.action() == AdminAction.EDIT_GROUP || def.action() == AdminAction.EDIT_PERMISSIONS
-               || def.action() == AdminAction.SAVE_POLICY || def.action() == AdminAction.DELETE_USER || def.action() == AdminAction.DELETE_GROUP ? 1 : AuthentikAdmin.MAX_BULK);
+               || def.action() == AdminAction.EDIT_USER_PERMISSIONS || def.action() == AdminAction.SAVE_POLICY || def.action() == AdminAction.DELETE_USER || def.action() == AdminAction.DELETE_GROUP ? 1 : AuthentikAdmin.MAX_BULK);
          }
          default ->
          {
@@ -355,6 +373,10 @@ public final class AuthentikProcesses
          if(def.action() == AdminAction.SAVE_POLICY && !def.key().equals("generatePolicy"))
          {
             details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.WIDGET).withValue("widgetName", config.applyPrefix(PolicyEditorWidget.NAME)));
+         }
+         if(AccessEditorWidget.supports(def))
+         {
+            details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.WIDGET).withValue("widgetName", AccessEditorWidget.name(config, def)));
          }
          details.withComponent(new QFrontendComponentMetaData().withType(QComponentType.EDIT_FORM));
          process.withStep(0, details);
@@ -405,6 +427,7 @@ public final class AuthentikProcesses
          case REMOVE_MEMBER -> w("membership will be removed", "memberships will be removed", "membership was removed", "memberships were removed");
          case CREATE_GROUP -> w("group will be created", "groups will be created", "group was created", "groups were created");
          case EDIT_GROUP -> w("group will be updated", "groups will be updated", "group was updated", "groups were updated");
+         case EDIT_USER_PERMISSIONS -> w("user permissions will be updated", "users permissions will be updated", "user permissions were updated", "users permissions were updated");
          case EDIT_PERMISSIONS -> w("group's permissions will be updated", "groups' permissions will be updated", "group's permissions were updated", "groups' permissions were updated");
          case DELETE_USER -> w("user will be deleted", "users will be deleted", "user was deleted", "users were deleted");
          case DELETE_GROUP -> w("group will be deleted", "groups will be deleted", "group was deleted", "groups were deleted");
@@ -473,6 +496,14 @@ public final class AuthentikProcesses
          case GROUP_USERNAMES ->
          {
             String groupPk = String.valueOf(record.getValue("pk"));
+            for(String userId : AuthentikSafety.parseList(input.getValueString("userIds")))
+            {
+               if(!userId.matches("[1-9][0-9]*"))
+               {
+                  throw (new QUserFacingException("Select a valid user."));
+               }
+               rs.add(withParams(AdminRequest.of(def.action(), groupPk + ":" + userId, reason), def, input));
+            }
             for(String username : AuthentikSafety.parseList(input.getValueString("usernames")))
             {
                Integer userPk = admin.userPkByUsername(username);
@@ -520,6 +551,17 @@ public final class AuthentikProcesses
                request.with(field, input.getValue(field));
             }
          }
+      }
+      for(String legacy : List.of("parents", "groups"))
+      {
+         if(input.getValue(legacy) != null)
+         {
+            request.with(legacy, input.getValueString(legacy));
+         }
+      }
+      if("createApplicationRole".equals(def.key()))
+      {
+         request.with("applicationRole", true);
       }
       for(QFieldMetaData field : def.fields())
       {
@@ -601,8 +643,16 @@ public final class AuthentikProcesses
          QRecord record = input.getRecords().get(0);
          AuthentikAdmin admin = admin(input);
          String pk = def.kind() == Kind.POLICIES ? record.getValueString("groupPk") : String.valueOf(record.getValue("pk"));
+         output.addValue("accessEditorPk", pk);
          switch(def.action())
          {
+            case EDIT_USER_PERMISSIONS ->
+            {
+               JSONObject group = admin.userAccessGroup(pk);
+               output.addValue("expectedFingerprint", group == null ? "absent" : AuthentikSafety.groupFingerprint(group));
+               List<String> permissions = group == null ? null : AuthentikJson.stringList(group.optJSONObject("attributes"), AuthentikJson.ATTR_PERMISSIONS);
+               output.addValue("permissions", permissions == null ? "" : String.join("\n", permissions));
+            }
             case SAVE_POLICY ->
             {
                JSONObject group = admin.getUtil().getApiJsonOrNull("/core/groups/" + AuthentikAdmin.safeKey(pk) + "/?include_users=true&include_parents=true&include_children=true");

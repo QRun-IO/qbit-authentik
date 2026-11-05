@@ -661,6 +661,25 @@ class AuthentikAdminTest
       assertThat(t.authentik.invitations).isEmpty();
    }
 
+   /*******************************************************************************
+    ** A missing or removed configured flow must never become an unbound invite.
+    *******************************************************************************/
+   @Test
+   void refusesInvitationWhenConfiguredFlowDisappears() throws QException
+   {
+      var request = AdminRequest.of(AdminAction.INVITE_USER, "", "Onboarding").with("email", "guest@example.test");
+      var preview = t.admin().plan(request);
+      assertThat(preview.isRunnable()).isTrue();
+      var provider = com.kingsrook.qbits.authentik.client.FixtureActionUtil.handler;
+      com.kingsrook.qbits.authentik.client.FixtureActionUtil.handler = http -> http.getURI().getPath().endsWith("/flows/instances/")
+         ? com.kingsrook.qbits.authentik.client.FixtureActionUtil.response(200, com.kingsrook.qbits.authentik.client.FixtureActionUtil.EMPTY_PAGE)
+         : provider.apply(http);
+      var result = t.admin().execute(preview, null);
+      assertThat(result.ok()).isFalse();
+      assertThat(result.message()).contains("configured invitation flow is unavailable");
+      assertThat(t.changes()).isEmpty();
+   }
+
 
 
    /*******************************************************************************

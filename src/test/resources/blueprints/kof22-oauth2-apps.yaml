@@ -14,6 +14,20 @@ metadata:
     blueprints.goauthentik.io/instantiate: "true"
 entries:
   - model: authentik_providers_oauth2.scopemapping
+    id: qqq-kof22-identity-claim
+    state: present
+    identifiers:
+      name: "QQQ - immutable user identity"
+    attrs:
+      name: "QQQ - immutable user identity"
+      scope_name: profile
+      description: "Stable Authentik identity for QQQ session permission reevaluation"
+      expression: |
+        if not request.user.is_authenticated:
+            return {}
+        return {"qqq_identity": {"pk": request.user.pk, "uuid": str(request.user.uuid)}}
+
+  - model: authentik_providers_oauth2.scopemapping
     id: qqq-kof22-token-claim
     state: present
     identifiers:
@@ -132,6 +146,7 @@ entries:
         - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-email]]
         - !Find [authentik_providers_oauth2.scopemapping, [managed, goauthentik.io/providers/oauth2/scope-profile]]
         - !KeyOf qqq-kof22-token-claim
+        - !KeyOf qqq-kof22-identity-claim
       redirect_uris:
         - matching_mode: strict
           url: "https://admin.kof22.test/token"
@@ -188,7 +203,7 @@ entries:
   # Infrastructure, `present`. INERT until phase 2: the rule has no destination
   # (destination_event_user false, no destination_group), so Authentik creates
   # no notifications and sends nothing. Phase 2 flips destination_event_user to
-  # true once the QQQ receiver (/qqq/v1/authentik/webhook) exists.
+  # true once the QQQ receiver (/qqq/hooks/authentik/webhook) exists.
 
   - model: authentik_events.notificationwebhookmapping
     id: qqq-kof22-admin-webhook-body
@@ -230,7 +245,7 @@ entries:
     attrs:
       name: qqq-kof22-admin
       mode: webhook
-      webhook_url: "https://admin.kof22.com/qqq/v1/authentik/webhook"
+      webhook_url: "https://admin.kof22.com/qqq/hooks/authentik/webhook"
       webhook_mapping_body: !KeyOf qqq-kof22-admin-webhook-body
       webhook_mapping_headers: !KeyOf qqq-kof22-admin-webhook-headers
       send_once: true

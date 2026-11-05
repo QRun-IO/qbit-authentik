@@ -60,6 +60,9 @@ public class GroupGraph
 
 
 
+   public static final String USER_ACCESS_ATTRIBUTE = "qqq.io/user-access-owner";
+   private final Map<String, String> userAccessOwners = new LinkedHashMap<>();
+
    private final Map<String, Node>        byPk      = new LinkedHashMap<>();
    private final Map<String, Node>        byName    = new LinkedHashMap<>();
    private final Map<String, Set<String>> ancestors = new java.util.concurrent.ConcurrentHashMap<>();
@@ -98,6 +101,10 @@ public class GroupGraph
       for(JSONObject group : groups)
       {
          JSONObject   attributes = group.optJSONObject("attributes");
+         if(attributes != null && attributes.has(USER_ACCESS_ATTRIBUTE))
+         {
+            graph.userAccessOwners.put(group.getString("pk"), attributes.optString(USER_ACCESS_ATTRIBUTE));
+         }
          List<String> malformed  = malformed(attributes);
          List<String> policy     = policyPermissions(attributes, f, malformed, catalog);
          graph.add(new Node(
@@ -118,6 +125,22 @@ public class GroupGraph
 
    /*******************************************************************************
     ** Add a node.
+    *******************************************************************************/
+   public boolean isUserAccessGroup(String pk)
+   {
+      return (userAccessOwners.containsKey(pk));
+   }
+
+   /*******************************************************************************
+    ** Find dedicated access groups by stable app and user identity, not by name.
+    *******************************************************************************/
+   public List<String> userAccessGroups(String appKey, String userPk)
+   {
+      return (userAccessOwners.entrySet().stream().filter(e -> e.getValue().equals(appKey + ":" + userPk)).map(Map.Entry::getKey).toList());
+   }
+
+   /*******************************************************************************
+    ** Add a group to the graph.
     *******************************************************************************/
    public GroupGraph add(Node node)
    {

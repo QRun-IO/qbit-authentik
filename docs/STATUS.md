@@ -2,6 +2,25 @@
 
 The Authentik qbit's progress through DESIGN.md section 11, with links. Updated with each PR.
 
+## Local review update — 2026-11-04
+
+- Refreshed from Gitea `develop` (`fe6f716`) on `review/local-latest`.
+- Updated the QQQ BOM to 4.1.0-RC.21 and added a local Next UI 1.0.0-RC.37 host.
+- `mvnw.cmd verify -DskipITs`: 321 tests passed, zero failures/errors/skips;
+  JaCoCo coverage gate passed.
+- Real browser check: Identity dashboard, users, user details, Edit User Review
+  and Result all worked against disposable Authentik 2026.8.3; a synthetic user's
+  display name was successfully changed through the qbit.
+- A clean full contract gate is still required: the separate test stack hit
+  first-boot blueprint errors. Manual reapplication is diagnostic assistance,
+  not evidence of an unattended green bootstrap.
+- This is review-ready, not a 1.0 release sign-off. OAuth, personal token
+  exchange, two-operator approval and production rollout still need acceptance
+  in a fully configured host. Earlier owner checklist items below have not been
+  revalidated against production during this session.
+
+Start/stop instructions and review limitations: [LOCAL-REVIEW.md](LOCAL-REVIEW.md).
+
 ## v1 = phases 0-3 (the full user lifecycle and group/permission management)
 
 | Phase | State |
@@ -57,3 +76,19 @@ The Authentik qbit's progress through DESIGN.md section 11, with links. Updated 
 ## Contract and unit tests (Authentik 2026.8.3)
 
 `CI=true ./mvnw verify`. The numbers are filled in at the end of each PR; see the PR description.
+
+The diagnostic full run was stopped during BlueprintReapplyIT after the assisted bootstrap (5 tests) and schema drift (1 test) passed. It is incomplete and is not a passing contract gate. The review JVM remains running independently.
+
+## Application access editor — 2026-11-04
+
+Implemented QQQ application roles (tagged Authentik groups), checkbox named-permission/sign-in access editing, server-searched assignment selectors, direct user grants isolated in single-member groups, and inherited grant provenance. Generic group operations cannot repurpose direct-user access groups. All writes retain the live guard, audit, stale-state and approval paths.
+
+Validation: 330 offline backend tests passed with the JaCoCo gate; 46 frontend access/process widget tests passed; typecheck and changed-file lint passed. Real-Authentik smoke testing caught and fixed the default picker OR-filter incompatibility and reopening after the last direct grant is removed. This is review-ready development work, not a 1.0 release acceptance claim: the complete contract suite and fresh OAuth sign-in acceptance remain outstanding.
+
+Review instructions and scoped start/stop commands: `docs/LOCAL-REVIEW.md`. The new UI source is in `C:/Users/james/.cache/qqq-authentik-access-ui`; it is not in the published frontend JAR yet. No changes have been committed or published.
+
+Final live result: `target/access-smoke.log` passes role creation, group inheritance, searchable selections, membership add/remove, direct grant save/revoke/reopen/restore and inherited access retention. The frontend proxy and group permission/sign-in checkbox payload were verified, and the review UI returns HTTP 200. `review.sam` is seeded with both direct and inherited application grants for manual review.
+
+### Catalog scaling verification (2026-11-04)
+
+Direct grants now use guarded 25-resource catalog pages with application/type/search filters and page-scoped bulk editing. Complete direct selections remain independent of page requests; unknown and off-page grants are retained. Generated 1,000-table functional coverage passes. Backend verify: 331 tests and coverage gate; frontend: 47 tests, typecheck and lint. Live frontend proxy serves the new catalog. This is not a production concurrency benchmark or 1.0 release acceptance.

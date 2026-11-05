@@ -324,7 +324,7 @@ public class FakeAuthentik
       if(path.equals("/core/groups/") && method.equals("POST"))
       {
          String pk = UUID.nameUUIDFromBytes(body.getString("name").getBytes(StandardCharsets.UTF_8)).toString();
-         JSONObject group = new JSONObject(body.toString()).put("pk", pk).put("users", new JSONArray());
+         JSONObject group = new JSONObject(body.toString()).put("pk", pk).put("users", body.optJSONArray("users") == null ? new JSONArray() : body.getJSONArray("users"));
          groups.put(pk, group);
          return (ok(201, render(group, true)));
       }
@@ -448,6 +448,10 @@ public class FakeAuthentik
          for(JSONObject user : users.values())
          {
             JSONObject rendered = render(user);
+            if(query.containsKey("uuid") && !first(query, "uuid").equalsIgnoreCase(user.optString("uuid")))
+            {
+               continue;
+            }
             if(query.containsKey("email") && !first(query, "email").equalsIgnoreCase(user.optString("email")))
             {
                continue;

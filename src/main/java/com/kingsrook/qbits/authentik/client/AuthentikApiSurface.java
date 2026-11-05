@@ -58,6 +58,11 @@ public final class AuthentikApiSurface
    {
       List<Operation> rs = new ArrayList<>();
       rs.add(new Operation("get", "/admin/version/", Set.of()));
+      rs.add(new Operation("get", "/flows/instances/{slug}/", Set.of()));
+      rs.add(new Operation("get", "/flows/instances/", Set.of("flow_uuid", "page", "page_size")));
+      rs.add(new Operation("get", "/flows/bindings/", Set.of("target", "page", "page_size")));
+      rs.add(new Operation("get", "/policies/bindings/", Set.of("target", "page", "page_size")));
+      rs.add(new Operation("get", "/policies/expression/{policy_uuid}/", Set.of()));
       rs.add(new Operation("post", "/core/tokens/", Set.of()));
       rs.add(new Operation("patch", "/core/tokens/{key}/", Set.of()));
       rs.add(new Operation("delete", "/core/tokens/{key}/", Set.of()));
@@ -70,11 +75,13 @@ public final class AuthentikApiSurface
       ///////////////////////////////////////////////////////////
       rs.add(new Operation("get", "/core/groups/", Set.of("include_users", "include_parents", "include_children", "name", "ordering", "page", "page_size")));
       rs.add(new Operation("get", "/core/groups/{key}/", Set.of("include_users")));
-      rs.add(new Operation("get", "/core/users/", Set.of("username", "include_groups", "include_roles", "attributes", "type", "path_startswith", "groups_by_name", "groups_by_pk", "is_active", "ordering", "page", "page_size")));
+      rs.add(new Operation("get", "/core/users/", Set.of("username", "uuid", "include_groups", "include_roles", "attributes", "type", "path_startswith", "groups_by_name", "groups_by_pk", "is_active", "ordering", "page", "page_size", "last_updated__gt")));
       rs.add(new Operation("get", "/core/users/{key}/", Set.of()));
       rs.add(new Operation("get", "/managed/blueprints/", Set.of("page", "page_size")));
       rs.add(new Operation("get", "/core/tokens/", Set.of("user__username", "intent", "page", "page_size")));
       rs.add(new Operation("get", "/events/events/", Set.of("username", "action", "ordering", "page", "page_size")));
+      rs.add(new Operation("get", "/events/events/stats/", Set.of("username", "action", "count_steps")));
+      rs.add(new Operation("get", "/authenticators/admin/all/", Set.of("user")));
       return (rs);
    }
 

@@ -37,6 +37,9 @@ entries:
         - authentik_core.view_authenticatedsession
         - authentik_rbac.view_role
         - authentik_policies.view_policybinding
+        - authentik_flows.view_flow
+        - authentik_flows.view_flowstagebinding
+        - authentik_policies_expression.view_expressionpolicy
         - authentik_events.view_event
         - authentik_events.add_event
         - authentik_blueprints.view_blueprintinstance

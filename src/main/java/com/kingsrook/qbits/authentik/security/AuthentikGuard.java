@@ -153,6 +153,11 @@ public class AuthentikGuard
       {
          throw (new QPermissionDeniedException("Creating a service account also needs authentik.users.manage."));
       }
+      if(action == AdminAction.EDIT_USER_PERMISSIONS && (!config.hasFeature(AuthentikFeature.USERS)
+         || !config.hasFeature(AuthentikFeature.MEMBERSHIP) || !has(session, IdentityPermission.MEMBERSHIPS_MANAGE)))
+      {
+         throw (new QPermissionDeniedException("Direct user grants require user and membership management to be enabled, and authentik.memberships.manage."));
+      }
       return (new WriteAuthorization(action.name(), operatorEmail()));
    }
 

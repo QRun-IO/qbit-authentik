@@ -63,6 +63,7 @@ public final class AuthentikTestStack
    public static final String SA_TOKEN_ID       = "qqq-contract-test";
 
    private static AuthentikTestStack instance;
+   private static RuntimeException startupFailure;
 
    private final Network                         network = Network.newNetwork();
    private final PostgreSQLContainer<?>          postgres;
@@ -78,10 +79,23 @@ public final class AuthentikTestStack
     *******************************************************************************/
    public static synchronized AuthentikTestStack get()
    {
+      if(startupFailure != null)
+      {
+         throw (new IllegalStateException("The shared Authentik contract stack failed to start; see the first startup failure.", startupFailure));
+      }
       if(instance == null)
       {
          AuthentikTestStack stack = new AuthentikTestStack();
-         stack.start();
+         try
+         {
+            stack.start();
+         }
+         catch(RuntimeException e)
+         {
+            startupFailure = e;
+            stack.stop();
+            throw (e);
+         }
          instance = stack;
          Runtime.getRuntime().addShutdownHook(new Thread(stack::stop));
       }
@@ -130,6 +144,10 @@ public final class AuthentikTestStack
       env.put("AUTHENTIK_DISABLE_STARTUP_ANALYTICS", "true");
       env.put("KOF22_OAUTH2_CLIENT_SECRET", "contract-test-oauth2-client-secret");
       env.put("KOF22_TOKEN_BROKER_CLIENT_SECRET", TOKEN_BROKER_CLIENT_SECRET);
+      if(Boolean.getBoolean("authentik.localReview"))
+      {
+         env.put("QBIT_REVIEW_WEBHOOK_SECRET", java.util.Objects.requireNonNull(System.getProperty("authentik.reviewWebhookSecret")));
+      }
 
       server = authentik(authentikImage, env, "server")
          .withNetworkAliases("authentik")
@@ -137,6 +155,27 @@ public final class AuthentikTestStack
          .waitingFor(Wait.forHttp("/-/health/ready/").forPort(9000).forStatusCode(200).withStartupTimeout(Duration.ofMinutes(8)));
 
       worker = authentik(authentikImage, env, "worker");
+
+      boolean localReview = Boolean.getBoolean("authentik.localReview");
+      String owner = "qbit-authentik-" + (localReview ? "review-" : "contract-") + java.util.UUID.randomUUID().toString().substring(0, 8);
+      Map<GenericContainer<?>, String> components = Map.of(postgres, "postgres", mailpit, "mail", server, "server", worker, "worker");
+      for(GenericContainer<?> container : List.of(postgres, mailpit, server, worker))
+      {
+         container.withLabel("io.qrun.qbit.project", "qbit-authentik").withLabel(localReview ? "io.qrun.qbit.review" : "io.qrun.qbit.contract", owner);
+         container.withCreateContainerCmdModifier(command -> command.withName(owner + "-" + components.get(container)));
+      }
+      if(localReview)
+      {
+         // The review host has automatic local login and disposable test credentials.
+         // Publish every container port on loopback only.
+         for(GenericContainer<?> container : List.of(postgres, mailpit, server, worker))
+         {
+            container.withCreateContainerCmdModifier(command -> command.getHostConfig().withPortBindings(
+               container.getExposedPorts().stream().map(port -> new com.github.dockerjava.api.model.PortBinding(
+                  com.github.dockerjava.api.model.Ports.Binding.bindIp("127.0.0.1"),
+                  new com.github.dockerjava.api.model.ExposedPort(port))).toList()));
+         }
+      }
    }
 
 
@@ -168,6 +207,51 @@ public final class AuthentikTestStack
       server.start();
       worker.start();
 
+      if(Boolean.getBoolean("authentik.localReview"))
+      {
+         try
+         {
+            java.nio.file.Files.writeString(java.nio.file.Path.of("target/review-containers.json"), new JSONObject()
+               .put("containers", new org.json.JSONArray(List.of(postgres.getContainerId(), mailpit.getContainerId(), server.getContainerId(), worker.getContainerId())))
+               .put("network", network.getId()).toString());
+         }
+         catch(java.io.IOException e)
+         {
+            throw (new IllegalStateException("Could not record the owned review containers", e));
+         }
+         // Manual review is an explicit provisioning workflow. Built-in blueprints
+         // may race custom dependencies on first boot; retry ours in dependency order.
+         for(String name : List.of(INFRA_BLUEPRINT, BOOTSTRAP_BLUEPRINT, TOKEN_BLUEPRINT))
+         {
+            long[] nextRetry = { 0 };
+            waitFor(Duration.ofMinutes(5), "review blueprint applied: " + name, () ->
+            {
+               try
+               {
+                  JSONObject current = blueprint(name);
+                  if(current == null)
+                  {
+                     return (false);
+                  }
+                  if("successful".equals(current.optString("status")))
+                  {
+                     return (true);
+                  }
+                  if("error".equals(current.optString("status")) && System.currentTimeMillis() >= nextRetry[0])
+                  {
+                     admin().post("/managed/blueprints/" + current.getString("pk") + "/apply/", new JSONObject());
+                     nextRetry[0] = System.currentTimeMillis() + 10_000;
+                  }
+               }
+               catch(Exception e)
+               {
+                  // Bootstrap authentication and built-in dependencies settle after HTTP readiness.
+               }
+               return (false);
+            });
+         }
+      }
+
       TestApi admin = admin();
       try
       {
@@ -182,11 +266,25 @@ public final class AuthentikTestStack
          ////////////////////////////////////////////////////////////////
          for(String name : List.of(INFRA_BLUEPRINT, BOOTSTRAP_BLUEPRINT, TOKEN_BLUEPRINT))
          {
-            JSONObject instance = blueprint(name);
-            System.err.println("blueprint " + name + ": " + (instance == null ? "missing" : instance.optString("status")));
+            try
+            {
+               JSONObject instance = blueprint(name);
+               System.err.println("blueprint " + name + ": " + (instance == null ? "missing" : instance.optString("status")));
+            }
+            catch(RuntimeException unavailable)
+            {
+               System.err.println("blueprint " + name + ": diagnostic unavailable");
+            }
          }
-         worker.getLogs().lines().filter(line -> line.contains("blueprint") && (line.contains("error") || line.contains("warning") || line.contains("fail")))
-            .limit(60).forEach(line -> System.err.println("worker: " + line));
+         try
+         {
+            worker.getLogs().lines().filter(line -> line.contains("blueprint") && (line.contains("error") || line.contains("warning") || line.contains("fail")))
+               .limit(60).forEach(line -> System.err.println("worker: " + line));
+         }
+         catch(RuntimeException unavailable)
+         {
+            System.err.println("blueprint worker logs unavailable");
+         }
          throw (e);
       }
 
@@ -251,7 +349,8 @@ public final class AuthentikTestStack
     *******************************************************************************/
    public String baseUrl()
    {
-      return ("http://" + server.getHost() + ":" + server.getMappedPort(9000));
+      String host = server.getHost();
+      return ("http://" + ("localhost".equals(host) ? "127.0.0.1" : host) + ":" + server.getMappedPort(9000));
    }
 
 
