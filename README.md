@@ -92,7 +92,7 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Item | What to do |
 |---|---|
 | Coordinates | `com.kingsrook.qbits:qbit-authentik`. No release is on Maven Central yet; CircleCI publishes snapshots from `develop`. |
-| QQQ version | QQQ 4.1.0-RC.8 (released BOM, including the core health SPI). Java 21. |
+| QQQ version | QQQ 4.1.0-RC.21 (released BOM, including the core health SPI). Java 21. |
 | Infrastructure | Authentik, contract-tested against 2026.8.3. The API must be reachable from the app at `baseUrl`. |
 | Tables | Create `authentik_admin_action`, `authentik_approval_request` and `authentik_token_scope` on your local RDBMS backend (`docs/schema.sql`) before turning write features on. |
 | Registration | `new AuthentikQBitProducer().withQBitConfig(config).produce(qInstance)`. |
@@ -101,6 +101,12 @@ See also the QQQ [adoption checklist](https://github.com/QRun-IO/qqq/blob/develo
 | Optional host wiring | ESB: publish the local tables with `EsbTableMetaData.ofOrWithNew(table).withPublication(...)`. Quick Search: register `authentik_user` and `authentik_group` with the Quick Search qbit. Alerts: see Known limitations. |
 | Known limitations | Not in this release: the Authentik webhook, the local mirror tables and reconcile, the access-matrix widget, snapshot export, RBAC role management (phase 4), Alerts producer integration. Invitations add people but not their groups (add them to groups after they sign up). Group and user lists are read live (cached 30 s). |
 | Upgrading | See `UPGRADE.md`. |
+
+## Local review
+
+Run `./scripts/Start-Review.ps1` with Java 21 and Docker Desktop, then open
+`http://localhost:18300/app/authentikAdmin`. See [Local review](docs/LOCAL-REVIEW.md)
+for startup, disposable data, and the authentication limitations.
 
 ## Build
 

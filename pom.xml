@@ -79,6 +79,17 @@
 
    <dependencies>
       <dependency>
+         <groupId>org.apache.artemis</groupId>
+         <artifactId>artemis-jakarta-server</artifactId>
+         <version>2.57.0</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-esb</artifactId>
+         <optional>true</optional>
+      </dependency>
+      <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-backend-core</artifactId>
       </dependency>
@@ -90,12 +101,17 @@
       <dependency>
          <groupId>com.kingsrook.qqq</groupId>
          <artifactId>qqq-backend-module-rdbms</artifactId>
-         <scope>test</scope>
+         <optional>true</optional>
       </dependency>
       <dependency>
          <groupId>com.h2database</groupId>
          <artifactId>h2</artifactId>
          <version>2.2.220</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-backend-module-postgres</artifactId>
          <scope>test</scope>
       </dependency>
       <dependency>
@@ -131,6 +147,24 @@
          <groupId>org.testcontainers</groupId>
          <artifactId>postgresql</artifactId>
          <version>${testcontainers.version}</version>
+         <scope>test</scope>
+      </dependency>
+      <dependency>
+         <groupId>org.postgresql</groupId>
+         <artifactId>postgresql</artifactId>
+         <version>42.7.14</version>
+         <scope>test</scope>
+      </dependency>
+      <!-- Optional webhook adapter; hosts that expose it supply the middleware. -->
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-middleware-javalin</artifactId>
+         <optional>true</optional>
+      </dependency>
+      <dependency>
+         <groupId>com.kingsrook.qqq</groupId>
+         <artifactId>qqq-frontend-next</artifactId>
+         <version>1.0.0-RC.37</version>
          <scope>test</scope>
       </dependency>
    </dependencies>
@@ -249,7 +283,7 @@
             <activeByDefault>true</activeByDefault>
          </activation>
          <properties>
-            <qqq.snapshot.version>4.1.0-RC.19</qqq.snapshot.version>
+            <qqq.snapshot.version>4.1.0-RC.21</qqq.snapshot.version>
          </properties>
          <dependencyManagement>
             <dependencies>

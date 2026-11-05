@@ -45,6 +45,7 @@ public enum AdminAction
    CREATE_GROUP("Create group", "group", IdentityPermission.GROUPS_MANAGE, AuthentikFeature.GROUPS, Confirmation.CONFIRM),
    EDIT_GROUP("Edit group", "group", IdentityPermission.GROUPS_MANAGE, AuthentikFeature.GROUPS, Confirmation.CONFIRM),
    EDIT_PERMISSIONS("Edit permissions and app access", "group", IdentityPermission.PERMISSIONS_MANAGE, AuthentikFeature.GROUPS, Confirmation.CONFIRM),
+   EDIT_USER_PERMISSIONS("Edit user permissions", "user", IdentityPermission.PERMISSIONS_MANAGE, AuthentikFeature.GROUPS, Confirmation.CONFIRM),
    SAVE_POLICY("Save policy", "group", IdentityPermission.POLICIES_MANAGE, AuthentikFeature.POLICIES, Confirmation.CONFIRM),
    DELETE_USER("Delete user", "user", IdentityPermission.USERS_MANAGE, AuthentikFeature.DELETE, Confirmation.TYPED),
    DELETE_GROUP("Delete group", "group", IdentityPermission.GROUPS_MANAGE, AuthentikFeature.DELETE, Confirmation.TYPED),

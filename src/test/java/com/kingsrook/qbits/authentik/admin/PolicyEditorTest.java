@@ -424,7 +424,14 @@ class PolicyEditorTest
       assertThat(empty.getDocument()).isNull();
       assertThat(empty.getGroupLabel()).isEqualTo("kof-website-analysts");
       assertThat(empty.getOutputFieldName()).isEqualTo("policyDocument");
-      assertThat(new JSONObject(Map.of("c", empty.getCatalog())).toString()).contains("\"cms_page\"").contains("\"publishPage\"");
+      assertThat(empty.getCatalog()).isEmpty();
+      assertThat(empty.getCatalogWidget()).isEqualTo("authentikPolicyEditor");
+      RenderWidgetInput catalogInput = new RenderWidgetInput();
+      catalogInput.setWidgetMetaData(t.qInstance.getWidget(empty.getCatalogWidget()));
+      catalogInput.setQueryParams(new java.util.HashMap<>(Map.of("accessCatalog", "true", "search", "cms_page")));
+      var page = (com.kingsrook.qbits.authentik.processes.AccessEditorWidget.Data) new RenderWidgetAction().execute(catalogInput).getWidgetData();
+      assertThat(page.getFields().get(0).get("total")).isEqualTo(1);
+      assertThat(new JSONObject(page.getFields().get(0)).toString()).contains("cms_page.read").doesNotContain("publishPage.hasAccess");
 
       save("kof-website-analysts", PAGE_READ_EDIT);
       PolicyEditorWidget.Data saved = PolicyEditorWidget.load(t.config, groupPk);

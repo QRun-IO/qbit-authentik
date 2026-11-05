@@ -1032,6 +1032,531 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
 
 
    /*******************************************************************************
+    ** Reconciliation requires a complete result, never the truncated bounded
+    ** preview returned by allUsers. Authentik applies scope and watermark;
+    ** an unexpected out-of-scope row aborts instead of being filtered locally.
+    ** A null watermark requests the full directory for deletion reconciliation.
+    *******************************************************************************/
+   public List<JSONObject> syncUsers(Instant watermark, int maxObjects) throws QException
+   {
+      return (syncUsers(watermark, maxObjects, () -> { }));
+   }
+
+
+
+   /*******************************************************************************
+    ** Renewal/cancellation checkpoint around each synchronization HTTP request.
+    ** This callback performs local work only and must not log source identities.
+    *******************************************************************************/
+   @FunctionalInterface
+   public interface SyncProgress
+   {
+      /***************************************************************************
+       ** Throw to stop the scan without returning a partial directory.
+       ***************************************************************************/
+      void check() throws QException;
+   }
+
+
+
+   /*******************************************************************************
+    ** Optional health counts. Null means unknown, not zero and not no MFA.
+    *******************************************************************************/
+   public record SyncMetrics(Integer mfaDeviceCount, Integer failedLogins24h)
+   {
+   }
+
+
+
+   /*******************************************************************************
+    ** Internal synchronization only: the worker supplies a previously scoped
+    ** directory record. Do not expose this method as a user-supplied lookup.
+    ** Authentik computes the rolling 24-hour window and username match; no event
+    ** bodies, authenticator attributes or usernames are persisted by this call.
+    *******************************************************************************/
+   public SyncMetrics syncMetrics(JSONObject user, SyncProgress progress) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.USER));
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.EVENT));
+      if(!(com.kingsrook.qqq.backend.core.context.QContext.getQSession() instanceof com.kingsrook.qqq.backend.core.model.session.QSystemUserSession))
+      {
+         throw (new QPermissionDeniedException("Synchronization metrics require the internal session."));
+      }
+      if(user == null || !runtime().getGuard().isUserInScope(user) || user.optInt("pk", 0) < 1 || user.optString("username", "").isBlank())
+      {
+         throw (new QException("Synchronization metrics require a scoped user identity."));
+      }
+      Integer mfa = null;
+      String devices = syncMetricBody("/authenticators/admin/all/?user=" + user.getInt("pk"), progress);
+      if(devices != null)
+      {
+         try
+         {
+            JSONArray rows = new JSONArray(devices);
+            java.util.Set<String> seen = new java.util.HashSet<>();
+            int confirmed = 0;
+            if(rows.length() > 1000)
+            {
+               throw (new JSONException("Too many devices"));
+            }
+            for(int i = 0; i < rows.length(); i++)
+            {
+               JSONObject row = rows.getJSONObject(i);
+               String model = row.getString("meta_model_name");
+               String pk = row.getString("pk");
+               String key = model + ":" + pk;
+               if(model.isBlank() || pk.isBlank() || !(row.get("confirmed") instanceof Boolean) || !seen.add(key))
+               {
+                  throw (new JSONException("Invalid device count response"));
+               }
+               if(row.getBoolean("confirmed"))
+               {
+                  confirmed++;
+               }
+            }
+            mfa = confirmed;
+         }
+         catch(JSONException malformed)
+         {
+            // Unknown, never a fabricated zero or a persisted source body.
+         }
+      }
+      Integer failures = null;
+      try
+      {
+         URIBuilder builder = new URIBuilder("/events/events/stats/");
+         builder.addParameter("action", "login_failed");
+         builder.addParameter("username", user.getString("username"));
+         builder.addParameter("count_steps", "hours=24");
+         String body = syncMetricBody(builder.build().toString(), progress);
+         if(body != null)
+         {
+            Object value = new JSONObject(body).getJSONObject("count_step").get("hours24");
+            if(value instanceof Integer count && count >= 0)
+            {
+               failures = count;
+            }
+         }
+      }
+      catch(JSONException malformed)
+      {
+         // Unknown: incorrect/missing count shape must not become zero.
+      }
+      catch(java.net.URISyntaxException invalid)
+      {
+         throw (new QException("Bad Authentik metrics URL."));
+      }
+      return (new SyncMetrics(mfa, failures));
+   }
+
+
+
+   /*******************************************************************************
+    ** Metrics are optional when their API is unavailable. Keep lease checks
+    ** outside the catch: losing ownership must stop synchronization, not become
+    ** an unknown metric that the worker accidentally publishes.
+    *******************************************************************************/
+   private String syncMetricBody(String path, SyncProgress progress) throws QException
+   {
+      java.util.Objects.requireNonNull(progress).check();
+      String body = null;
+      try
+      {
+         body = getBody(runtime().getConfig().getApiRoot() + path, false, false);
+      }
+      catch(QException unavailable)
+      {
+         if(Thread.currentThread().isInterrupted())
+         {
+            throw (unavailable);
+         }
+         // No stale count fallback and no extra logging of upstream details.
+      }
+      progress.check();
+      return (body);
+   }
+
+
+
+   /*******************************************************************************
+    ** Leased variant used by the synchronization worker for large directories.
+    *******************************************************************************/
+   public List<JSONObject> syncUsers(Instant watermark, int maxObjects, SyncProgress progress) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.USER));
+      try
+      {
+         URIBuilder builder = new URIBuilder("/core/users/");
+         builder.addParameter("include_groups", "true");
+         builder.addParameter("include_roles", "false");
+         builder.addParameter("ordering", "pk");
+         addUserScope(builder, List.of());
+         if(watermark != null)
+         {
+            builder.addParameter("last_updated__gt", watermark.toString());
+         }
+         List<JSONObject> users = completeSyncPages(builder.build().toString(), maxObjects, progress);
+         if(users.stream().anyMatch(user -> !runtime().getGuard().isUserInScope(user)))
+         {
+            throw (new QException("Directory synchronization returned a user outside the configured scope; no snapshot is usable."));
+         }
+         return (users);
+      }
+      catch(java.net.URISyntaxException e)
+      {
+         throw (new QException("Bad Authentik synchronization URL"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Groups have no last_updated; always read their complete membership graph.
+    *******************************************************************************/
+   public List<JSONObject> syncGroups(int maxObjects) throws QException
+   {
+      return (syncGroups(maxObjects, () -> { }));
+   }
+
+   /*******************************************************************************
+    ** Resolve a username-only event with an exact scoped, uncached server query.
+    ** Reject ignored filters or ambiguous results rather than filtering locally.
+    *******************************************************************************/
+   public JSONObject syncUserByUsername(String username, SyncProgress progress) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.USER));
+      if(username == null || username.isBlank() || username.length() > 255)
+      {
+         throw (new QUserFacingException("Invalid synchronization username."));
+      }
+      try
+      {
+         URIBuilder builder = new URIBuilder("/core/users/");
+         builder.addParameter("username", username).addParameter("include_groups", "true").addParameter("include_roles", "false").addParameter("ordering", "pk");
+         addUserScope(builder, List.of());
+         var users = completeSyncPages(builder.build().toString(), 2, progress);
+         if(users.size() > 1 || users.stream().anyMatch(user -> !username.equals(user.optString("username")) || !runtime().getGuard().isUserInScope(user)))
+         {
+            throw (new QException("Synchronization username lookup is ambiguous or outside scope."));
+         }
+         return (users.isEmpty() ? null : users.getFirst());
+      }
+      catch(java.net.URISyntaxException failure)
+      {
+         throw (new QException("Bad Authentik synchronization URL"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Refresh ownership between complete group pages.
+    *******************************************************************************/
+   public List<JSONObject> syncGroups(int maxObjects, SyncProgress progress) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.GROUP));
+      return (completeSyncPages("/core/groups/?include_users=true&include_parents=false&include_children=false&ordering=pk", maxObjects, progress));
+   }
+
+
+
+   /*******************************************************************************
+    ** Recheck apparent deletions after a full sweep, before opening the local
+    ** write transaction. Pagination can omit a live object even when counts
+    ** match. An uncached detail 404 proves absence. Existing users must also
+    ** be absent from a fresh server-scoped query by their immutable UUID.
+    ** Authorization errors, outages and ambiguous responses abort the refresh.
+    ** The caller must hold the directory sync lease across the sweep, these
+    ** checks and publication. This is eventual reconciliation, not an atomic
+    ** snapshot of the remote directory.
+    *******************************************************************************/
+   public void confirmSyncDeletions(List<String> userPks, List<String> groupPks) throws QException
+   {
+      confirmSyncDeletions(userPks, groupPks, () -> { });
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep ownership throughout potentially large deletion-preflight batches.
+    *******************************************************************************/
+   public void confirmSyncDeletions(List<String> userPks, List<String> groupPks, SyncProgress progress) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.USER));
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.GROUP));
+      if(userPks == null || groupPks == null || (long) userPks.size() + groupPks.size() > MAX_SWEEP_OBJECTS
+         || userPks.stream().anyMatch(pk -> pk == null || !pk.matches("[1-9][0-9]{0,18}"))
+         || groupPks.stream().anyMatch(pk -> pk == null || !pk.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")))
+      {
+         throw (new QUserFacingException("Invalid directory synchronization deletion candidates."));
+      }
+      for(String pk : new java.util.LinkedHashSet<>(userPks))
+      {
+         confirmSyncUserRemoval(pk, progress);
+      }
+      for(String pk : new java.util.LinkedHashSet<>(groupPks))
+      {
+         confirmSyncDeletion("/core/groups/" + pk + "/", progress);
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** A user can leave the configured scope without being deleted. Confirm
+    ** that using a server-filtered immutable identity query, never a username
+    ** that may have changed during the sweep or local filtering of API rows.
+    *******************************************************************************/
+   private void confirmSyncUserRemoval(String pk, SyncProgress progress) throws QException
+   {
+      if(syncUser(pk, progress) != null)
+      {
+         throw (new QException("Directory changed during synchronization; retry before removing mirror records."));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Resolve a newly discovered group member using an uncached detail identity
+    ** and a server-scoped immutable-UUID query. Null means absent or out of scope.
+    *******************************************************************************/
+   public JSONObject syncUser(String pk) throws QException
+   {
+      return (syncUser(pk, () -> { }));
+   }
+
+   /***************************************************************************
+    ** Verify an event hint with an uncached authoritative detail read. Retain
+    ** the event table's audit-read guard even for direct client callers.
+    ***************************************************************************/
+   public JSONObject syncEvent(String eventId) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.EVENT));
+      if(eventId == null || !eventId.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))
+      {
+         throw (new QUserFacingException("Invalid synchronization event identity."));
+      }
+      String url = runtime().getConfig().getApiRoot() + "/events/events/" + eventId + "/";
+      String body = getBody(url, true, false);
+      return (body == null ? null : parse(url, body));
+   }
+
+   /***************************************************************************
+    ** Uncached, bounded enrollment configuration for correlation verification.
+    ** Every list is complete and server-filtered; never infer missing policies.
+    ***************************************************************************/
+   public JSONObject invitationConfiguration(String slug) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.EVENT));
+      if(slug == null || !slug.matches("[A-Za-z0-9_-]{1,100}"))
+      {
+         throw (new QUserFacingException("Invalid invitation flow."));
+      }
+      String root = runtime().getConfig().getApiRoot();
+      String url = root + "/flows/instances/" + slug + "/";
+      JSONObject flow = parse(url, getBody(url, false, false));
+      String flowPk = configurationUuid(flow.getString("pk"));
+      JSONArray bindings = new JSONArray();
+      for(JSONObject binding : completeSyncPages("/flows/bindings/?target=" + flowPk, 100, () -> { }))
+      {
+         JSONObject copy = new JSONObject(binding.toString());
+         if("authentik_stages_user_write.userwritestage".equals(binding.getJSONObject("stage_obj").optString("meta_model_name")))
+         {
+            String target = configurationUuid(binding.getString("policybindingmodel_ptr_id"));
+            JSONArray policies = new JSONArray();
+            for(JSONObject policy : completeSyncPages("/policies/bindings/?target=" + target, 100, () -> { }))
+            {
+               JSONObject saved = new JSONObject(policy.toString());
+               if(!policy.isNull("policy"))
+               {
+                  String policyUrl = root + "/policies/expression/" + configurationUuid(policy.getString("policy")) + "/";
+                  saved.put("definition", parse(policyUrl, getBody(policyUrl, false, false)));
+               }
+               policies.put(saved);
+            }
+            copy.put("qqqPolicies", policies);
+         }
+         bindings.put(copy);
+      }
+      return (new JSONObject().put("flow", flow).put("bindings", bindings));
+   }
+
+   /***************************************************************************
+    ** Preserve configured UUID support while saving the executor's actual slug.
+    ***************************************************************************/
+   public String invitationFlowSlug(String configured) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.EVENT));
+      if(configured == null || !configured.matches("[A-Za-z0-9_-]{1,100}"))
+      {
+         throw (new QUserFacingException("Invalid invitation flow."));
+      }
+      if(!configured.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))
+      {
+         return (configured);
+      }
+      var flows = completeSyncPages("/flows/instances/?flow_uuid=" + configured, 1, () -> { });
+      if(flows.size() != 1 || !configured.equalsIgnoreCase(flows.getFirst().optString("pk"))
+         || !flows.getFirst().optString("slug").matches("[A-Za-z0-9_-]{1,100}"))
+      {
+         throw (new QUserFacingException("The configured invitation flow could not be resolved."));
+      }
+      return (flows.getFirst().getString("slug"));
+   }
+
+   /***************************************************************************
+    ** Provider configuration identifiers must never become arbitrary URL paths.
+    ***************************************************************************/
+   private static String configurationUuid(String value) throws QException
+   {
+      if(value == null || !value.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))
+      {
+         throw (new QException("Invalid invitation configuration identity."));
+      }
+      return (value);
+   }
+
+
+
+   /*******************************************************************************
+    ** Keep ownership during both identity-detail and scoped-list requests.
+    *******************************************************************************/
+   public JSONObject syncUser(String pk, SyncProgress progress) throws QException
+   {
+      runtime().getGuard().checkRead(AuthentikTables.get(AuthentikTables.USER));
+      if(pk == null || !pk.matches("[1-9][0-9]{0,18}"))
+      {
+         throw (new QUserFacingException("Invalid synchronization user identity."));
+      }
+      String url = runtime().getConfig().getApiRoot() + "/core/users/" + pk + "/";
+      String body = syncBody(url, true, progress);
+      if(body == null)
+      {
+         return (null);
+      }
+      JSONObject user = parse(url, body);
+      String uuid = user.optString("uuid", "");
+      if(!pk.equals(user.optString("pk", "")) || !uuid.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))
+      {
+         throw (new QException("Directory changed or returned an invalid identity during synchronization; retry before removing mirror records."));
+      }
+      try
+      {
+         URIBuilder builder = new URIBuilder("/core/users/");
+         builder.addParameter("uuid", uuid);
+         builder.addParameter("include_groups", "true");
+         builder.addParameter("include_roles", "false");
+         addUserScope(builder, List.of());
+         List<JSONObject> users = completeSyncPages(builder.build().toString(), 1, progress);
+         if(users.isEmpty())
+         {
+            return (null);
+         }
+         JSONObject scoped = users.getFirst();
+         if(!pk.equals(scoped.optString("pk", "")) || !uuid.equalsIgnoreCase(scoped.optString("uuid", ""))
+            || !runtime().getGuard().isUserInScope(scoped))
+         {
+            throw (new QException("Directory changed or violated the synchronization identity scope."));
+         }
+         return (scoped);
+      }
+      catch(java.net.URISyntaxException e)
+      {
+         throw (new QException("Bad Authentik synchronization URL"));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Do not use cached detail reads or interpret an unreadable record as gone.
+    ** A non-null response is enough to stop, regardless of its JSON shape.
+    *******************************************************************************/
+   private void confirmSyncDeletion(String path, SyncProgress progress) throws QException
+   {
+      if(syncBody(runtime().getConfig().getApiRoot() + path, true, progress) != null)
+      {
+         throw (new QException("Directory changed during synchronization; retry before removing mirror records."));
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Refuse missing pagination, changing counts, duplicate keys, or a size
+    ** ceiling. This detects observable inconsistency, not a transactional API
+    ** snapshot: Authentik can change between pages without changing the count.
+    ** Reconcile therefore remains eventual and repeats after webhook hints.
+    *******************************************************************************/
+   private List<JSONObject> completeSyncPages(String path, int maxObjects, SyncProgress progress) throws QException
+   {
+      if(maxObjects < 1 || maxObjects > MAX_SWEEP_OBJECTS)
+      {
+         throw (new QUserFacingException("Invalid directory synchronization size limit."));
+      }
+      List<JSONObject> rows = new ArrayList<>();
+      java.util.Set<String> seen = new java.util.HashSet<>();
+      int expectedCount = -1;
+      int expectedPages = -1;
+      for(int page = 1; ; page++)
+      {
+         String url = runtime().getConfig().getApiRoot() + path + "&page=" + page + "&page_size=" + MAX_PAGE_SIZE;
+         JSONObject response = parse(url, syncBody(url, false, progress));
+         JSONObject paging = response.optJSONObject("pagination");
+         JSONArray values = response.optJSONArray("results");
+         int count = paging == null ? -1 : paging.optInt("count", -1);
+         int pages = paging == null ? -1 : paging.optInt("total_pages", -1);
+         if(values == null || paging == null || paging.optInt("current", -1) != page || count < 0 || count > maxObjects
+            || pages < 1 || pages > Math.max(1, count) || page > pages
+            || (expectedCount != -1 && (count != expectedCount || pages != expectedPages)))
+         {
+            throw (new QException("Incomplete or changing directory pagination; no snapshot is usable."));
+         }
+         expectedCount = count;
+         expectedPages = pages;
+         for(int i = 0; i < values.length(); i++)
+         {
+            JSONObject row = values.optJSONObject(i);
+            String pk = row == null ? "" : row.optString("pk", "");
+            if(pk.isBlank() || !seen.add(pk) || rows.size() >= count)
+            {
+               throw (new QException("Invalid or duplicate directory record; no snapshot is usable."));
+            }
+            rows.add(row);
+         }
+         if(page == pages)
+         {
+            if(rows.size() != count)
+            {
+               throw (new QException("Directory snapshot is shorter than its advertised count."));
+            }
+            return (List.copyOf(rows));
+         }
+         if(values.isEmpty())
+         {
+            throw (new QException("Directory snapshot contains an incomplete page."));
+         }
+      }
+   }
+
+
+
+   /*******************************************************************************
+    ** Renew/check both before and after HTTP. If a request outlasts its lease,
+    ** discard its result rather than returning stale data to the publisher.
+    *******************************************************************************/
+   private String syncBody(String url, boolean nullOn404, SyncProgress progress) throws QException
+   {
+      java.util.Objects.requireNonNull(progress).check();
+      String body = getBody(url, nullOn404, false);
+      progress.check();
+      return (body);
+   }
+
+
+
+   /*******************************************************************************
     ** A bounded, username-ordered policy-preview lookup. Membership, active
     ** status and user scope are evaluated by Authentik before the limit.
     ** This read needs only the editor permission, not the users table permission.
@@ -1401,8 +1926,18 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
     *******************************************************************************/
    private String getBody(String url, boolean nullOn404) throws QException
    {
+      return (getBody(url, nullOn404, true));
+   }
+
+
+
+   /*******************************************************************************
+    ** Reconciliation bypasses memoization without evicting concurrent UI reads.
+    *******************************************************************************/
+   private String getBody(String url, boolean nullOn404, boolean useCache) throws QException
+   {
       AuthentikRuntime runtime = runtime();
-      if(deadline == null && runtime.isCacheEnabled())
+      if(useCache && deadline == null && runtime.isCacheEnabled())
       {
          Optional<String> cached = runtime.getResponseCache().getMemoizedResult(url).map(m -> m.getResult());
          if(cached.isPresent())
@@ -1422,7 +1957,7 @@ public class AuthentikActionUtil extends BaseAPIActionUtil
       }
 
       String body = response.getContent();
-      if(deadline == null && runtime.isCacheEnabled() && body != null)
+      if(useCache && deadline == null && runtime.isCacheEnabled() && body != null)
       {
          runtime.getResponseCache().storeResult(url, body);
       }

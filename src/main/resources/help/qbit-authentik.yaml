@@ -495,7 +495,7 @@ entries:
   summary: The person's full name.
 - key: process:authentikCreateUser;field:email
   summary: Their email address. The link to set a password is sent here, and it must not belong to another person.
-- key: process:authentikCreateUser;field:groups
+- key: process:authentikCreateUser;field:groupIds
   summary: Groups to add them to, one group name per line. Optional.
 - key: process:authentikCreateUser;field:sendRecovery
   summary: Tick to have Authentik email the person a link so they can set their own password. On by default.
@@ -630,7 +630,7 @@ entries:
     - A group cannot be placed under a superuser group.
 - key: process:authentikCreateGroup;field:name
   summary: The new group's name. It must not already exist.
-- key: process:authentikCreateGroup;field:parents
+- key: process:authentikCreateGroup;field:parentIds
   summary: Parent groups, one group name per line. Optional. Members of this group also get the parents' access.
 - key: process:authentikCreateGroup;field:permissions
   summary: Named permissions the group grants, one per line. You can only list permissions you hold yourself.
@@ -652,7 +652,7 @@ entries:
     To change what the group grants, use **{{label:authentikEditPermissions}}** or **Edit Policy**.
 - key: process:authentikEditGroup;field:name
   summary: The group's name. It must not already belong to another group.
-- key: process:authentikEditGroup;field:parents
+- key: process:authentikEditGroup;field:parentIds
   summary: Parent groups, one group name per line. Write none to clear them.
 - key: process:authentikEditGroup;field:otherAttributes
   summary: Extra attributes as a JSON object. Leave blank to keep them as they are.
@@ -732,7 +732,7 @@ entries:
     Enter one username per line. You can add up to 100 people at a time; above 25 you must also type how many. The group must grant only permissions and app access you hold yourself, and superuser groups cannot be managed here. Protected accounts and your own account cannot be changed.
 
     Review shows who will be added before anything is sent to Authentik. See also **{{label:authentikAddToGroup}}**, which starts from selected people.
-- key: process:authentikAddMembers;field:usernames
+- key: process:authentikAddMembers;field:userIds
   summary: The usernames to add, one per line.
 - key: process:authentikAddMembers;field:confirmText
   summary: Type the number of people listed. Only needed when there are more than 25.
@@ -746,7 +746,7 @@ entries:
     Enter one username per line. You can remove up to 100 people at a time; above 25 you must also type how many. The last person able to manage memberships and permissions cannot be removed: add another administrator first. Superuser groups cannot be managed here.
 
     Review shows who will be removed before anything is sent to Authentik. See also **{{label:authentikRemoveFromGroup}}**, which starts from selected people.
-- key: process:authentikRemoveMembers;field:usernames
+- key: process:authentikRemoveMembers;field:userIds
   summary: The usernames to remove, one per line.
 - key: process:authentikRemoveMembers;field:confirmText
   summary: Type the number of people listed. Only needed when there are more than 25.
@@ -955,3 +955,41 @@ entries:
   summary: Choose an Authentik user from the accounts visible to you.
 - key: possibleValueSource:authentik_group;slot:help
   summary: Choose an Authentik group for the membership action.
+
+- key: table:authentik_group;field:accessType
+  summary: Distinguishes ordinary groups from reusable QQQ application roles.
+- key: process:authentikEditUserPermissions;slot:help
+  summary: Edit permissions granted directly to this user with checkboxes.
+  content: |
+    Select direct permissions, enter a reason and review the changes before saving. Inherited access is shown with its source and must be removed there. Existing grants that this application does not recognize remain selected until you explicitly remove them. User-specific access is stored in an isolated Authentik group; it cannot be shared or used as a parent through these screens. Changes apply on session refresh.
+- key: process:authentikCreateApplicationRole;slot:help
+  summary: Create a reusable set of QQQ application permissions.
+  content: |
+    Enter a role name and select its permissions. Assign users through Add Members, or let a group inherit the role through Edit Group. All assignments and grants are validated against your live access and recorded in the audit log. Application roles do not assign Authentik administrative RBAC roles.
+
+- key: widget:authentikCreateServiceAccountAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikCreateUserAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikEditUserPermissionsAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikCreateGroupAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikCreateApplicationRoleAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikEditGroupAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikEditPermissionsAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikAddMembersAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.
+
+- key: widget:authentikRemoveMembersAccessEditor;slot:label
+  summary: Select permissions and assignments, then review the changes.

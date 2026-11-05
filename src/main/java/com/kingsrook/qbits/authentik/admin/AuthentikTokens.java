@@ -221,7 +221,7 @@ public class AuthentikTokens
     *******************************************************************************/
    private List<GroupGraph.Node> serviceGroups(AdminRequest request) throws QException
    {
-      Set<String> names = new LinkedHashSet<>(AuthentikSafety.parseList(request.str("groups")));
+      Set<String> names = new LinkedHashSet<>(admin.requestedGroupNames(request, "groups"));
       GroupGraph graph = util.groupGraph();
       List<GroupGraph.Node> groups = new ArrayList<>();
       for(String name : names)
