@@ -255,9 +255,35 @@ public final class AuthentikTestStack
       TestApi admin = admin();
       try
       {
+         long[] nextRetry = { 0 };
          waitFor(Duration.ofMinutes(8), "all three kof22 blueprints applied", () ->
-            isSuccessful(admin, INFRA_BLUEPRINT) && isSuccessful(admin, BOOTSTRAP_BLUEPRINT) && isSuccessful(admin, TOKEN_BLUEPRINT)
+         {
+            ////////////////////////////////////////////////////////////////////
+            // built-in blueprints may race our custom dependencies on first  //
+            // boot, leaving one of ours in "error"; re-apply it (throttled). //
+            ////////////////////////////////////////////////////////////////////
+            if(System.currentTimeMillis() >= nextRetry[0])
+            {
+               nextRetry[0] = System.currentTimeMillis() + 10_000;
+               for(String name : List.of(INFRA_BLUEPRINT, BOOTSTRAP_BLUEPRINT, TOKEN_BLUEPRINT))
+               {
+                  try
+                  {
+                     JSONObject current = blueprint(name);
+                     if(current != null && "error".equals(current.optString("status")))
+                     {
+                        admin.post("/managed/blueprints/" + current.getString("pk") + "/apply/", new JSONObject());
+                     }
+                  }
+                  catch(Exception e)
+                  {
+                     // Bootstrap authentication and built-in dependencies settle after HTTP readiness.
+                  }
+               }
+            }
+            return (isSuccessful(admin, INFRA_BLUEPRINT) && isSuccessful(admin, BOOTSTRAP_BLUEPRINT) && isSuccessful(admin, TOKEN_BLUEPRINT)
                && admin.first("/core/users/?username=" + SERVICE_ACCOUNT) != null);
+         });
       }
       catch(IllegalStateException e)
       {
