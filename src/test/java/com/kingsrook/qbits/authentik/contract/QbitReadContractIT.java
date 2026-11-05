@@ -126,7 +126,7 @@ class QbitReadContractIT
    void beforeEach() throws QException
    {
       config = new AuthentikQBitConfig()
-         .withBaseUrl(stack.baseUrl())
+         .withBaseUrl(stack.baseUrl()).withAllowInsecureHttp(true)
          .withApiToken(stack.serviceAccountToken())
          .withAppKey("kof22-admin")
          .withListCacheTtlSeconds(0);

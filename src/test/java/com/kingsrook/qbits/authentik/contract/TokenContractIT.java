@@ -579,7 +579,7 @@ class TokenContractIT
    private void configureQbit(int owner, String subject) throws Exception
    {
       MemoryRecordStore.getInstance().reset();
-      config = new AuthentikQBitConfig().withBaseUrl(stack.baseUrl()).withApiToken(stack.serviceAccountToken()).withAppKey("kof22-admin")
+      config = new AuthentikQBitConfig().withBaseUrl(stack.baseUrl()).withAllowInsecureHttp(true).withApiToken(stack.serviceAccountToken()).withAppKey("kof22-admin")
          .withListCacheTtlSeconds(0).withGroupCacheTtlSeconds(0).withBulkPacingMillis(0).withLocalBackendName("memory")
          .withRecoveryEmailStage("kof22-recovery-email")
          .withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.TOKENS))

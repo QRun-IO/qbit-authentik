@@ -161,7 +161,7 @@ public class SchemaDriftTest
       {
          return (surfacePath);
       }
-      String         regex = surfacePath.replace("{key}", "\\{[^/]+\\}");
+      String         regex = java.util.regex.Pattern.quote(surfacePath).replace("{key}", "\\E\\{[^/]+\\}\\Q");
       Iterator<Map.Entry<String, JsonNode>> fields = paths.fields();
       while(fields.hasNext())
       {

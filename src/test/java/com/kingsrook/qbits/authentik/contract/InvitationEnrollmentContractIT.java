@@ -174,7 +174,7 @@ class InvitationEnrollmentContractIT
          }
          assertThat(used).isNotNull();
          assertThat(used.getJSONObject("user").optInt("pk", -1)).isNotEqualTo(userPk);
-         var config = assignment == null ? new com.kingsrook.qbits.authentik.AuthentikQBitConfig().withBaseUrl(stack.baseUrl())
+         var config = assignment == null ? new com.kingsrook.qbits.authentik.AuthentikQBitConfig().withBaseUrl(stack.baseUrl()).withAllowInsecureHttp(true)
             .withApiToken(stack.serviceAccountToken()).withAppKey("kof22-admin").withListCacheTtlSeconds(0) : assignment.config;
          var instance = assignment == null ? com.kingsrook.qbits.authentik.AuthentikTestSupport.produce(config) : assignment.instance;
          com.kingsrook.qqq.backend.core.context.QContext.init(instance,
@@ -265,7 +265,7 @@ class InvitationEnrollmentContractIT
          String actor = create(admin, "/core/users/", new JSONObject().put("username", owner + "-operator").put("name", "Invitation operator")
             .put("email", owner + "-operator@example.test").put("type", "internal").put("path", "users/invitation-contract"), cleanup);
          assertThat(admin.post("/core/groups/" + admins + "/add_user/", new JSONObject().put("pk", Integer.parseInt(actor))).status()).isEqualTo(204);
-         config = new AuthentikQBitConfig().withBaseUrl(stack.baseUrl()).withApiToken(stack.serviceAccountToken()).withAppKey("kof22-admin")
+         config = new AuthentikQBitConfig().withBaseUrl(stack.baseUrl()).withAllowInsecureHttp(true).withApiToken(stack.serviceAccountToken()).withAppKey("kof22-admin")
             .withListCacheTtlSeconds(0).withGroupCacheTtlSeconds(0).withInvitationFlow(owner).withLocalBackendName("memory")
             .withRecoveryEmailStage("kof22-recovery-email")
             .withFeatures(EnumSet.of(AuthentikFeature.READ, AuthentikFeature.USERS, AuthentikFeature.GROUPS, AuthentikFeature.MEMBERSHIP));

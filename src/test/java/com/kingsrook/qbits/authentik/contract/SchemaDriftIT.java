@@ -89,7 +89,7 @@ class SchemaDriftIT
       for(java.util.Iterator<String> it = paths.fieldNames(); it.hasNext(); )
       {
          String candidate = it.next();
-         if(candidate.equals(path) || candidate.matches(path.replace("{key}", "\\{[^/]+\\}")))
+         if(candidate.equals(path) || candidate.matches(java.util.regex.Pattern.quote(path).replace("{key}", "\\E\\{[^/]+\\}\\Q")))
          {
             return (SchemaDriftTest.parameterNames(schema, paths.get(candidate).get(operation.method())));
          }

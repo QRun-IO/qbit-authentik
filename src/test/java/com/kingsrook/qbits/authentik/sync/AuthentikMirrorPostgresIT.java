@@ -16,6 +16,7 @@
 
 package com.kingsrook.qbits.authentik.sync;
 
+import java.util.Set;
 import java.util.UUID;
 import javax.sql.DataSource;
 import com.kingsrook.qbits.authentik.RequiresDockerCondition;
@@ -27,6 +28,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.postgresql.ds.PGSimpleDataSource;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.PostgreSQLContainer;
 import com.github.dockerjava.api.model.ExposedPort;
 import com.github.dockerjava.api.model.PortBinding;
@@ -39,6 +41,7 @@ import com.github.dockerjava.api.model.Ports;
 @ExtendWith(RequiresDockerCondition.class)
 class AuthentikMirrorPostgresIT extends AuthentikMirrorSqlTest
 {
+   private static final Set<String> LOCAL_DOCKER_HOSTS = Set.of("localhost", "127.0.0.1");
    private static PostgreSQLContainer<?> postgres;
    private String schema;
 
@@ -55,7 +58,11 @@ class AuthentikMirrorPostgresIT extends AuthentikMirrorSqlTest
          .withCreateContainerCmdModifier(command ->
          {
             command.withName(owner);
-            command.getHostConfig().withPortBindings(new PortBinding(Ports.Binding.bindIp("127.0.0.1"), new ExposedPort(5432)));
+            // Loopback-only only when the daemon is local; a remote daemon (CI) is reached via its host address.
+            if(LOCAL_DOCKER_HOSTS.contains(DockerClientFactory.instance().dockerHostIpAddress()))
+            {
+               command.getHostConfig().withPortBindings(new PortBinding(Ports.Binding.bindIp("127.0.0.1"), new ExposedPort(5432)));
+            }
          });
       try
       {

@@ -96,7 +96,7 @@ class Phase1ReadContractIT
    void beforeEach() throws QException
    {
       config = new AuthentikQBitConfig()
-         .withBaseUrl(stack.baseUrl())
+         .withBaseUrl(stack.baseUrl()).withAllowInsecureHttp(true)
          .withApiToken(stack.serviceAccountToken())
          .withAppKey("kof22-admin")
          .withApplicationsInScope(List.of(AuthentikTestStack.APP_SLUG))
