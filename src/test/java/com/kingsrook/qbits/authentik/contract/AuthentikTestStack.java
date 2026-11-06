@@ -305,8 +305,16 @@ public final class AuthentikTestStack
          }
          try
          {
-            worker.getLogs().lines().filter(line -> line.contains("blueprint") && (line.contains("error") || line.contains("warning") || line.contains("fail")))
+            worker.getLogs().lines().filter(line -> (line.contains("blueprint") && (line.contains("error") || line.contains("warning") || line.contains("fail")))
+               || line.contains("\"level\": \"error\"") || line.contains("Traceback"))
+               .filter(line -> !line.contains("clear_failed_blueprints"))
                .limit(60).forEach(line -> System.err.println("worker: " + line));
+            ////////////////////////////////////////////////////////////////
+            // blueprints re-applied through the API run in the server    //
+            ////////////////////////////////////////////////////////////////
+            server.getLogs().lines().filter(line -> line.contains("\"level\": \"error\"") || line.contains("\"level\": \"warning\"") || line.contains("Traceback"))
+               .filter(line -> !line.contains("Base URL is not configured"))
+               .limit(60).forEach(line -> System.err.println("server: " + line));
          }
          catch(RuntimeException unavailable)
          {
